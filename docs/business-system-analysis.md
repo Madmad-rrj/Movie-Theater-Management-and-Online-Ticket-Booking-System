@@ -1,4 +1,4 @@
-# Business System Analysis and Design
+# Business System Analysis
 
 ## 1. Xác định loại hệ thống
 
@@ -7,6 +7,7 @@ Xác định hệ thống đang xây dựng là loại hệ thống nào, nền 
 và mục đích tổng quát của hệ thống.
 
 Cần mô tả:
+
 - Loại hệ thống: Web App bán vé xem phim.
 - Đối tượng sử dụng chính.
 - Mục đích của hệ thống.
@@ -19,6 +20,7 @@ Cần mô tả:
 Xác định rõ hệ thống sẽ làm những gì và không làm những gì.
 
 Cần xác định:
+
 - Các nghiệp vụ nằm trong phạm vi hệ thống.
 - Các chức năng chính được triển khai.
 - Các chức năng không thuộc phạm vi dự án.
@@ -34,12 +36,14 @@ nghiệp vụ không nằm trong phạm vi ban đầu.
 Xác định tất cả các đối tượng bên ngoài có tương tác với hệ thống.
 
 Với mỗi Actor cần mô tả:
+
 - Tên Actor.
 - Vai trò.
 - Mục đích sử dụng hệ thống.
 - Các nghiệp vụ/chức năng mà Actor có thể thực hiện.
 
 Các Actor dự kiến:
+
 - Customer
 - Staff
 - Manager
@@ -54,13 +58,15 @@ Nếu có hệ thống bên ngoài như Payment Gateway thì cũng xác định
 <!--
 Liệt kê các nghiệp vụ lớn mà hệ thống phải hỗ trợ.
 
-Mỗi nghiệp vụ cần mô tả ngắn:
+Mỗi nghiệp vụ cần mô tả:
+
 - Tên nghiệp vụ.
 - Actor thực hiện.
 - Mục đích.
 - Kết quả mong muốn.
 
 Ví dụ:
+
 - Xem phim.
 - Xem lịch chiếu.
 - Chọn ghế.
@@ -81,12 +87,14 @@ Xác định các đối tượng dữ liệu chính xuất hiện trong nghiệ
 Đây là cơ sở ban đầu cho việc thiết kế Database.
 
 Liệt kê:
+
 - Tên đối tượng.
 - Mục đích của đối tượng.
 - Các thông tin chính mà đối tượng cần lưu trữ.
 - Quan hệ sơ bộ với các đối tượng khác.
 
 Các đối tượng dự kiến:
+
 Movie, Genre, CinemaRoom, Seat, SeatType, TicketType,
 Showtime, Booking, BookingDetail, Ticket, Payment,
 User, Role,...
@@ -101,6 +109,7 @@ chi tiết PK/FK hoặc kiểu dữ liệu Database.
 Mô tả toàn bộ quy trình mà Customer thực hiện khi sử dụng hệ thống.
 
 Cần xác định:
+
 - Điểm bắt đầu.
 - Các bước người dùng thực hiện.
 - Điều kiện/rẽ nhánh trong quá trình thực hiện.
@@ -119,6 +128,7 @@ Home
 → My Tickets
 
 Ngoài luồng chính cần xác định các trường hợp như:
+
 - Chưa đăng nhập.
 - Ghế đã được người khác chọn.
 - Hết thời gian giữ ghế.
@@ -132,6 +142,7 @@ Ngoài luồng chính cần xác định các trường hợp như:
 Mô tả quy trình Staff / Manager / Admin sử dụng hệ thống quản trị.
 
 Cần xác định:
+
 - Đăng nhập.
 - Truy cập khu vực quản trị.
 - Các module được phép truy cập.
@@ -159,6 +170,7 @@ Phân tích chi tiết quy trình Booking từ lúc Customer chọn ghế
 cho đến khi hoàn tất hoặc hủy.
 
 Cần xác định:
+
 - Khi nào Booking được tạo.
 - Khi nào ghế được giữ.
 - Thời gian giữ ghế.
@@ -178,6 +190,7 @@ Cần đặc biệt làm rõ trường hợp nhiều Customer cùng chọn một
 Xác định cách hệ thống quản lý Cinema Room và Seat.
 
 Cần xác định:
+
 - Phòng chiếu có những thông tin gì.
 - Phòng có bao nhiêu ghế.
 - Cách đánh số / xác định vị trí ghế.
@@ -194,6 +207,7 @@ Cần xác định:
 Xác định cách tạo và quản lý Showtime.
 
 Một Showtime phải xác định được:
+
 - Phim nào.
 - Phòng nào.
 - Thời gian bắt đầu.
@@ -201,6 +215,7 @@ Một Showtime phải xác định được:
 - Trạng thái.
 
 Cần xác định các quy tắc:
+
 - Phim phải tồn tại.
 - Phòng phải tồn tại và khả dụng.
 - Thời gian phải hợp lệ.
@@ -215,6 +230,7 @@ Cần xác định các quy tắc:
 Xác định quy trình thanh toán từ Booking đến kết quả giao dịch.
 
 Cần xác định:
+
 - Khi nào Payment được tạo.
 - Số tiền cần thanh toán.
 - Phương thức thanh toán.
@@ -244,6 +260,7 @@ Phân loại chức năng theo Actor hoặc module.
 Ví dụ:
 
 Customer:
+
 - Register
 - Login
 - View Movies
@@ -256,6 +273,7 @@ Customer:
 - Update Profile
 
 Staff / Manager / Admin:
+
 - Manage Movie
 - Manage Genre
 - Manage Cinema Room
@@ -278,6 +296,7 @@ Xác định các yêu cầu về chất lượng và đặc tính vận hành c
 không chỉ riêng chức năng.
 
 Cần xem xét:
+
 - Security.
 - Performance.
 - Availability.
@@ -290,117 +309,4 @@ Cần xem xét:
 
 Mỗi yêu cầu cần có mô tả đủ cụ thể để sau này có thể kiểm tra
 hoặc đánh giá được.
--->
-
-## 14. Xây dựng Use Case
-
-<!--
-Dựa trên Actor và chức năng đã xác định để xây dựng Use Case Diagram.
-
-Cần:
-- Xác định Actor.
-- Xác định Use Case.
-- Xác định quan hệ Actor - Use Case.
-- Xác định include / extend nếu cần.
-- Phân chia khu vực Customer và Admin/Staff nếu cần.
-
-Sau Diagram, nên có bảng mô tả các Use Case quan trọng:
-- Use Case Name.
-- Actor.
-- Preconditions.
-- Main Flow.
-- Alternative Flow.
-- Exception Flow.
-- Postconditions.
--->
-
-## 15. Xây dựng Activity Diagram
-
-<!--
-Mô tả luồng xử lý của các nghiệp vụ quan trọng dưới dạng Activity Diagram.
-
-Không cần vẽ mọi chức năng nếu không cần thiết.
-Ưu tiên các nghiệp vụ có nhiều bước hoặc nhiều nhánh.
-
-Ví dụ:
-- Customer Booking.
-- Payment.
-- Showtime Creation.
-- Ticket Validation.
-
-Diagram cần thể hiện:
-- Start.
-- Activity.
-- Decision.
-- Branch / Merge.
-- End.
-- Các luồng xử lý chính và ngoại lệ.
--->
-
-## 16. Xây dựng Sequence Diagram
-
-<!--
-Mô tả thứ tự tương tác giữa các Actor và các thành phần hệ thống
-trong một nghiệp vụ cụ thể.
-
-Cần xác định:
-- Actor.
-- Frontend.
-- Backend/API.
-- Service/Business Logic.
-- Database.
-- External System nếu có.
-
-Ưu tiên xây dựng Sequence Diagram cho các flow quan trọng:
-
-1. Authentication
-2. Booking
-3. Payment
-4. Ticket Generation
-
-Diagram phải thể hiện được:
-- Request.
-- Response.
-- Thứ tự xử lý.
-- Điều kiện / nhánh lỗi nếu có.
--->
-
-## 17. Thiết kế kiến trúc hệ thống
-
-<!--
-Xác định kiến trúc tổng thể của hệ thống và cách các thành phần
-giao tiếp với nhau.
-
-Cần xác định:
-- Frontend sử dụng công nghệ gì.
-- Backend sử dụng công nghệ gì.
-- Database sử dụng gì.
-- Các layer/module chính của Backend.
-- Cách Frontend giao tiếp với Backend.
-- Cách Backend giao tiếp với Database.
-- Các hệ thống bên ngoài như Payment Gateway / AI Service nếu có.
-
-Kiến trúc dự kiến:
-
-Frontend
-    ↓
-ASP.NET Core Web API
-    ↓
-Business Logic / Services
-    ↓
-EF Core
-    ↓
-PostgreSQL
-
-Nếu có hệ thống bên ngoài:
-
-ASP.NET Core API
-    ├── Payment Gateway
-    └── AI Service
-
-Kết quả của phần này phải đủ rõ để làm cơ sở cho:
-- Database Design.
-- API Contract.
-- Frontend Foundation.
-- Backend Architecture.
 -->
