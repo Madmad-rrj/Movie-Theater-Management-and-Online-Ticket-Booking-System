@@ -36,6 +36,7 @@ Movie Theater Management and Online Ticket Booking System/
 │    ├── PA3/                            # Tài liệu/sản phẩm của PA3
 │    ├── PA4/                            # Tài liệu/sản phẩm của PA4
 │    └── PA5/                            # Tài liệu/sản phẩm của PA5
+│
 └── src/                                # Mã nguồn ứng dụng
     │
     ├── backend/                        # Mã nguồn backend
