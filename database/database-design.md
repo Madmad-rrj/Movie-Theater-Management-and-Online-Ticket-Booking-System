@@ -53,17 +53,53 @@ Ví dụ:
 
 ## 4. Thiết kế Entity Movie
 
-<!--
-Xác định các thuộc tính của Movie.
+Entity `Movie` lưu trữ thông tin về các bộ phim được quản lý trong hệ thống đặt vé xem phim trực tuyến.
 
-Với mỗi thuộc tính cần xác định:
-- Tên.
-- Ý nghĩa.
-- Kiểu dữ liệu dự kiến.
-- Bắt buộc hay không.
-- Giá trị mặc định nếu có.
-- Quy tắc dữ liệu.
--->
+### 4.1. Mục đích
+
+- Lưu trữ thông tin cơ bản của phim.
+- Cung cấp dữ liệu cho chức năng xem danh sách phim, xem chi tiết phim và tra cứu phim.
+- Hỗ trợ quản lý trạng thái phát hành của phim.
+- Làm cơ sở liên kết phim với thể loại và các suất chiếu.
+
+### 4.2. Các thuộc tính
+
+| Thuộc tính | Ý nghĩa | Kiểu dữ liệu dự kiến | Bắt buộc | Giá trị mặc định | Quy tắc dữ liệu |
+|---|---|---|---|---|---|
+| `MovieID` | Mã định danh duy nhất của phim | Số nguyên | Có | Tự sinh | Không trùng lặp; không thay đổi sau khi tạo |
+| `Title` | Tên phim | Chuỗi | Có | Không có | Không được để trống; giới hạn độ dài hợp lý |
+| `Description` | Nội dung giới thiệu phim | Văn bản dài | Không | Không có | Có thể để trống |
+| `Duration` | Thời lượng phim, tính bằng phút | Số nguyên | Có | Không có | Phải lớn hơn 0 |
+| `ReleaseDate` | Ngày phát hành phim | Ngày | Không | Không có | Nếu có, phải là ngày hợp lệ |
+| `PosterURL` | Đường dẫn ảnh áp phích phim | Chuỗi | Không | Không có | Nếu có, phải là URL hợp lệ theo quy ước của hệ thống |
+| `TrailerURL` | Đường dẫn trailer phim | Chuỗi | Không | Không có | Nếu có, phải là URL hợp lệ theo quy ước của hệ thống |
+| `Language` | Ngôn ngữ chính của phim | Chuỗi | Không | Không có | Nếu có, phải tuân theo định dạng thống nhất |
+| `AgeRating` | Phân loại độ tuổi được phép xem | Chuỗi hoặc kiểu liệt kê | Không | Không có | Nếu có, phải thuộc tập phân loại mà hệ thống hỗ trợ |
+| `Status` | Trạng thái quản lý của phim | Kiểu liệt kê | Có | `ComingSoon` | Chỉ nhận các trạng thái được hệ thống quy định |
+| `CreatedAt` | Thời điểm tạo bản ghi | Ngày giờ | Có | Thời điểm tạo | Được hệ thống ghi nhận khi tạo phim |
+| `UpdatedAt` | Thời điểm cập nhật gần nhất | Ngày giờ | Không | Không có | Được cập nhật khi thông tin phim thay đổi |
+
+### 4.3. Các quy tắc nghiệp vụ
+
+1. Mỗi phim phải có một mã định danh duy nhất.
+2. Tên phim không được để trống.
+3. Thời lượng phim phải là số nguyên dương.
+4. Trạng thái phim chỉ được nhận các giá trị đã được hệ thống thống nhất, ví dụ: `ComingSoon`, `NowShowing`, `Ended`.
+5. Một phim có thể thuộc nhiều thể loại; quan hệ này được quản lý thông qua entity trung gian `MovieGenre`.
+6. Không nên xóa phim một cách tùy tiện nếu phim đã có suất chiếu, đặt vé hoặc dữ liệu lịch sử liên quan. Việc ngừng hiển thị hoặc ngừng phát hành cần tuân theo quy tắc quản lý dữ liệu của hệ thống.
+
+### 4.4. Quan hệ với các entity khác
+
+- `Genre`: quan hệ nhiều-nhiều thông qua `MovieGenre`.
+- `Showtime`: một phim có thể có nhiều suất chiếu.
+- `MovieGenre`: lưu thông tin liên kết giữa phim và thể loại.
+
+### 4.5. Các quyết định cần thống nhất
+
+- Những trạng thái nào được áp dụng cho phim?
+- Có bắt buộc nhập ngày phát hành, ngôn ngữ và phân loại độ tuổi không?
+- Phim đã có suất chiếu hoặc vé đã bán có được xóa không?
+- Hệ thống có cần lưu lịch sử thay đổi thông tin phim không?
 
 ## 5. Thiết kế Entity Genre
 

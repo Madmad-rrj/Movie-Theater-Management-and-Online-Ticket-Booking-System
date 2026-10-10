@@ -90,8 +90,8 @@ Movie Theater Management and Online Ticket Booking System/
 | ---------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------- |
 | `README.md`                        | Giới thiệu dự án, công nghệ, yêu cầu môi trường và hướng dẫn chạy                        | Root                              |
 | `PROJECT_STRUCTURE.md`             | Giải thích cấu trúc repository                                                           | Root                              |
-| `database-design.md`               | Trình bày cách thiết kế database và các quyết định thiết kế                              | `database/`                       |
-| `database-schema.md`               | Mô tả chi tiết các bảng, cột, kiểu dữ liệu và ràng buộc                                  | `database/`                       |
+| `database-design.md`               | Lý do lựa chọn thiết kế, quy tắc nghiệp vụ dữ liệu, tính toàn vẹn, concurrency và các quyết định thiết kế                              | `database/`                       |
+| `database-schema.md`               | Bảng thực tế, cột, kiểu dữ liệu PostgreSQL, PK, FK, constraints và index                                  | `database/`                       |
 | `architecture.md`                  | Mô tả kiến trúc tổng thể, các tầng và cách chúng giao tiếp                               | `docs/analysis and design/`       |
 | `business-system-analysis.md`      | Phân tích vấn đề, phạm vi, actor, quy trình nghiệp vụ và yêu cầu chức năng/phi chức năng | `docs/requirements/`              |
 | `business-system-design.md`        | Mô tả thiết kế giải pháp, sơ đồ UML và luồng tương tác                                   | `docs/analysis and design/`       |

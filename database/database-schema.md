@@ -63,7 +63,37 @@ SEAT(
 | Column | Data Type | PK | FK | Nullable | Unique | Default | Description |
 | ------ | --------- | -- | -- | -------- | ------ | ------- | ----------- |
 |        |           |    |    |          |        |         |             |
+Ví dụ mục 3.1 Movie trong tài liệu `database-schema.md` của hệ thống đặt vé xem phim có thể viết như sau:
 
+### 3. Table Schema
+
+#### 3.1 Movie
+
+| Column        | Data Type       | PK  | FK | Nullable | Unique | Default             | Description                    |
+| ------------- | --------------- | --- | -- | -------- | ------ | ------------------- | ------------------------------ |
+| `MovieID`     | `INT`           | Yes | No | No       | Yes    | Auto-increment      | Unique identifier of the movie |
+| `Title`       | `NVARCHAR(255)` | No  | No | No       | No     | —                   | Movie title                    |
+| `Description` | `NVARCHAR(MAX)` | No  | No | Yes      | No     | `NULL`              | Movie synopsis                 |
+| `Duration`    | `INT`           | No  | No | No       | No     | —                   | Movie duration in minutes      |
+| `ReleaseDate` | `DATE`          | No  | No | Yes      | No     | `NULL`              | Movie release date             |
+| `PosterURL`   | `VARCHAR(500)`  | No  | No | Yes      | No     | `NULL`              | URL of the movie poster        |
+| `TrailerURL`  | `VARCHAR(500)`  | No  | No | Yes      | No     | `NULL`              | URL of the movie trailer       |
+| `Language`    | `NVARCHAR(50)`  | No  | No | Yes      | No     | `NULL`              | Movie language                 |
+| `AgeRating`   | `VARCHAR(10)`   | No  | No | Yes      | No     | `NULL`              | Movie age classification       |
+| `Status`      | `VARCHAR(20)`   | No  | No | No       | No     | `'ComingSoon'`      | Movie status                   |
+| `CreatedAt`   | `DATETIME2`     | No  | No | No       | No     | `CURRENT_TIMESTAMP` | Record creation timestamp      |
+| `UpdatedAt`   | `DATETIME2`     | No  | No | Yes      | No     | `NULL`              | Last modification timestamp    |
+
+Lưu ý:
+
+- Đây là ví dụ minh họa, chưa chắc trùng với database thực tế của nhóm. Cần đối chiếu với `database-schema.sql` và entity trong backend.
+- `MovieID` vừa là PK vừa có tính duy nhất, nên cột `Unique` ghi `Yes` là hợp lý nếu bảng dùng khóa chính này.
+- `Duration` nên có ràng buộc `CHECK (Duration > 0)`.
+- `Status` cần thống nhất các giá trị được phép, chẳng hạn `ComingSoon`, `NowShowing`, `Ended`.
+- `CreatedAt` và `UpdatedAt` có thể dùng `DATETIME2` nếu nhóm sử dụng SQL Server. Nếu sử dụng PostgreSQL thì nên điều chỉnh kiểu dữ liệu cho phù hợp.
+- `Genre` thường có quan hệ nhiều-nhiều với `Movie` thông qua bảng trung gian `MovieGenre`, vì vậy không cần lưu `GenreID` trực tiếp trong bảng `Movie` nếu thiết kế theo mô hình đó.
+
+Quan trọng: Tài liệu `database-schema.md` nên mô tả schema thực tế mà nhóm thống nhất, không phải chỉ liệt kê những cột có thể có. Nếu nhóm chưa quyết định các cột như `AgeRating`, `Language` hay `Status`, hãy xác nhận trước khi đưa chúng vào thiết kế chính thức.
 ### 3.2 Genre
 
 | Column | Data Type | PK | FK | Nullable | Unique | Default | Description |
