@@ -6,6 +6,244 @@ Database lưu trữ dữ liệu cho các nghiệp vụ: quản lý phim và th�
 
 Hệ thống sử dụng **PostgreSQL**, lưu nguồn dữ liệu chính xác về ghế đang được giữ/bán, trạng thái đơn và giao dịch. Frontend chỉ hiển thị kết quả từ API; trạng thái trên trình duyệt không có giá trị xác nhận thanh toán hoặc quyền sở hữu ghế.
 
+```mermaid
+erDiagram
+    %% Source: database-design.md (17 tables).
+    %% PK = primary key; FK = foreign key; UK = single-column unique key.
+    %% Composite keys and expression/partial indexes are documented below.
+
+    movie ||--o{ movie_genre : phan_loai
+    genre ||--o{ movie_genre : duoc_gan
+    cinema_room ||..o{ seat : co_ghe
+    seat_type ||..o{ seat : loai_ghe
+    movie ||..o{ showtime : duoc_chieu
+    cinema_room ||..o{ showtime : to_chuc
+    app_user ||..o{ booking : dat_ve
+    showtime ||..o{ booking : nhan_don
+    booking ||..|{ booking_detail : gom
+    seat ||..o{ booking_detail : duoc_dat
+    ticket_type ||..o{ booking_detail : ap_dung
+    booking_detail ||..o| ticket : phat_hanh
+    booking ||..o{ payment : thanh_toan
+    payment ||..o{ payment_event : nhan_su_kien
+    payment ||..o| refund : hoan_tien
+    app_user ||--o{ user_role : duoc_cap_vai_tro
+    role ||--o{ user_role : gan_cho_tai_khoan
+    app_user |o..o{ ticket : soat_ve
+    app_user |o..o{ refund : yeu_cau_hoan
+    app_user |o..o{ user_role : cap_vai_tro
+
+    %% Composite FK: booking(showtime_id, cinema_room_id) -> showtime(id, cinema_room_id)
+    %% Composite FK: booking_detail(booking_id, showtime_id, cinema_room_id) -> booking(id, showtime_id, cinema_room_id)
+    %% Composite FK: booking_detail(seat_id, cinema_room_id) -> seat(id, cinema_room_id)
+
+    movie {
+        bigint id PK "NN"
+        varchar(255) title "NN"
+        text description "NULL"
+        smallint duration_minutes "NN"
+        date release_date "NULL"
+        text poster_url "NULL"
+        text trailer_url "NULL"
+        varchar(50) language "NULL"
+        varchar(20) age_rating "NULL"
+        varchar(20) status "NN"
+    }
+
+    genre {
+        bigint id PK "NN"
+        varchar(30) code UK "NN"
+        varchar(100) name "NN; Unique normalized name"
+        text description "NULL"
+        boolean is_active "NN"
+    }
+
+    movie_genre {
+        bigint movie_id PK, FK "NN"
+        bigint genre_id PK, FK "NN"
+    }
+
+    cinema_room {
+        bigint id PK "NN"
+        varchar(20) code UK "NN"
+        varchar(100) name "NN; Unique normalized name"
+        varchar(20) status "NN"
+    }
+
+    seat {
+        bigint id PK "NN"
+        bigint cinema_room_id FK "NN"
+        bigint seat_type_id FK "NN"
+        varchar(10) row_label "NN"
+        smallint seat_number "NN"
+        varchar(20) status "NN"
+    }
+
+    seat_type {
+        bigint id PK "NN"
+        varchar(30) code UK "NN"
+        varchar(100) name "NN; Unique normalized name"
+        smallint capacity_units "NN"
+        numeric surcharge_amount "NN; numeric(14,0)"
+        boolean is_active "NN"
+    }
+
+    ticket_type {
+        bigint id PK "NN"
+        varchar(30) code UK "NN"
+        varchar(100) name "NN; Unique normalized name"
+        numeric discount_percent "NN; numeric(5,2)"
+        text eligibility_note "NULL"
+        boolean is_active "NN"
+    }
+
+    showtime {
+        bigint id PK "NN"
+        bigint movie_id FK "NN"
+        bigint cinema_room_id FK "NN"
+        varchar(255) movie_title_snapshot "NN"
+        varchar(100) room_name_snapshot "NN"
+        smallint duration_minutes_snapshot "NN"
+        timestamptz starts_at "NN"
+        timestamptz ends_at "NN"
+        timestamptz room_available_at "NN"
+        timestamptz booking_closes_at "NN"
+        numeric base_price "NN; numeric(14,0)"
+        varchar(20) status "NN"
+        timestamptz cancelled_at "NULL"
+        text cancellation_reason "NULL"
+    }
+
+    booking {
+        bigint id PK "NN"
+        uuid booking_code UK "NN"
+        bigint user_id FK "NN"
+        bigint showtime_id FK "NN; Part of composite FK"
+        bigint cinema_room_id FK "NN; Part of composite FK"
+        uuid request_key "NN"
+        varchar(64) request_fingerprint "NN"
+        varchar(254) contact_email_snapshot "NN"
+        varchar(20) contact_phone_snapshot "NULL"
+        numeric total_amount "NN; numeric(14,0)"
+        varchar(3) currency "NN"
+        timestamptz expires_at "NN"
+        varchar(20) status "NN"
+        timestamptz confirmed_at "NULL"
+        timestamptz cancelled_at "NULL"
+        text cancellation_reason "NULL"
+        timestamptz created_at "Referenced in rules/indexes; absent from attribute table"
+    }
+
+    booking_detail {
+        bigint id PK "NN"
+        bigint booking_id FK "NN; Part of composite FK"
+        bigint showtime_id FK "NN; Part of composite FK"
+        bigint cinema_room_id FK "NN; Part of composite FK"
+        bigint seat_id FK "NN; Part of composite FK"
+        bigint ticket_type_id FK "NN"
+        varchar(30) seat_label_snapshot "NN"
+        varchar(100) seat_type_name_snapshot "NN"
+        varchar(100) ticket_type_name_snapshot "NN"
+        smallint capacity_units_snapshot "NN"
+        numeric base_amount "NN; numeric(14,0)"
+        numeric surcharge_amount "NN; numeric(14,0)"
+        numeric discount_percent_snapshot "NN; numeric(5,2)"
+        numeric discount_amount "NN; numeric(14,0)"
+        numeric unit_price "NN; numeric(14,0)"
+        varchar(20) allocation_status "NN"
+        timestamptz released_at "NULL"
+    }
+
+    ticket {
+        bigint id PK "NN"
+        bigint booking_detail_id FK, UK "NN"
+        uuid ticket_code UK "NN"
+        varchar(20) status "NN"
+        timestamptz issued_at "NN"
+        timestamptz used_at "NULL"
+        bigint validated_by_user_id FK "NULL"
+        timestamptz voided_at "NULL"
+        text void_reason "NULL"
+    }
+
+    payment {
+        bigint id PK "NN"
+        bigint booking_id FK "NN"
+        varchar(30) provider "NN"
+        uuid merchant_request_id UK "NN"
+        varchar(150) provider_transaction_id "NULL"
+        varchar(50) method "NULL"
+        numeric amount "NN; numeric(14,0)"
+        varchar(3) currency "NN"
+        numeric received_amount "NULL; numeric(18,2)"
+        varchar(3) received_currency "NULL"
+        varchar(20) status "NN"
+        timestamptz applied_at "NULL"
+        timestamptz paid_at "NULL"
+        timestamptz verified_at "NULL"
+        varchar(20) reconciliation_status "NN"
+        varchar(100) failure_code "NULL"
+        timestamptz next_reconcile_at "NULL"
+        timestamptz created_at "Referenced in rules/indexes; absent from attribute table"
+    }
+
+    payment_event {
+        bigint id PK "NN"
+        bigint payment_id FK "NN"
+        varchar(20) source "NN"
+        varchar(200) event_key "NN"
+        varchar(50) event_type "NN"
+        jsonb payload_summary "NN"
+        timestamptz received_at "NN"
+        timestamptz processed_at "NULL"
+        varchar(20) status "NN"
+        integer retry_count "NN"
+        timestamptz next_retry_at "NULL"
+        varchar(500) last_error "NULL"
+    }
+
+    refund {
+        bigint id PK "NN"
+        bigint payment_id FK, UK "NN"
+        uuid merchant_refund_id UK "NN"
+        varchar(150) provider_refund_id "NULL"
+        numeric amount "NN; numeric(18,2)"
+        varchar(3) currency "NN"
+        text reason "NN"
+        varchar(20) status "NN"
+        bigint requested_by_user_id FK "NULL"
+        timestamptz completed_at "NULL"
+        timestamptz next_retry_at "NULL"
+        varchar(500) last_error "NULL"
+    }
+
+    app_user {
+        bigint id PK "NN"
+        varchar(254) email "NN; Unique lower(btrim(email))"
+        text password_hash "NN"
+        varchar(150) full_name "NN"
+        varchar(20) phone "NULL"
+        varchar(20) status "NN"
+        timestamptz email_verified_at "NULL"
+        timestamptz last_login_at "NULL"
+    }
+
+    role {
+        bigint id PK "NN"
+        varchar(30) code UK "NN"
+        varchar(100) name "NN"
+        text description "NULL"
+        boolean is_active "NN"
+    }
+
+    user_role {
+        bigint user_id PK, FK "NN"
+        bigint role_id PK, FK "NN"
+        timestamptz assigned_at "NN"
+        bigint assigned_by_user_id FK "NULL"
+    }
+```
+
 ## 2. Nguyên tắc thiết kế Database
 
 1. Ưu tiên toàn vẹn dữ liệu: PK, FK, UNIQUE, CHECK và exclusion constraint bảo vệ những quy tắc database có thể thực thi.
