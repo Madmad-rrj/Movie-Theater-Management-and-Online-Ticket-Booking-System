@@ -1,5 +1,19 @@
 # Business System Design
 
+## 0. Phạm vi và chính sách dùng chung
+
+| Trạng thái | Quyết định |
+|---|---|
+| **CONFIRMED — MVP/demo** | Hệ thống triển khai một chi nhánh ban đầu; hỗ trợ phim/thể loại, phòng/ghế, suất chiếu, đặt vé, thanh toán, phát hành/soát vé, tài khoản và vai trò cơ bản. |
+| **PROPOSED — data-model readiness** | Database có thể chứa nhiều Cinema và CinemaRoom thuộc từng Cinema; demo chỉ vận hành một Cinema. Phân quyền theo chi nhánh chưa nằm trong MVP. |
+| **CONFIRMED — booking** | Ghế được giữ khi booking pending được tạo thành công, giữ 5 phút tính từ lúc tạo booking. Hủy trước thanh toán giải phóng ghế. |
+| **CONFIRMED — sales** | Không áp dụng cutoff cố định 10/15/30 phút trước giờ chiếu; việc bán sát giờ được cho phép theo mốc vận hành được nhóm chốt. |
+| **OUT OF SCOPE — DEMO** | Customer cancellation sau thanh toán, refund, cinema-initiated showtime cancellation, và reconciliation phức tạp cho payment thành công đến muộn sau khi ghế đã được bán lại. |
+| **PROPOSED** | `MANAGER` là actor quản trị vận hành với quyền quản lý phim, phòng/ghế, suất chiếu và xem báo cáo; phạm vi quyền chi tiết vẫn cần được nhóm chốt. |
+| **OPEN** | Gateway cụ thể, mốc đóng bán cuối cùng, cửa sổ soát vé, điều kiện vé giảm, quyền staff theo chi nhánh và ranh giới chính xác giữa Manager/Admin. |
+
+Tài liệu này mô tả actors, use cases và luồng nghiệp vụ; chi tiết PK/FK, snapshot giá và ràng buộc concurrency nằm trong `database/database-design.md`.
+
 ## 1. Xây dựng Use Case
 
 ### 1.1. Mục tiêu
@@ -8,8 +22,8 @@ Use Case Diagram mô tả các chức năng mà hệ thống cung cấp cho từ
 
 Các chức năng được chia thành hai nhóm chính:
 
-- **Customer:** tra cứu phim, xem suất chiếu, chọn ghế, đặt vé, thanh toán và tra cứu vé.
-- **Admin/Staff:** quản lý phim, phòng chiếu, ghế, suất chiếu, đơn đặt vé, tài khoản và xác thực vé.
+- **Customer:** tra cứu phim, xem suất chiếu, chọn ghế, đặt vé, hủy booking trước thanh toán, thanh toán và tra cứu vé.
+- **Staff/Manager/Admin:** vận hành và quản trị dữ liệu theo role được cấp; phạm vi chi tiết của Manager là đề xuất, chưa thay thế authorization policy.
 
 ### 1.2. Xác định Actor
 
@@ -17,6 +31,7 @@ Các chức năng được chia thành hai nhóm chính:
 |---|---|---|
 | Customer | Khách hàng sử dụng hệ thống | Xem phim, chọn suất chiếu và ghế, đặt vé, thanh toán, xem vé |
 | Staff | Nhân viên rạp chiếu phim | Kiểm tra vé, xác thực vé và hỗ trợ nghiệp vụ tại rạp |
+| Manager | Quản lý vận hành | **PROPOSED:** quản lý phim, phòng/ghế, suất chiếu và xem báo cáo; không mặc nhiên có quyền quản trị tài khoản/phân quyền |
 | Admin | Quản trị viên hệ thống | Quản lý dữ liệu, tài khoản, phân quyền và cấu hình hệ thống |
 | Payment Gateway | Hệ thống thanh toán bên ngoài | Xử lý giao dịch thanh toán và gửi kết quả giao dịch về hệ thống |
 
@@ -35,6 +50,7 @@ Các chức năng được chia thành hai nhóm chính:
 | View Showtimes | Xem các suất chiếu có sẵn |
 | Select Seats | Chọn ghế cho suất chiếu |
 | Book Tickets | Tạo đơn đặt vé |
+| Cancel Booking | Hủy booking pending trước khi thanh toán |
 | Make Payment | Thanh toán đơn đặt vé |
 | View Booking History | Xem lịch sử đặt vé |
 | View Ticket | Xem thông tin vé đã đặt |
@@ -60,6 +76,7 @@ Sơ đồ dưới đây thể hiện các Actor, các chức năng chính và nh
 flowchart LR
     Customer([Customer])
     Staff([Staff])
+    Manager([Manager])
     Admin([Admin])
     Gateway([Payment Gateway])
 
@@ -71,6 +88,7 @@ flowchart LR
         Showtimes([View Showtimes])
         Seats([Select Seats])
         Booking([Book Tickets])
+        CancelBooking([Cancel Booking])
         Payment([Make Payment])
         History([View Booking History])
         Ticket([View Ticket])
@@ -87,7 +105,7 @@ flowchart LR
         CheckAvailability([Check Seat Availability])
         CreateBooking([Create Pending Booking])
         ConfirmBooking([Confirm Booking])
-        ReleaseSeats([Release Reserved Seats])
+        ReleaseSeats([Release Held Seats])
     end
 
     Customer --- Register
@@ -97,6 +115,7 @@ flowchart LR
     Customer --- Showtimes
     Customer --- Seats
     Customer --- Booking
+    Customer --- CancelBooking
     Customer --- Payment
     Customer --- History
     Customer --- Ticket
@@ -104,6 +123,13 @@ flowchart LR
     Staff --- Login
     Staff --- Validate
     Staff --- ManageBookings
+
+    Manager --- Login
+    Manager --- Movies
+    Manager --- Rooms
+    Manager --- ManageSeats
+    Manager --- ManageShowtimes
+    Manager --- Reports
 
     Admin --- Login
     Admin --- Movies
@@ -118,12 +144,12 @@ flowchart LR
 
     Booking -.->|include| CheckAvailability
     Booking -.->|include| CreateBooking
-    Payment -.->|include| ConfirmBooking
-    Payment -.->|extend: successful payment| ConfirmBooking
-    Payment -.->|extend: failed or expired payment| ReleaseSeats
+    CancelBooking -.->|include| ReleaseSeats
+    Payment -.->|successful and verified| ConfirmBooking
+    Payment -.->|definitively failed/cancelled| ReleaseSeats
 ```
 
-**Lưu ý:** Sơ đồ trên là mô hình chức năng ở mức tổng quan. Khi vẽ lại bằng UML chuyên dụng, cần thể hiện rõ các đường quan hệ và chiều mũi tên của `include` / `extend`. Về nghiệp vụ, việc xác nhận đặt vé chỉ được thực hiện khi kết quả thanh toán hợp lệ; nếu thanh toán thất bại hoặc hết hạn, hệ thống xử lý theo chính sách đặt vé và giải phóng ghế khi phù hợp.
+**Lưu ý:** Sơ đồ trên là mô hình chức năng ở mức tổng quan. Booking chỉ giữ ghế và tạo trạng thái pending; Payment là giao dịch độc lập; Ticket chỉ được phát hành sau payment được xác minh thành công. Payment pending/unknown không được giải phóng ghế hoặc cho phép bán xung đột. Nếu kết quả vẫn chưa rõ sau khi hết hạn, việc reconciliation nâng cao là **OUT OF SCOPE — DEMO**.
 
 ### 1.5. Mô tả các Use Case quan trọng
 
@@ -146,10 +172,10 @@ flowchart LR
 | Use Case Name | Book Tickets |
 | Actor | Customer |
 | Preconditions | Khách hàng truy cập được hệ thống; suất chiếu còn hiệu lực và cho phép đặt vé. |
-| Main Flow | 1. Khách hàng chọn phim và suất chiếu. 2. Hệ thống hiển thị sơ đồ ghế. 3. Khách hàng chọn ghế. 4. Backend kiểm tra lại tình trạng ghế. 5. Hệ thống giữ ghế tạm thời và tạo đơn đặt vé ở trạng thái chờ thanh toán. 6. Khách hàng tiếp tục thanh toán. |
+| Main Flow | 1. Khách hàng chọn phim và suất chiếu. 2. Hệ thống hiển thị sơ đồ ghế. 3. Khách hàng chọn ghế. 4. Backend khóa/kiểm tra lại tình trạng ghế trong transaction. 5. Hệ thống tạo Booking pending và giữ toàn bộ ghế thành công trong cùng transaction. Countdown 5 phút bắt đầu từ thời điểm tạo booking. 6. Khách hàng tiếp tục Make Payment. |
 | Alternative Flow | Khách hàng thay đổi lựa chọn ghế trước khi tạo đơn; hệ thống cập nhật danh sách ghế được chọn nếu ghế vẫn còn khả dụng. |
 | Exception Flow | Suất chiếu không còn khả dụng; ghế vừa được khách hàng khác đặt; đơn đặt vé không thể được tạo. Hệ thống thông báo lỗi và yêu cầu khách hàng chọn lại. |
-| Postconditions | Đơn đặt vé chờ thanh toán được tạo và các ghế liên quan được giữ tạm thời theo thời hạn quy định. Chưa phát hành vé chính thức khi thanh toán chưa được xác nhận. |
+| Postconditions | Booking pending và các detail held được tạo; không có ghế nào được giữ một phần nếu có xung đột. Booking hết hạn hoặc bị khách hủy trước payment thì các ghế được release. Chưa phát hành Ticket khi payment chưa được xác nhận. |
 
 #### UC-03: Make Payment
 
@@ -157,11 +183,25 @@ flowchart LR
 |---|---|
 | Use Case Name | Make Payment |
 | Actor | Customer, Payment Gateway |
-| Preconditions | Có đơn đặt vé hợp lệ đang chờ thanh toán; đơn chưa hết hạn hoặc bị hủy. |
-| Main Flow | 1. Khách hàng chọn phương thức thanh toán. 2. Backend kiểm tra đơn và số tiền phải trả. 3. Hệ thống khởi tạo giao dịch với Payment Gateway. 4. Khách hàng hoàn thành bước thanh toán theo hướng dẫn của cổng thanh toán. 5. Backend xác minh kết quả giao dịch. 6. Hệ thống cập nhật trạng thái thanh toán và xác nhận đơn khi thanh toán thành công. |
-| Alternative Flow | Khách hàng quay lại từ cổng thanh toán nhưng kết quả giao dịch chưa rõ ràng. Hệ thống giữ trạng thái chờ xác minh và truy vấn hoặc xử lý thông báo giao dịch sau đó. |
-| Exception Flow | Thanh toán thất bại, bị từ chối, quá thời hạn hoặc thông báo giao dịch không hợp lệ. Hệ thống không phát hành vé như một giao dịch đã thanh toán thành công. |
-| Postconditions | Thành công: giao dịch được ghi nhận và đơn được xác nhận. Thất bại hoặc hết hạn: trạng thái đơn được xử lý theo chính sách, ghế có thể được giải phóng. |
+| Preconditions | Có Booking pending hợp lệ; booking chưa hết hạn và còn các detail held. Không có customer cancellation sau payment trong demo. |
+| Main Flow | 1. Khách hàng chọn phương thức thanh toán. 2. Backend kiểm tra booking và số tiền snapshot. 3. Hệ thống tạo một Payment attempt có idempotency key. 4. Gateway xử lý giao dịch. 5. Backend xác minh callback/truy vấn gateway. 6. Nếu succeeded và còn đủ điều kiện, hệ thống confirm Booking, chuyển detail sang sold và phát hành Ticket trong cùng transaction. |
+| Alternative Flow | Kết quả chưa rõ chuyển Payment sang pending/unknown; hệ thống không tự tạo payment mới hoặc bán lại ghế. Callback lặp được nhận diện bằng event key. Reconciliation nâng cao cho late success sau khi ghế đã bán lại là **OUT OF SCOPE — DEMO**. |
+| Exception Flow | Thanh toán failed hoặc cancelled: không confirm booking và không phát hành Ticket; nếu booking còn hạn có thể thử lại. Booking hết hạn là một lifecycle event riêng, không phải Payment `expired`: khi đó Booking chuyển `expired` và ghế được release nếu không còn payment `created`, `pending` hoặc `unknown` cần giữ để xử lý. Sai chữ ký, sai số tiền hoặc sai tiền tệ không làm thay đổi booking. |
+| Postconditions | Thành công: Payment succeeded, Booking confirmed, detail sold và Ticket valid. Thất bại: Payment giữ lịch sử attempt, Booking không tự thành công. Payment success không đồng nghĩa bản thân nó là Ticket. |
+
+#### UC-03A: Cancel Booking
+
+| Thuộc tính | Mô tả |
+|---|---|
+| Use Case Name | Cancel Booking |
+| Actor | Customer |
+| Preconditions | Customer đã đăng nhập và là chủ sở hữu Booking; Booking đang ở trạng thái `pending`, các detail liên quan đang `held`, và chưa có Payment `succeeded` được áp dụng. |
+| Main Flow | 1. Customer chọn hủy Booking. 2. Backend xác thực quyền sở hữu và khóa theo thứ tự `Showtime → Booking → Payment attempts` như luồng payment confirmation. 3. Backend đọc lại quyền sở hữu, Booking, Payment và detail sau khi lấy đủ khóa. 4. Nếu Booking vẫn `pending`, chưa có Payment `succeeded` được áp dụng và không có Payment `created`, `pending` hoặc `unknown`, hệ thống chuyển Booking sang `cancelled`, chuyển toàn bộ detail `held` sang `released`, ghi thời điểm/lý do và commit trong một transaction. |
+| Alternative Flow | Nếu đã có Payment `created`, `pending` hoặc `unknown`, hệ thống từ chối cancellation, không đổi Payment status và không giải phóng ghế. Customer có thể thử lại sau khi Payment có kết quả chắc chắn. Nếu payment confirmation lấy khóa trước, cancellation chờ rồi đọc lại `confirmed`/`applied_at` và bị từ chối. |
+| Exception Flow | Booking không thuộc Customer, đã `confirmed`, `expired` hoặc đã `cancelled`; Booking đã được xử lý đồng thời; hoặc có detail không còn `held`. Hệ thống từ chối thao tác và không cập nhật một phần. |
+| Postconditions | Thành công: Booking `cancelled`, toàn bộ detail được `released`, không phát hành Ticket và ghế có thể được booking khác sử dụng sau commit. Thất bại: dữ liệu Booking và ghế giữ nguyên. |
+
+Concurrency details and the two execution-order simulations are documented in `database/database-design.md`, section 31.6.
 
 #### UC-04: Manage Showtimes
 
@@ -182,8 +222,7 @@ flowchart LR
 | Use Case Name | Validate Ticket |
 | Actor | Staff |
 | Preconditions | Nhân viên đã đăng nhập, có quyền xác thực vé và có thông tin vé cần kiểm tra. |
-| Main Flow | 1. Nhân viên quét mã vé hoặc nhập mã vé. 2. Frontend gửi yêu cầu đến API. 3. Backend kiểm tra mã vé, trạng thái vé và suất chiếu liên quan. 4. Hệ thống trả về kết quả xác thực. 5. Nếu vé hợp lệ và chưa sử dụng, hệ thống ghi nhận việc sử dụng vé một cách an toàn. |
+| Main Flow | 1. Nhân viên quét mã vé hoặc nhập mã vé. 2. Frontend gửi yêu cầu đến API. 3. Backend kiểm tra mã vé, Booking confirmed, detail sold, suất chiếu và trạng thái Ticket. 4. Nếu Ticket valid, backend cập nhật có điều kiện `valid → used` trong transaction và ghi thời gian/người soát. 5. Hệ thống trả kết quả xác thực. |
 | Alternative Flow | Nhân viên tra cứu thông tin vé theo mã khi thiết bị quét không hoạt động. |
 | Exception Flow | Mã vé không tồn tại, vé đã sử dụng, vé bị hủy hoặc vé không hợp lệ với quy tắc kiểm tra. Hệ thống từ chối xác thực. |
-| Postconditions | Vé hợp lệ được đánh dấu đã sử dụng; vé không hợp lệ không được chấp nhận. Việc cập nhật phải tránh hai lượt quét đồng thời cùng chấp nhận một vé. |
-
+| Postconditions | Ticket hợp lệ được đánh dấu used và không thể được chấp nhận lần hai. Vé đã used/voided hoặc không thuộc suất hợp lệ bị từ chối; customer cancellation sau thanh toán và refund không thuộc demo. |
