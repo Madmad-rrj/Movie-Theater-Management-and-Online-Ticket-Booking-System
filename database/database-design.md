@@ -2,18 +2,34 @@
 
 ## 1. Tổng quan Database
 
-Database lưu trữ dữ liệu cho các nghiệp vụ: quản lý phim và thể loại; quản lý phòng và sơ đồ ghế; lập lịch chiếu; giữ ghế và đặt vé; thanh toán online; phát hành và soát vé; tra cứu lịch sử, đối soát thanh toán và báo cáo doanh thu.
+Database lưu trữ dữ liệu cho các nghiệp vụ: quản lý phim và thể loại; quản lý rạp, phòng và sơ đồ ghế; lập lịch chiếu; giữ ghế và đặt vé; thanh toán online; phát hành và soát vé; tra cứu lịch sử và báo cáo doanh thu.
 
 Hệ thống sử dụng **PostgreSQL**, lưu nguồn dữ liệu chính xác về ghế đang được giữ/bán, trạng thái đơn và giao dịch. Frontend chỉ hiển thị kết quả từ API; trạng thái trên trình duyệt không có giá trị xác nhận thanh toán hoặc quyền sở hữu ghế.
 
+## 1.1. Phạm vi, giả định và trạng thái quyết định
+
+Tài liệu này là thiết kế khái niệm/lô-gic, không phải SQL DDL và không tuyên bố rằng mọi chức năng đã được triển khai.
+
+| Phạm vi | Nội dung |
+|---|---|
+| **CONFIRMED — MVP/demo** | Một chi nhánh được vận hành ban đầu; quản lý phim/thể loại, phòng/ghế, suất chiếu, giữ ghế 5 phút, booking, thanh toán của cổng được chọn, phát hành và soát vé, tài khoản và vai trò cơ bản. |
+| **PROPOSED — sẵn sàng mở rộng** | Có entity `Cinema` và khóa ngoại từ `CinemaRoom`; mã phòng được duy nhất trong từng chi nhánh. Demo chỉ seed một `Cinema`. |
+| **CONFIRMED — chính sách nền** | Booking pending giữ ghế trong 5 phút; hủy trước thanh toán giải phóng ghế; không hủy sau thanh toán và không hoàn tiền trong demo. |
+| **CONFIRMED — bán vé** | Không áp dụng cutoff cố định 10/15/30 phút trước giờ chiếu. Demo cho phép bán sát giờ bắt đầu; mốc đóng bán cuối cùng cần được nhóm chốt trước khi triển khai. |
+| **OUT OF SCOPE — DEMO** | Hủy suất do rạp, hoàn tiền tự động/thủ công, đối soát khoản thanh toán thành công đến muộn sau khi ghế đã được bán lại, thành viên/loyalty, khuyến mãi phức tạp, báo cáo phân tích nâng cao và phân quyền theo chi nhánh. |
+| **OPEN** | Cổng thanh toán cụ thể, cửa sổ soát vé, quy tắc đủ điều kiện vé trẻ em/sinh viên, cách bán ghế Couple và mốc đóng bán tối thiểu. |
+
+`PaymentEvent` được giữ để ghi nhận callback lặp và bảo toàn lịch sử tích hợp. `Refund` được giữ ở mức cấu trúc mở rộng và traceability, nhưng không phải luồng demo. Các đoạn mô tả xử lý nâng cao trong tài liệu là ràng buộc an toàn dữ liệu hoặc hướng phát triển sau này, không phải cam kết MVP.
+
 ```mermaid
 erDiagram
-    %% Source: database-design.md (17 tables).
+    %% Source: database-design.md (18 tables; Refund is retained for future use).
     %% PK = primary key; FK = foreign key; UK = single-column unique key.
     %% Composite keys and expression/partial indexes are documented below.
 
     movie ||--o{ movie_genre : phan_loai
     genre ||--o{ movie_genre : duoc_gan
+    cinema ||--o{ cinema_room : co_phong
     cinema_room ||..o{ seat : co_ghe
     seat_type ||..o{ seat : loai_ghe
     movie ||..o{ showtime : duoc_chieu
@@ -50,6 +66,15 @@ erDiagram
         varchar(20) status "NN"
     }
 
+    cinema {
+        bigint id PK "NN"
+        varchar(30) code UK "NN"
+        varchar(150) name "NN"
+        text address "NN"
+        varchar(30) phone "NULL"
+        varchar(20) status "NN"
+    }
+
     genre {
         bigint id PK "NN"
         varchar(30) code UK "NN"
@@ -65,8 +90,9 @@ erDiagram
 
     cinema_room {
         bigint id PK "NN"
-        varchar(20) code UK "NN"
-        varchar(100) name "NN; Unique normalized name"
+        bigint cinema_id FK "NN"
+        varchar(20) code "NN; Unique within cinema"
+        varchar(100) name "NN; Unique normalized name within cinema"
         varchar(20) status "NN"
     }
 
@@ -107,7 +133,7 @@ erDiagram
         timestamptz starts_at "NN"
         timestamptz ends_at "NN"
         timestamptz room_available_at "NN"
-        timestamptz booking_closes_at "NN"
+        timestamptz booking_closes_at "NULL; OPEN policy boundary"
         numeric base_price "NN; numeric(14,0)"
         varchar(20) status "NN"
         timestamptz cancelled_at "NULL"
@@ -131,7 +157,7 @@ erDiagram
         timestamptz confirmed_at "NULL"
         timestamptz cancelled_at "NULL"
         text cancellation_reason "NULL"
-        timestamptz created_at "Referenced in rules/indexes; absent from attribute table"
+        timestamptz created_at "NN; UTC creation time"
     }
 
     booking_detail {
@@ -184,7 +210,7 @@ erDiagram
         varchar(20) reconciliation_status "NN"
         varchar(100) failure_code "NULL"
         timestamptz next_reconcile_at "NULL"
-        timestamptz created_at "Referenced in rules/indexes; absent from attribute table"
+        timestamptz created_at "NN; UTC attempt creation time"
     }
 
     payment_event {
@@ -264,7 +290,8 @@ erDiagram
 | Movie         | `movie`          | Thông tin và trạng thái quản lý phim                               |
 | Genre         | `genre`          | Danh mục thể loại dùng chung                                         |
 | MovieGenre    | `movie_genre`    | Quan hệ nhiều–nhiều giữa phim và thể loại                        |
-| CinemaRoom    | `cinema_room`    | Phòng chiếu trong một rạp                                            |
+| Cinema        | `cinema`         | Chi nhánh/rạp vật lý; demo seed một bản ghi                         |
+| CinemaRoom    | `cinema_room`    | Phòng chiếu thuộc một chi nhánh                                      |
 | Seat          | `seat`           | Vị trí ghế vật lý trong phòng                                      |
 | SeatType      | `seat_type`      | Loại ghế và phụ thu hiện hành                                      |
 | TicketType    | `ticket_type`    | Nhóm khách/loại vé và chính sách giảm giá hiện hành           |
@@ -279,7 +306,7 @@ erDiagram
 | PaymentEvent  | `payment_event`  | Bổ sung: nhận và xử lý idempotent thông báo/đối soát từ cổng |
 | Refund        | `refund`         | Bổ sung: theo dõi một yêu cầu hoàn toàn bộ cho một payment      |
 
-`PaymentEvent` và `Refund` được bổ sung vì một cột trạng thái trên Payment không đủ để phân biệt thông báo lặp, tiền về muộn và kết quả hoàn chưa rõ. Không thêm bảng tồn kho ghế theo suất trong phiên bản này: `BookingDetail` cùng unique index có điều kiện đảm nhiệm giữ/bán ghế.
+`PaymentEvent` và `Refund` được bổ sung vì một cột trạng thái trên Payment không đủ để phân biệt thông báo lặp và kết quả tích hợp chưa rõ. `Refund` chỉ là cấu trúc chuẩn bị cho tương lai; refund không thuộc MVP. Không thêm bảng tồn kho ghế theo suất trong phiên bản này: `BookingDetail` cùng unique index có điều kiện đảm nhiệm giữ/bán ghế.
 
 ## 4. Thiết kế Entity Movie
 
@@ -328,18 +355,36 @@ Tên không trùng sau `lower(btrim(name))` bằng unique expression index. Đ�
 
 Khóa chính `(movie_id, genre_id)` ngăn một phim bị gán cùng thể loại hai lần. Không cần cột ID tự tăng, danh sách ID dạng chuỗi hoặc mảng genre trên `movie`.
 
-## 7. Thiết kế Entity CinemaRoom
+## 7. Thiết kế Entity Cinema
+
+`Cinema` đại diện cho một chi nhánh vật lý. Mô hình này không làm demo thành hệ thống chuỗi: dữ liệu seed ban đầu chỉ có một cinema, nhưng phòng, lịch chiếu và các bản ghi nghiệp vụ đã có đường truy nguyên về chi nhánh qua `CinemaRoom`.
+
+| Cột | Kiểu / ràng buộc | Ý nghĩa |
+|---|---|---|
+| `id` | ID, PK | Định danh chi nhánh |
+| `code` | `varchar(30)` NN, UQ | Mã chi nhánh ổn định, duy nhất toàn hệ thống |
+| `name` | `varchar(150)` NN | Tên hiển thị chi nhánh |
+| `address` | `text` NN | Địa chỉ vật lý |
+| `phone` | `varchar(30)` NULL | Số liên hệ nếu có |
+| `status` | `varchar(20)` NN, DEFAULT `'active'` | `active`, `inactive` |
+
+Tên và mã không được rỗng; `code` duy nhất sau chuẩn hóa. Không xóa cinema đã có phòng, suất, booking hoặc giao dịch; dùng `inactive`. Quan hệ `Cinema 1 — N CinemaRoom` là bắt buộc ở phía phòng. Booking, ticket và payment không lặp `cinema_id`: chi nhánh được truy nguyên không mơ hồ qua `Booking → Showtime → CinemaRoom → Cinema`, và các composite FK tiếp tục bảo vệ phòng/suất/ghế.
+
+MVP không hỗ trợ chuyển booking giữa chi nhánh, giá hoặc tồn kho dùng chung, phân quyền staff theo chi nhánh, hoặc báo cáo hợp nhất/nâng cao. Những chức năng đó cần quy tắc ứng dụng bổ sung trong tương lai.
+
+### 7.1. Thiết kế Entity CinemaRoom
 
 | Cột       | Kiểu / ràng buộc                      | Ý nghĩa                                  |
 | ---------- | ---------------------------------------- | ------------------------------------------ |
 | `id`     | ID, PK                                   | Phòng chiếu                              |
-| `code`   | `varchar(20)` NN, UQ                   | Mã ổn định, ví dụ`ROOM_01`         |
-| `name`   | `varchar(100)` NN                      | Tên hiển thị, duy nhất sau chuẩn hóa |
+| `cinema_id` | `bigint` NN, FK → `cinema.id`        | Chi nhánh sở hữu phòng |
+| `code`   | `varchar(20)` NN                       | Mã ổn định, duy nhất trong chi nhánh, ví dụ `ROOM_01` |
+| `name`   | `varchar(100)` NN                      | Tên hiển thị, duy nhất sau chuẩn hóa trong chi nhánh |
 | `status` | `varchar(20)` NN, DEFAULT `'active'` | `active`, `maintenance`, `inactive`  |
 
 Sức chứa là **giá trị tính từ ghế**, không lưu thêm `capacity` có thể lệch: tổng số ghế là số vị trí; sức chứa người là `SUM(seat_type.capacity_units)`; số chỗ đang khai thác chỉ tính ghế `active`.
 
-Phòng chỉ nhận lịch/bán vé mới khi `active`. Chuyển sang bảo trì phải kiểm tra các suất sắp tới và xử lý hủy/di dời theo nghiệp vụ trước; không chỉ đổi trạng thái để bỏ qua vé đã bán. Không xóa phòng đã có suất chiếu. Thiết kế cho một rạp nên tên/mã phòng duy nhất toàn hệ thống.
+Phòng chỉ nhận lịch/bán vé mới khi cả phòng và cinema đều `active`. `UNIQUE(cinema_id, code)` và unique tên đã chuẩn hóa theo `cinema_id` cho phép các chi nhánh dùng cùng mã phòng. Chuyển sang bảo trì phải kiểm tra các suất sắp tới và xử lý theo nghiệp vụ trước; không chỉ đổi trạng thái để bỏ qua vé đã bán. Không xóa phòng đã có suất chiếu.
 
 ## 8. Thiết kế Entity Seat
 
@@ -366,7 +411,7 @@ Phòng chỉ nhận lịch/bán vé mới khi `active`. Chuyển sang bảo trì
 | `code`             | `varchar(30)` NN, UQ                      | `STANDARD`, `VIP`, `COUPLE`          |
 | `name`             | `varchar(100)` NN                         | Tên loại ghế, duy nhất sau chuẩn hóa |
 | `capacity_units`   | `smallint` NN, DEFAULT 1, CHECK IN (1, 2) | Số người trên đơn vị bán           |
-| `surcharge_amount` | MONEY NN, DEFAULT 0, CHECK >= 0             | Phụ thu trên một đơn vị bán         |
+| `surcharge_amount` | `numeric(14,0)` NN, DEFAULT 0, CHECK >= 0 | Phụ thu bằng VND trên một đơn vị bán |
 | `is_active`        | `boolean` NN, DEFAULT true                | Cho phép dùng cho cấu hình mới        |
 
 Giữ entity riêng vì loại ghế có thuộc tính giá và sức chứa. Không thay đổi `capacity_units` của loại đã có ghế được đưa vào lịch chiếu; tạo loại mới khi thay đổi ý nghĩa. Thay đổi phụ thu chỉ áp dụng booking mới; đơn đang giữ hoặc đã mua dùng snapshot.
@@ -399,13 +444,13 @@ Có thể triển khai bản đầu chỉ với `ADULT` giảm 0%. Danh mục kh
 | `starts_at`                 | `timestamptz` NN                      | Giờ bắt đầu suất                                                   |
 | `ends_at`                   | `timestamptz` NN                      | Giờ kết thúc, gồm phần đệm/trailer nếu có                      |
 | `room_available_at`         | `timestamptz` NN                      | Thời điểm phòng có thể nhận suất tiếp theo, gồm dọn phòng   |
-| `booking_closes_at`         | `timestamptz` NN                      | Hạn tạo booking/thanh toán mới                                      |
-| `base_price`                | MONEY NN, CHECK > 0                     | Giá cơ sở cho một người                                           |
+| `booking_closes_at`         | `timestamptz` NULL                    | Mốc đóng booking/thanh toán nếu nhóm chốt; NULL nghĩa không có cutoff trước giờ bắt đầu |
+| `base_price`                | `numeric(14,0)` NN, CHECK > 0          | Giá cơ sở bằng VND cho một người |
 | `status`                    | `varchar(20)` NN, DEFAULT `'draft'` | `draft`, `scheduled`, `in_progress`, `completed`, `cancelled` |
 | `cancelled_at`              | `timestamptz` NULL                    | Thời điểm hủy                                                       |
 | `cancellation_reason`       | `text` NULL                           | Lý do bắt buộc khi hủy                                              |
 
-- CHECK: `booking_closes_at <= starts_at`, `starts_at < ends_at`, `ends_at <= room_available_at`. Backend còn kiểm tra độ dài suất đủ cho `duration_minutes_snapshot`.
+- CHECK khi có mốc: `booking_closes_at <= starts_at`; luôn có `starts_at < ends_at <= room_available_at`. `booking_closes_at` không được dùng để áp đặt mặc định 10/15/30 phút; giá trị NULL cho phép bán đến trước giờ bắt đầu. Backend còn kiểm tra độ dài suất đủ cho `duration_minutes_snapshot`.
 - `UNIQUE(id, cinema_room_id)` phục vụ FK ghép. Phim và phòng phải tồn tại; phòng active, phim không archived khi công bố suất.
 - Khoảng chiếm dụng phòng là `[starts_at, room_available_at)`, gồm cả thời gian dọn phòng. Mục 26 quy định exclusion constraint.
 - Chỉ `scheduled` và chưa tới hạn đóng bán mới được tạo booking. `draft` chưa bán nhưng vẫn giữ chỗ trong lịch phòng.
@@ -425,20 +470,22 @@ Có thể triển khai bản đầu chỉ với `ADULT` giảm 0%. Danh mục kh
 | `request_fingerprint`    | `varchar(64)` NN                                  | SHA-256 của dữ liệu đặt chuẩn hóa để phát hiện cùng key khác nội dung |
 | `contact_email_snapshot` | `varchar(254)` NN                                 | Email nhận thông tin tại thời điểm mua                                        |
 | `contact_phone_snapshot` | `varchar(20)` NULL                                | Số điện thoại liên hệ nếu có                                                |
-| `total_amount`           | MONEY NN, CHECK > 0                                 | Tổng giá đã chốt của mọi detail                                              |
+| `total_amount`           | `numeric(14,0)` NN, CHECK > 0                      | Tổng giá đã chốt bằng VND của mọi detail |
 | `currency`               | `varchar(3)` NN, DEFAULT `'VND'`, CHECK = 'VND' | Tiền tệ đơn                                                                     |
 | `expires_at`             | `timestamptz` NN                                  | Hạn giữ ghế cố định                                                           |
 | `status`                 | `varchar(20)` NN, DEFAULT `'pending'`           | `pending`, `confirmed`, `expired`, `cancelled`                              |
 | `confirmed_at`           | `timestamptz` NULL                                | Thời điểm xác nhận mua                                                         |
 | `cancelled_at`           | `timestamptz` NULL                                | Thời điểm hủy                                                                   |
 | `cancellation_reason`    | `text` NULL                                       | Lý do khi hủy                                                                     |
+| `created_at`             | `timestamptz` NN, DEFAULT `CURRENT_TIMESTAMP`    | Thời điểm backend tạo booking, không phải thời điểm thanh toán; lưu theo UTC |
 
 - `UNIQUE(user_id, request_key)`: gửi lại cùng yêu cầu trả cùng đơn; cùng key khác fingerprint trả lỗi, không âm thầm nhận dữ liệu mới.
 - FK `(showtime_id, cinema_room_id)` → `showtime(id, cinema_room_id)`; UQ `(id, showtime_id, cinema_room_id)` làm khóa đích cho detail.
-- Tạo booking, ít nhất một detail và toàn bộ quyền giữ ghế trong **một transaction**. Sau khi lấy đủ khóa, đọc `clock_timestamp()` làm thời điểm tạo thực tế, gán tường minh vào `created_at` và tính `expires_at = min(thời điểm tạo + thời lượng giữ cấu hình, booking_closes_at)`; từ chối nếu không còn thời gian.
+- Tạo booking, ít nhất một detail và toàn bộ quyền giữ ghế trong **một transaction**. Sau khi lấy đủ khóa, đọc `clock_timestamp()` làm thời điểm tạo thực tế, gán tường minh vào `created_at` và tính hạn giữ là 5 phút kể từ mốc này. Nếu `booking_closes_at` đã được nhóm chốt thì lấy mốc sớm hơn; nếu NULL thì không áp dụng cutoff bổ sung. Từ chối nếu đã quá giờ bắt đầu hoặc không còn thời gian giữ hợp lệ.
 - Nội dung ghế, loại vé và giá được đóng băng sau khi tạo đơn. Muốn thay đổi, hủy đơn pending và tạo đơn mới; không tái mở đơn expired/cancelled.
 - `total_amount = SUM(booking_detail.unit_price)` của toàn bộ detail gốc, kể cả sau khi released. Backend bảo đảm trong transaction; CHECK một hàng không tính được tổng bảng con.
 - Một lần thanh toán thất bại không nhất thiết hủy booking: còn hạn thì có thể thử lại. Hết hạn hoặc khách hủy mới giải phóng ghế.
+- Customer chỉ được hủy booking của chính mình khi `status = 'pending'`, chưa có Payment `succeeded` được áp dụng và không có Payment attempt `created`, `pending` hoặc `unknown`. Backend phải khóa theo thứ tự `Showtime → Booking → Payment attempts` (các Payment theo `id` tăng dần), đọc lại mọi trạng thái sau khi khóa, rồi chuyển Booking `cancelled` và toàn bộ detail `held` sang `released` trong cùng transaction. Không hủy một phần, không cho hủy `confirmed`, `expired` hoặc booking của người khác. Nếu có attempt chưa có kết quả chắc chắn, từ chối hủy và giữ allocation.
 - Trạng thái hoàn tiền thuộc Payment/Refund; `cancelled` không đồng nghĩa đã hoàn tiền.
 
 ## 13. Thiết kế Entity BookingDetail
@@ -455,11 +502,11 @@ Có thể triển khai bản đầu chỉ với `ADULT` giảm 0%. Danh mục kh
 | `seat_type_name_snapshot`   | `varchar(100)` NN                          | Tên loại ghế khi đặt             |
 | `ticket_type_name_snapshot` | `varchar(100)` NN                          | Tên loại vé khi đặt              |
 | `capacity_units_snapshot`   | `smallint` NN, CHECK IN (1, 2)             | Số người trên đơn vị ghế      |
-| `base_amount`               | MONEY NN, CHECK > 0                          | Giá cơ sở suất × số người     |
-| `surcharge_amount`          | MONEY NN, CHECK >= 0                         | Phụ thu ghế trên đơn vị bán    |
+| `base_amount`               | `numeric(14,0)` NN, CHECK > 0                | Giá cơ sở suất × số người bằng VND |
+| `surcharge_amount`          | `numeric(14,0)` NN, CHECK >= 0               | Phụ thu ghế bằng VND trên đơn vị bán |
 | `discount_percent_snapshot` | `numeric(5,2)` NN, CHECK BETWEEN 0 AND 100 | Tỷ lệ giảm đã áp dụng          |
-| `discount_amount`           | MONEY NN, CHECK >= 0                         | Số tiền giảm sau làm tròn        |
-| `unit_price`                | MONEY NN, CHECK > 0                          | Giá cuối cùng của đơn vị bán  |
+| `discount_amount`           | `numeric(14,0)` NN, CHECK >= 0               | Số tiền giảm bằng VND sau làm tròn |
+| `unit_price`                | `numeric(14,0)` NN, CHECK > 0                | Giá cuối cùng bằng VND của đơn vị bán |
 | `allocation_status`         | `varchar(20)` NN, DEFAULT `'held'`       | `held`, `sold`, `released`      |
 | `released_at`               | `timestamptz` NULL                         | Thời điểm giải phóng             |
 
@@ -504,7 +551,7 @@ Quan hệ `BookingDetail` 1–0..1 `Ticket`: pending chưa có vé, xác nhận 
 
 QR chứa mã vé ngẫu nhiên hoặc payload có chữ ký do backend tạo; không chứa dữ liệu thẻ hay thông tin cá nhân. Không cần lưu ảnh QR. Tra cứu vé trong tài khoản vẫn phải kiểm tra quyền chủ đơn; mã UUID không thay thế phân quyền.
 
-Soát vé dùng cập nhật có điều kiện `valid → used` trong transaction, ghi nhân viên/thời gian; chỉ chấp nhận nếu đúng một hàng được đổi. Đề xuất cửa sổ soát từ 30 phút trước giờ bắt đầu tới `ends_at`, suất không bị hủy. Khi hủy đơn đã mua, vé `valid` chuyển `voided`; không tự hoàn vé `used` trong phạm vi hiện tại.
+Soát vé dùng cập nhật có điều kiện `valid → used` trong transaction, ghi nhân viên/thời gian; chỉ chấp nhận nếu đúng một hàng được đổi. Cửa sổ soát vé là **OPEN** (mốc 30 phút chỉ là đề xuất, không phải quyết định). Trong MVP không có customer cancellation sau payment, nên không có luồng tự chuyển vé đã mua sang `voided`; trạng thái `voided` chỉ được giữ cho một workflow quản trị tương lai.
 
 ## 15. Thiết kế Entity Payment
 
@@ -518,7 +565,7 @@ Soát vé dùng cập nhật có điều kiện `valid → used` trong transacti
 | `merchant_request_id`     | `uuid` NN, UQ                                     | Mã yêu cầu/idempotency gửi cổng                                            |
 | `provider_transaction_id` | `varchar(150)` NULL                               | Mã giao dịch cổng trả về                                                   |
 | `method`                  | `varchar(50)` NULL                                | Phương thức do cổng xác nhận                                              |
-| `amount`                  | MONEY NN, CHECK > 0                                 | Số tiền dự kiến bằng tổng đơn                                           |
+| `amount`                  | `numeric(14,0)` NN, CHECK > 0                       | Số tiền dự kiến bằng VND, bằng tổng đơn |
 | `currency`                | `varchar(3)` NN, DEFAULT `'VND'`, CHECK = 'VND' | Tiền tệ yêu cầu                                                             |
 | `received_amount`         | `numeric(18,2)` NULL, CHECK >= 0                  | Số tiền thực thu đã xác minh; giữ cả trường hợp lệch                |
 | `received_currency`       | `varchar(3)` NULL                                 | Tiền tệ thực thu sau chuẩn hóa                                             |
@@ -529,6 +576,7 @@ Soát vé dùng cập nhật có điều kiện `valid → used` trong transacti
 | `reconciliation_status`   | `varchar(20)` NN, DEFAULT `'none'`              | `none`, `needs_review`, `refund_required`, `resolved`                   |
 | `failure_code`            | `varchar(100)` NULL                               | Mã lỗi đã lọc dữ liệu nhạy cảm                                         |
 | `next_reconcile_at`       | `timestamptz` NULL, DEFAULT now()                 | Lịch khôi phục/truy vấn lại giao dịch chưa rõ                           |
+| `created_at`              | `timestamptz` NN, DEFAULT `CURRENT_TIMESTAMP`    | Thời điểm tạo payment attempt trong hệ thống, không nhất thiết là lúc gateway xử lý; lưu theo UTC |
 
 ### 15.2. Tính duy nhất và ghi nhận tiền
 
@@ -561,7 +609,9 @@ UQ `(payment_id, event_key)`. Nếu cổng không có event ID, fingerprint ph�
 
 Chỉ nhận sự kiện vào bảng này sau khi xác minh chữ ký/nguồn, tài khoản merchant và nhận diện payment. Thông báo không hợp lệ/không nhận diện được đi vào log vận hành đã lọc để tra soát, không tự tạo booking/payment. Sự kiện đã nhận phải được lưu bền vững trước khi báo đã nhận thành công cho cổng. Worker áp dụng sự kiện và đánh dấu processed cùng transaction với thay đổi nghiệp vụ; rollback thì sự kiện vẫn còn để retry.
 
-### 15.4. Refund — yêu cầu hoàn toàn bộ
+### 15.4. Refund — yêu cầu hoàn toàn bộ (OUT OF SCOPE — DEMO)
+
+Entity này được giữ để không phải redesign khi nhóm bổ sung refund. Demo không cho customer cancellation sau payment, không tạo yêu cầu refund và không chạy worker hoàn tiền. Các thuộc tính dưới đây là data-model readiness, không phải chức năng MVP.
 
 | Cột                     | Kiểu / ràng buộc                       | Ý nghĩa                                                         |
 | ------------------------ | ----------------------------------------- | ----------------------------------------------------------------- |
@@ -615,10 +665,12 @@ Thiết kế xác thực tối thiểu chưa gồm refresh token, quên mật kh
 | ------------------- | --------------------------------------------------------------------- |
 | `CUSTOMER`        | Xem phim/lịch; đặt và xem đơn/vé của chính mình             |
 | `STAFF`           | Tra cứu hỗ trợ theo quyền; soát vé                              |
-| `MANAGER`         | Quản lý phim, lịch, phòng/ghế, xử lý hủy/hoàn, xem báo cáo |
+| `MANAGER`         | **PROPOSED:** quản lý phim, lịch, phòng/ghế và xem báo cáo; không mặc nhiên quản trị tài khoản/phân quyền |
 | `ADMIN`           | Quản lý tài khoản, cấp vai trò và cấu hình toàn hệ thống  |
 
 Role là nhóm quyền, không phải bảng chứa quyền truy cập dữ liệu tự động. Backend thực thi policy và quyền sở hữu tài nguyên. Đăng ký công khai chỉ cấp CUSTOMER; thay đổi role cần quyền quản trị, không nhận role tùy ý từ request đăng ký. Không đổi `code` đã được policy dùng; bản đầu không có màn hình tạo role động mà chưa định nghĩa quyền tương ứng.
+
+Trong business-system-design.md, `CUSTOMER`, `STAFF`, `MANAGER` và `ADMIN` được xem là các actor tương ứng với database Role cùng mã. `MANAGER` có actor riêng ở mức **PROPOSED** vì danh mục role đã mô tả trách nhiệm vận hành khác với Staff và Admin; danh sách use case/quyền cuối cùng vẫn là **OPEN**. Một User có thể có nhiều role, nên việc có actor Manager không loại trừ quyền Customer hoặc Staff của cùng tài khoản.
 
 ## 18. Thiết kế Entity UserRole
 
@@ -639,6 +691,7 @@ Mỗi FK bắt buộc ở phía con tương ứng đúng một bản ghi cha; ph
 | ---------------------------------- | ------------------------------ | ------------------------------------------------ | ------------------------- |
 | Movie → MovieGenre                | 1 → 0..N                      | `movie_id`                                     | Có                       |
 | Genre → MovieGenre                | 1 → 0..N                      | `genre_id`                                     | Có                       |
+| Cinema → CinemaRoom               | 1 → 0..N                      | `cinema_id`                                     | Có                       |
 | CinemaRoom → Seat                 | 1 → 0..N                      | `cinema_room_id`                               | Có                       |
 | SeatType → Seat                   | 1 → 0..N                      | `seat_type_id`                                 | Có                       |
 | Movie → Showtime                  | 1 → 0..N                      | `movie_id`                                     | Có                       |
@@ -755,7 +808,7 @@ Khi viết CHECK với cột nullable phải dùng `IS NULL`/`IS NOT NULL` tư�
 | Movie               | coming_soon → now_showing → ended → archived                                                                 | Theo quản lý danh mục; có thể khôi phục để tái chiếu qua thao tác quản trị          |
 | CinemaRoom / Seat   | active ↔ maintenance; active/maintenance → inactive; inactive → active                                       | Chỉ thay đổi sau khi xử lý lịch/đơn bị ảnh hưởng                                      |
 | Showtime            | draft → scheduled → in_progress → completed; draft/scheduled → cancelled                                    | Bán khi scheduled, chưa đóng bán; bản đầu không xử lý hủy suất đang chiếu          |
-| Booking             | pending → confirmed / expired / cancelled; confirmed → cancelled                                              | Confirm chỉ bởi payment hợp lệ; hủy confirmed theo chính sách mục 1                       |
+| Booking             | pending → confirmed / expired / cancelled                                                                      | Confirm chỉ bởi payment hợp lệ; confirmed không bị customer hủy trong demo                 |
 | BookingDetail       | held → sold hoặc released; sold → released                                                                   | Đi cùng trạng thái booking; released không tái kích hoạt                                  |
 | Ticket              | valid → used hoặc voided                                                                                      | Vé used/voided là kết thúc trong phạm vi bản đầu                                          |
 | Payment             | created → pending/unknown/succeeded/failed/cancelled; pending/unknown → succeeded/failed/cancelled            | Timeout luôn là unknown; cancelled/failed chỉ khi có kết quả đủ chắc chắn               |
@@ -838,6 +891,7 @@ Ghế được chiếm khi tồn tại detail held/sold. Khi booking expired/can
 | ------------------------------------------- | ---------------------------------------------------------- | --------------------------------------------------------------- |
 | Movie → MovieGenre                         | CASCADE khi phim đủ điều kiện hard delete             | Chỉ xóa liên kết phụ thuộc phim                           |
 | Genre → MovieGenre                         | RESTRICT                                                   | Không xóa thể loại đang gán                               |
+| Cinema → CinemaRoom                        | RESTRICT                                                   | Không mất lịch sử chi nhánh/phòng                         |
 | User → UserRole qua`user_id`             | CASCADE chỉ khi tài khoản chưa có dữ liệu cần giữ | Liên kết vai trò không có nghĩa nếu tài khoản bị xóa |
 | Role → UserRole                            | RESTRICT                                                   | Không xóa role đang cấp                                     |
 | User → UserRole qua`assigned_by_user_id` | RESTRICT                                                   | Giữ người cấp; tài khoản dùng deactivated                |
@@ -903,11 +957,12 @@ Payment created, PaymentEvent received và Refund pending mới tạo có lịch
 
 ### 31.1. Protocol khóa chung
 
-Bản đầu chọn **READ COMMITTED + khóa tường minh + constraint**, ưu tiên dễ kiểm chứng cho một rạp. Mọi thao tác giữ ghế, hết hạn, áp dụng payment, hủy đơn/suất và soát vé lấy khóa `showtime FOR UPDATE` trước, sau đó `booking FOR UPDATE`; các hàng con theo ID tăng dần. Khi nhiều booking cùng suất, xử lý theo ID tăng dần. Giữ transaction ngắn.
+Bản đầu chọn **READ COMMITTED + khóa tường minh + constraint**, ưu tiên dễ kiểm chứng cho một rạp. Mọi thao tác giữ ghế, hết hạn, áp dụng payment, hủy đơn/suất và soát vé lấy khóa `showtime FOR UPDATE` trước, sau đó `booking FOR UPDATE`; khi cần đọc Payment thì khóa các Payment của booking theo `id` tăng dần, rồi mới khóa Event/detail theo thứ tự đã nêu. Khi nhiều booking cùng suất, xử lý theo ID tăng dần. Giữ transaction ngắn.
 
 Cách này tuần tự hóa các thay đổi trong cùng suất nhưng các suất khác vẫn xử lý song song. Constraint bảo vệ thêm khi có cạnh tranh hoặc lỗi lập trình. PostgreSQL giữ khóa hàng đến cuối transaction. [Nguồn PostgreSQL Explicit Locking](https://www.postgresql.org/docs/18/explicit-locking.html).
 
 - Đọc ID suất/đơn để xác định khóa trước; sau khi khóa phải đọc lại trạng thái, không dùng kết quả cũ để quyết định.
+- Cancellation và payment confirmation là hai transition loại trừ nhau trên cùng Booking: cả hai phải lấy `Showtime → Booking → Payment attempts` và kiểm tra lại Booking, Payment, detail sau khi lấy đủ khóa. Cancellation không được chỉ kiểm tra Payment trước transaction; payment confirmation không được phát hành vé nếu Booking đã `cancelled` hoặc `expired`.
 - Worker quét lấy danh sách ID ứng viên mà chưa khóa; vào transaction xử lý mới khóa theo thứ tự trên. Không khóa Booking/Event bằng `SKIP LOCKED` trước rồi quay lại khóa Showtime, vì đảo thứ tự có thể gây deadlock.
 - Nếu thay đổi cấu trúc **hoặc trạng thái khai thác/bảo trì** phòng/ghế, khóa CinemaRoom trước rồi tất cả Showtime liên quan theo ID, sau đó mới kiểm tra đơn và cập nhật; áp dụng cả khi khôi phục active. Luồng công bố suất cũng khóa CinemaRoom trước. Luồng đặt chỉ khóa Showtime và không quay ngược lấy khóa phòng; nhờ đó thao tác quản trị chờ hoặc chặn đặt trước khi sửa. Không cung cấp đường cập nhật trạng thái phòng/ghế trực tiếp bỏ qua protocol này.
 - Khi đọc giá, khóa SHARE các dòng SeatType/TicketType được chọn theo thứ tự ID (cùng thứ tự loại bảng ở mọi luồng), rồi tính snapshot; cập nhật giá danh mục không được khóa ngược về Showtime trong cùng transaction.
@@ -934,7 +989,7 @@ Cách này tuần tự hóa các thay đổi trong cùng suất nhưng các su�
 1. Endpoint webhook xác minh nguồn/chữ ký, merchant và định danh payment theo adapter cổng. INSERT PaymentEvent nhận được; sự kiện trùng trả theo hợp đồng cổng. Chỉ ACK sau khi event đã được lưu bền vững. URL trả về trình duyệt chỉ phục vụ hiển thị/tra cứu; không dùng tham số client trả về làm bằng chứng đã thu tiền.
 2. Worker đọc event ứng viên; khóa Showtime → Booking → Payment → Event theo protocol. Nếu processed thì kết thúc. Truy vấn cổng khi cần diễn ra trước transaction, sau đó xác minh lại trạng thái khi áp dụng.
 3. Ghi đúng kết quả tài chính: succeeded khi đã thu thật, cùng số tiền/tiền tệ/mã giao dịch. Không hạ succeeded khi sự kiện cũ báo failed.
-4. Được áp dụng payment khi: booking pending; chưa tới `expires_at` và `booking_closes_at` tại thời điểm kiểm tra sau khóa; suất scheduled; tất cả detail held; tiền tệ/số tiền đúng; chưa có payment applied.
+4. Được áp dụng payment khi: booking pending; chưa tới `expires_at`; nếu `booking_closes_at` khác NULL thì chưa tới mốc đó; suất scheduled; tất cả detail held; tiền tệ/số tiền đúng; chưa có payment applied.
 5. Nếu hợp lệ: đặt `payment.applied_at`, Booking confirmed + confirmed_at, toàn bộ detail sold, tạo một Ticket valid/detail và đánh dấu Event processed **trong cùng transaction**. Gửi email/QR sau commit; khách có thể đọc lại vé từ database nếu gửi thông báo lỗi.
 6. Nếu payment đã succeeded từ trước, giữ nguyên dữ liệu thu tiền và `applied_at`; nếu thông báo mới mâu thuẫn thì đưa vào tra soát, không ghi đè bằng dữ liệu khác. Nếu booking còn confirmed bởi chính payment này: xử lý như kết quả lặp, không tạo thêm vé. Nếu payment khác đã applied, hoặc booking hết hạn/hủy: ghi nhận khoản thu mới là succeeded nhưng không gán applied_at; với payment từng applied thì giữ mốc cũ. Khi đủ điều kiện hoàn tự động, tạo hoặc lấy lại Refund trong cùng transaction. Nếu Refund đã succeeded thì giữ trạng thái đối soát resolved; nếu đang chờ hoàn thì giữ refund_required và lịch xử lý đã có. Không tạo lại Refund, không hạ trạng thái hoàn đã thành công.
 7. Nếu booking pending nhưng đã quá hạn, chuyển expired và released trước khi commit. Tiền sai số tiền/tiền tệ chuyển needs_review; không phát hành vé, không đổi tổng đơn để cho khớp tiền nhận. Đơn tiếp tục hết hạn theo mốc cũ.
@@ -944,23 +999,65 @@ Cách này tuần tự hóa các thay đổi trong cùng suất nhưng các su�
 
 ### 31.5. Hết hạn, hủy đơn, hủy suất
 
-- **Hết hạn:** khóa Showtime → Booking, đọc thời gian thực; chỉ cập nhật khi pending và `expires_at <= thời điểm kiểm tra`. Đổi expired + tất cả held → released trong một transaction. Nếu callback đã confirmed trước, worker không hủy đơn đó.
-- **Khách hủy pending:** khóa cùng thứ tự, đổi cancelled + detail released. Yêu cầu hủy phiên thanh toán gửi sau commit; payment unknown vẫn cần đối soát vì có thể thu tiền về muộn.
-- **Rạp hủy confirmed:** kiểm tra trước giờ chiếu và chưa có Ticket used; khóa đơn, void toàn bộ vé valid, release detail, đổi booking cancelled, giữ confirmed_at, tạo Refund pending cho payment applied và đặt refund_required. Cùng một transaction. Gửi lệnh hoàn sau commit.
-- **Hủy suất:** chỉ draft/scheduled; khóa suất, kiểm tra thời gian/chính sách, đổi cancelled để chặn booking/payment/check-in mới. Với quy mô một phòng, xử lý các booking theo ID và chuyển trạng thái ghế/vé, tạo các yêu cầu hoàn trong cùng transaction. Không gọi cổng trong vòng lặp này. Nếu dữ liệu lớn cần chia lô, phải bổ sung trạng thái/workflow hủy bền vững trước khi đổi thiết kế.
-- Thông báo succeeded tới sau hủy suất được ghi nhận và chuyển hoàn/đối soát, không phát hành vé.
+- **Hết hạn:** khóa Showtime → Booking → Payment attempts, đọc thời gian thực và đọc lại mọi Payment; chỉ cập nhật khi pending, `expires_at <= thời điểm kiểm tra` và không có Payment `created/pending/unknown`. Đổi expired + tất cả held → released trong một transaction. Nếu callback đã confirmed trước, worker không hủy đơn đó.
+- **Khách hủy pending:** khóa `Showtime → Booking → Payment attempts`, đọc lại quyền sở hữu, Booking và mọi Payment. Chỉ khi Booking vẫn pending, chưa có Payment applied và không có attempt `created/pending/unknown` mới được đổi cancelled + detail released. Nếu có attempt chưa rõ, rollback/từ chối và giữ allocation; không tự chuyển Payment status và không gọi gateway để hủy trong transaction. Yêu cầu hủy phiên thanh toán (nếu gateway hỗ trợ) chỉ được xử lý ngoài transaction sau commit của một transition đã được phép.
+- **Rạp hủy confirmed:** **OUT OF SCOPE — DEMO**. Không expose luồng này cho actor; nếu được bổ sung sau này phải định nghĩa void/refund và reconciliation trước khi cho phép.
+- **Hủy suất:** **OUT OF SCOPE — DEMO**. Giữ `Showtime.cancelled` và lịch sử để mở rộng, nhưng không tuyên bố rằng các booking/ticket/refund liên quan được tự xử lý trong MVP.
+- Thông báo succeeded tới sau khi ghế đã được giải phóng hoặc bán lại chỉ được lưu để tra soát; không phát hành thêm vé trong demo.
 
-### 31.6. Hoàn tiền và phục hồi sau lỗi
+### 31.6. Mô phỏng Scenario 3 — cancellation và payment confirmation
 
-Refund pending và PaymentEvent đóng vai trò dữ liệu công việc bền vững: worker quét theo lịch, gọi cổng ngoài transaction, rồi áp dụng kết quả theo thứ tự khóa chung. Nếu nhiều worker cùng gửi, cùng `merchant_refund_id` phải được cổng nhận diện idempotent; nếu cổng không bảo đảm, chỉ dùng một dispatcher có quyền gửi. Khi kết quả còn mơ hồ, giữ unknown để đối soát/can thiệp thay vì tự gửi lại; một kết quả tra cứu “không tìm thấy” tạm thời không đủ chứng minh lệnh trước chưa được thực hiện.
+Các mô phỏng dưới đây dùng đúng `READ COMMITTED`, khóa theo `Showtime → Booking → Payment attempts`, kiểm tra trạng thái sau khi khóa và transaction ngắn. `Payment` không có trạng thái `expired`.
+
+#### Scenario A — Cancellation lấy khóa trước
+
+**Initial state:** `Booking B1 = pending`, thuộc Customer C1, `BookingDetail D1 = held`, không có Ticket. Có `Payment P1 = pending` cho B1 (chưa `applied_at`), nên payment vẫn có thể hoàn tất; seat của D1 chưa available cho booking khác.
+
+**Execution timeline:**
+
+1. T1 bắt đầu, lấy `Showtime S1 FOR UPDATE`, rồi `Booking B1 FOR UPDATE`, rồi chờ/lấy `Payment P1 FOR UPDATE`.
+2. T1 đọc lại ownership, B1=`pending`, P1=`pending`, `applied_at=NULL`; điều kiện cancellation thất bại vì có unresolved Payment. T1 không ghi Booking/Detail và rollback/return rejection.
+3. Trong lúc T1 giữ khóa, T2 nhận webhook success cho P1. T2 chờ khóa theo cùng thứ tự `S1 → B1 → P1`; T2 không vượt qua T1 và không tự xử lý song song.
+4. T1 kết thúc mà không đổi trạng thái. T2 tiếp tục, đọc lại B1=`pending`, D1=`held`, xác minh P1 succeeded/số tiền/tiền tệ, đặt `P1.applied_at`, B1=`confirmed`, D1=`sold`, tạo một Ticket valid và đánh dấu Event processed trong cùng transaction.
+5. T2 commit. Không có rollback nghiệp vụ; cancellation request đã bị từ chối, không phải cancellation thành công.
+
+**Final state:** B1=`confirmed`; P1=`succeeded`, `applied_at` có giá trị; D1=`sold`; một Ticket=`valid`; seat không available vì đã sold.
+
+**Invariant check:** PASS — unresolved payment không bị bỏ qua; cancellation không release seat; payment application/Booking confirmation/Ticket issuance/allocation là atomic; không có Ticket cho cancelled Booking.
+
+**Finding:** **PASS**.
+
+#### Scenario B — Payment webhook lấy khóa trước
+
+**Initial state:** `Booking B1 = pending`, thuộc C1; `Payment P1 = pending`, chưa applied; `BookingDetail D1 = held`; không có Ticket; seat đang held.
+
+**Execution timeline:**
+
+1. T2 bắt đầu từ webhook success, lấy `S1 FOR UPDATE`, `B1 FOR UPDATE`, rồi `P1 FOR UPDATE`.
+2. T2 đọc lại P1 và B1: payment xác minh được, B1 vẫn pending/chưa hết hạn, D1 held, chưa có applied payment. T2 ghi P1=`succeeded` và `applied_at`, B1=`confirmed`, D1=`sold`, tạo Ticket valid và đánh dấu Event processed trong cùng transaction.
+3. T1 bắt đầu từ Customer cancellation trong lúc T2 chưa commit. T1 chờ tại `S1 FOR UPDATE`; T1 không được đọc/ghi B1 hoặc P1 và không release seat.
+4. T2 commit. T1 tiếp tục lấy `B1`, `P1`, đọc lại B1=`confirmed`, P1 applied và D1=`sold`; điều kiện cancellation thất bại. T1 rollback/return rejection.
+5. Không có transaction nào ghi `Booking=cancelled` sau khi payment confirmation thành công; không có Ticket rollback hoặc duplicate.
+
+**Final state:** B1=`confirmed`; P1=`succeeded`, `applied_at` có giá trị; D1=`sold`; một Ticket=`valid`; seat không available vì đã sold.
+
+**Invariant check:** PASS — cancellation không đổi confirmed Booking hoặc release sold detail; Ticket chỉ được phát hành sau payment application và trong cùng transaction; mọi transition cạnh tranh được tuần tự hóa.
+
+**Finding:** **PASS**.
+
+Nếu cancellation lấy Booking trước nhưng Payment confirmation đã commit trước khi cancellation kiểm tra, cancellation đọc `confirmed`/`applied_at` sau khóa và bị từ chối. Nếu cancellation đã commit trước và không có unresolved Payment, webhook sau đó bị chặn rồi đọc `cancelled` và chỉ được ghi nhận kết quả tài chính để tra soát, không được đặt `applied_at`, confirm Booking hoặc phát hành Ticket. Late success không reclaim seat đã bán cho booking khác; refund/automated reconciliation vẫn **OUT OF SCOPE — DEMO**.
+
+### 31.7. Hoàn tiền và phục hồi sau lỗi
+
+Refund pending và worker hoàn tiền là **OUT OF SCOPE — DEMO**. Entity `Refund` chỉ giữ cấu trúc mở rộng và lịch sử tương lai; chưa có actor, trigger hay cam kết retry/refund tự động. `PaymentEvent` vẫn được dùng để lưu callback lặp và trạng thái cần tra soát.
 
 Crash sau khi cổng đã hoàn nhưng trước khi database cập nhật được phục hồi bằng truy vấn cùng mã yêu cầu. Refund unknown giữ nguyên yêu cầu và lên lịch đối soát, không tạo hàng mới. Chỉ báo khách đã hoàn khi trạng thái succeeded. Lỗi vĩnh viễn chuyển failed/needs_review, giữ khả năng xử lý thủ công có bằng chứng; không tự ghi succeeded để đóng việc.
 
-### 31.7. Soát vé
+### 31.8. Soát vé
 
 Đọc chuỗi Ticket → Detail → Booking để biết suất, rồi khóa Showtime → Booking → Ticket. Kiểm tra lại booking confirmed, detail sold, vé valid và cửa sổ soát. Thực hiện UPDATE có điều kiện `WHERE status = 'valid'`, đặt used_at/validated_by_user_id; chỉ một lần quét nhận được một hàng cập nhật. Hủy suất/hủy đơn lấy cùng khóa nên không thể vừa hủy vừa chấp nhận vé.
 
-### 31.8. Tiêu chí kiểm thử khi hiện thực hóa
+### 31.9. Tiêu chí kiểm thử khi hiện thực hóa
 
 | Tình huống                                                | Kết quả bắt buộc                                                       |
 | ----------------------------------------------------------- | -------------------------------------------------------------------------- |
@@ -972,13 +1069,13 @@ Crash sau khi cổng đã hoàn nhưng trước khi database cập nhật đư�
 | Hai suất sát nhau đúng room_available_at                | Được phép                                                              |
 | Worker hết hạn chạy đồng thời callback                | Một kết quả nhất quán; không có confirmed với detail released      |
 | Webhook lặp hoặc tới sai thứ tự                        | Không tạo thêm vé; succeeded không bị hạ thành failed              |
-| Callback thành công sau giải phóng và bán lại ghế   | Không lấy lại ghế; lưu khoản thu và công việc hoàn               |
-| Hai lần thử đều được cổng thu tiền                 | Lưu cả hai succeeded; chỉ một applied; khoản thừa cần hoàn         |
+| Callback thành công sau giải phóng và bán lại ghế   | Không lấy lại ghế; lưu khoản thu và đưa vào tra soát (refund ngoài demo) |
+| Hai lần thử đều được cổng thu tiền                 | Lưu cả hai succeeded; chỉ một applied; khoản thừa cần xử lý thủ công ngoài demo |
 | Sai chữ ký/merchant hoặc không tìm thấy payment       | Không đổi trạng thái đơn; ghi log phù hợp                         |
 | Đúng giao dịch nhưng sai số tiền/tiền tệ            | Không phát hành; chuyển needs_review                                   |
 | Crash sau thu tiền/hoàn tiền trước cập nhật DB       | Reconciliation phục hồi theo cùng merchant reference                    |
 | Sửa giá danh mục sau khi giữ ghế                       | Tổng tiền/snapshot đơn cũ giữ nguyên                                |
-| Hủy suất có nhiều đơn đã trả tiền                 | Chặn bán/soát, vô hiệu vé, giải phóng và ghi đủ yêu cầu hoàn |
+| Hủy suất có nhiều đơn đã trả tiền                 | **OUT OF SCOPE — DEMO**; chỉ cần không tự phát hành vé mới nếu workflow được bổ sung |
 | Quét cùng vé hai lần đồng thời                       | Chỉ một lần được chấp nhận                                         |
 | Xóa phim/phòng/tài khoản đã có lịch sử             | FK từ chối; dùng trạng thái ngừng hoạt động                       |
 
@@ -990,7 +1087,7 @@ Các tình huống này là tiêu chí nghiệm thu cho schema/backend về sau,
 
 | Vấn đề                | Phương án được chọn                                                  | Lý do / đánh đổi                                                                                    |
 | ------------------------ | --------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| Một rạp hay chuỗi     | Một rạp; không tạo Cinema                                               | Khớp phạm vi đã xác nhận                                                                           |
+| Một rạp hay chuỗi     | `Cinema` 1–N `CinemaRoom`; demo seed một Cinema                         | Sẵn sàng mở rộng nhưng không tăng số chi nhánh MVP                                                 |
 | Movie nhiều Genre       | Giữ Genre + MovieGenre trong DB; class nối tùy chọn                     | Toàn vẹn quan hệ và lọc theo thể loại                                                             |
 | SeatType / TicketType    | Giữ danh mục có giá/điều kiện                                        | Cấu hình có dữ liệu nghiệp vụ; seed tối thiểu nếu chưa dùng hết                             |
 | BookingDetail và Ticket | Giữ riêng, Ticket FK unique tới detail                                   | Có nơi lưu ghế/giá trước thanh toán; vé chỉ sinh khi xác nhận                                |
@@ -1003,20 +1100,126 @@ Các tình huống này là tiêu chí nghiệm thu cho schema/backend về sau,
 | Giá vé                 | Giá cơ sở × sức chứa + phụ thu − giảm trên giá cơ sở; snapshot | Đơn giản, tái hiện được giá lịch sử                                                           |
 | Thanh toán              | N lần thử/booking, một payment applied                                   | Ghi nhận đủ cả thu trùng/thu muộn                                                                  |
 | Callback                 | PaymentEvent + xử lý idempotent                                           | Bền vững qua lỗi mạng/crash và webhook lặp                                                         |
-| Refund                   | Một yêu cầu hoàn toàn bộ/payment                                      | Đủ xử lý hủy/thu trùng/thu muộn; chưa hỗ trợ hoàn một phần                                  |
+| Refund                   | Giữ entity cho tương lai; không chạy luồng refund trong demo          | Bảo toàn khả năng mở rộng mà không biến refund thành yêu cầu MVP                         |
 | Concurrency              | Khóa theo suất + booking, constraint DB                                   | Dễ triển khai và kiểm chứng; giới hạn throughput theo từng suất                                 |
 | Xóa dữ liệu           | Restrict nghiệp vụ; ngừng hoạt động danh mục                         | Giữ được lịch sử và khả năng đối soát                                                        |
 
 ### 32.2. Chính sách nhóm cần chốt trước khi triển khai
 
-Các giá trị trong mục 1 là baseline để thiết kế không bị bỏ trống, nhưng cần xác nhận khi phát triển: thời lượng giữ và đóng bán; cửa sổ soát vé; điều kiện vé trẻ em/sinh viên; cách bán Couple; quyền Manager; chính sách hủy/hoàn và thời hạn lưu dữ liệu. Chọn cổng thanh toán cụ thể để chốt chữ ký webhook, đơn vị số tiền, mã giao dịch, retry, đối soát và hoàn tiền. Không giả định các cổng có cùng API hoặc cùng hỗ trợ idempotency.
+Các giá trị trong mục 1 là baseline để thiết kế không bị bỏ trống. Trước khi triển khai cần chốt: mốc đóng bán (không tự chọn cutoff phút), cửa sổ soát vé, điều kiện vé trẻ em/sinh viên, cách bán Couple, quyền Manager, cổng thanh toán, chữ ký webhook, đơn vị số tiền, mã giao dịch và idempotency. Chính sách hủy sau thanh toán/refund và hủy suất vẫn là **OUT OF SCOPE — DEMO**, không được triển khai như hành vi người dùng. Thời hạn lưu dữ liệu cần quyết định trước vận hành thực tế.
 
 ### 32.3. Trình tự đưa thiết kế vào PostgreSQL
 
 1. Chốt các chính sách mục 32.2 và cơ chế xác thực; chọn phiên bản PostgreSQL, EF Core/Npgsql tương thích.
-2. Đồng bộ relational model và database-schema.md từ 17 bảng trong tài liệu; làm rõ từng CHECK, FK, index và tên constraint.
+2. Đồng bộ relational model và database-schema.md từ 18 entity trong tài liệu (Refund là entity mở rộng); làm rõ từng CHECK, FK, index và tên constraint.
 3. Viết migration: tạo bảng cha/danh mục → bảng lịch/đơn/detail → payment/ticket → event/refund; tạo bảng nối sau các bảng cha. Cài btree_gist bằng tài khoản migration, thêm exclusion/partial indexes.
 4. Chọn EF migrations làm nguồn thay đổi schema; `database-schema.sql` là script xuất để review/triển khai, không duy trì hai nguồn DDL độc lập.
 5. Seed Role, SeatType, TicketType bằng code ổn định; không hard-code ID seed trong nghiệp vụ. Chạy migration trên database trống rồi kiểm tra nâng cấp theo quy trình nhóm.
 6. Hiện thực service transaction/worker đúng mục 31, kiểm thử đồng thời trên PostgreSQL thật; không dùng database in-memory thay cho kiểm thử constraint và locking.
-7. Đối chiếu schema thực tế với tài liệu, chạy các ca mục 31.8 và kiểm tra index trên dữ liệu đại diện trước khi dùng để bán vé.
+7. Đối chiếu schema thực tế với tài liệu, chạy các ca mục 31.9 và kiểm tra index trên dữ liệu đại diện trước khi dùng để bán vé.
+
+## 33. Chính sách MVP và phần mở rộng
+
+### 33.1. MVP bắt buộc cho demo
+
+- Quản lý Movie, Genre và MovieGenre.
+- Quản lý một Cinema seed ban đầu, CinemaRoom, Seat và SeatType.
+- Tạo và tra cứu Showtime, không trùng lịch phòng.
+- Chọn ghế, tạo Booking pending và giữ ghế đúng 5 phút.
+- Thanh toán bằng phương thức/cổng được nhóm chọn, theo dõi trạng thái Payment và phát hiện callback lặp.
+- Phát hành một Ticket cho mỗi BookingDetail sau khi payment được xác minh thành công; Staff có thể kiểm tra và đánh dấu vé đã dùng một lần.
+- Tài khoản User và Role/UserRole cơ bản.
+
+Danh sách trên là phạm vi dữ liệu cần thiết cho demo, không phải tuyên bố rằng các màn hình/API tương ứng đã hoàn thành.
+
+### 33.2. Phần mở rộng
+
+**OUT OF SCOPE — DEMO:** phân quyền staff theo Cinema và quản trị chi nhánh; membership/loyalty; promotion/discount engine phức tạp; hủy sau thanh toán; refund và payment reconciliation tự động; cinema-initiated showtime cancellation; báo cáo/analytics nâng cao. Các entity và snapshot hiện tại chỉ giữ độ sẵn sàng dữ liệu, không tự tạo các luồng này.
+
+### 33.3. Design considerations
+
+Thiết kế ngay từ đầu `Cinema`, khóa phòng theo chi nhánh, `timestamptz`, snapshot giá/tên, trạng thái độc lập của Booking/Payment/Ticket, PaymentEvent idempotency và khóa ghế theo `(showtime_id, seat_id)` để tránh migration phá lịch sử sau này. Đây là **data-model readiness**. Việc chỉ seed một Cinema, chỉ dùng Adult/VND, không có refund và không có phân quyền theo chi nhánh là **MVP implementation scope**. Các workflow nâng cao là **deferred business functionality**, không được suy ra chỉ vì cột dữ liệu đã tồn tại.
+
+## 34. Lifecycle Booking, Payment và Ticket
+
+### 34.1. Booking
+
+| Trạng thái | Ý nghĩa và sự kiện | Chuyển tiếp hợp lệ | Ghế |
+|---|---|---|---|
+| `pending` | Tạo cùng các detail `held`; countdown 5 phút bắt đầu tại `Booking.created_at`. | → `confirmed` khi một Payment được xác minh và áp dụng; → `cancelled` khi khách hủy trước thanh toán; → `expired` khi quá hạn và không còn payment-in-progress cần giữ chỗ. | `held` |
+| `confirmed` | Đơn đã được thanh toán hợp lệ và được dùng để phát hành vé. | Không quay lại `pending`; không có customer cancellation trong demo. | `sold` |
+| `cancelled` | Đơn bị khách hủy khi chưa thanh toán; giữ lịch sử. | Trạng thái kết thúc trong demo. | `released` |
+| `expired` | Hết thời gian giữ mà không có payment cần reconciliation. | Không tái mở; tạo booking mới nếu cần. | `released` |
+
+Không cho phép `pending` chuyển `confirmed` chỉ vì client báo thành công, và không cho phép `expired/cancelled` tái sử dụng. Nếu payment `created/pending/unknown` vẫn có khả năng được gateway xử lý, worker không giải phóng ghế và không cho đơn khác chiếm các ghế đó; đây là biện pháp an toàn tối thiểu. Quy tắc xử lý khoản tiền về sau và giải phóng tiếp theo là **OUT OF SCOPE — DEMO**.
+
+### 34.2. Payment
+
+Một Booking có thể có nhiều payment attempt, nhưng chỉ một payment được `applied_at` để confirm booking. `created` là bản ghi yêu cầu; `pending` là gateway đang xử lý; `succeeded` là backend đã xác minh thu tiền; `failed` là kết quả thất bại chắc chắn; `unknown` là timeout/kết quả chưa rõ; `cancelled` chỉ dùng khi gateway xác nhận yêu cầu đã hủy. Mỗi attempt có `created_at` bắt buộc, là thời điểm hệ thống tạo attempt theo UTC, khác với `paid_at` do gateway cung cấp.
+
+`merchant_request_id` là idempotency key của attempt; `provider_transaction_id` được unique khi có giá trị. PaymentEvent unique theo `(payment_id, event_key)`. Callback lặp hoặc đến sai thứ tự không được hạ `succeeded`, confirm lại booking hoặc tạo thêm ticket. Payment thành công không được ghi đè thành refund; demo không có refund.
+
+### 34.3. Ticket
+
+Ticket chỉ được tạo sau khi payment hợp lệ được áp dụng trong cùng transaction với `Booking confirmed` và detail `sold`. Mỗi BookingDetail có nhiều nhất một Ticket nhờ unique `booking_detail_id`. `valid → used` ghi `used_at` và `validated_by_user_id`; cập nhật có điều kiện trong transaction để hai lần quét đồng thời chỉ chấp nhận một lần. Ticket bị vô hiệu (nếu có workflow quản trị sau này) được giữ để traceability; customer cancellation sau thanh toán và refund không thuộc demo.
+
+### 34.4. Luồng và lỗi liên thực thể
+
+```mermaid
+flowchart LR
+    A[Booking pending + seats held] -->|payment verified| B[Payment succeeded]
+    B --> C[Booking confirmed]
+    C --> D[Details sold]
+    D --> E[Ticket issued: valid]
+    E -->|one successful scan| F[Ticket used]
+    A -->|customer cancels before payment| G[Booking cancelled + seats released]
+    A -->|5 minutes elapsed, no payment in progress| H[Booking expired + seats released]
+    B -.->|duplicate notification| B
+    B -.->|ticket creation failure| I[Retryable consistency work; no duplicate ticket]
+```
+
+Payment failure không tự biến thành success và cho phép thử lại khi Booking còn pending/hạn. Ticket issuance failure sau payment success phải retry idempotently; không phát hành ticket thứ hai. Late success sau khi ghế đã được release/bán lại chỉ được ghi nhận để tra soát; không lấy lại ghế trong demo. Cinema cancellation và refund là **OUT OF SCOPE — DEMO**.
+
+## 35. Quy tắc giữ ghế, bán sát giờ và giá
+
+Ghế chuyển sang `held` trong transaction tạo Booking, sau khi backend khóa Showtime, kiểm tra ghế active và insert toàn bộ BookingDetail. Countdown bắt đầu tại `created_at` thực tế do database/backend ghi, không bắt đầu khi người dùng mở màn hình hoặc khi gateway được gọi. Ghế khả dụng khi không có detail `held/sold` cho cặp `(showtime_id, seat_id)`; đang giữ khi có `held`; đã bán khi có `sold`. Partial unique index là rào chắn cuối cùng khi hai khách cạnh tranh.
+
+Sau 5 phút, worker chỉ đổi `pending → expired` và `held → released` nếu không có payment `created/pending/unknown` cần reconciliation. Payment failure chắc chắn hoặc customer cancellation trước thanh toán giải phóng ngay trong transaction. Không có cutoff cố định trước giờ chiếu; `booking_closes_at` nullable là mốc cấu hình mở, và mốc tối thiểu cụ thể là **OPEN**. Hệ thống không tự bán ghế đã held bởi một payment đang được xem là còn hiệu lực.
+
+Đơn vị tiền demo là **VND**, lưu bằng `numeric(14,0)` là số nguyên đồng; không dùng PostgreSQL `money` vì phụ thuộc locale. Công thức đề xuất cho mỗi detail:
+
+```text
+base_amount      = showtime.base_price × capacity_units_snapshot
+surcharge_amount = seat_type.surcharge_amount
+discount_amount  = round(base_amount × discount_percent_snapshot / 100, 0)
+unit_price       = base_amount + surcharge_amount - discount_amount
+booking.total_amount = SUM(unit_price)
+payment.amount   = booking.total_amount
+```
+
+TicketType discount và promotion ngoài công thức trên không được tự suy diễn; demo có thể seed `ADULT` với discount 0. Base price, surcharge, discount và tên danh mục được snapshot vào BookingDetail khi tạo đơn. Vì vậy giá lịch sử không đổi khi danh mục được sửa. `Payment.received_amount`/`received_currency` phản ánh thực thu để phát hiện sai lệch, không thay đổi `Booking.total_amount`.
+
+## 36. Decision register và câu hỏi còn mở
+
+| Decision/policy | Current value | Status | Impact/follow-up |
+|---|---|---|---|
+| Branch model | `Cinema 1 — N CinemaRoom`, demo một Cinema | **PROPOSED** | Seed một bản ghi; chốt trước migration |
+| Seat hold | 5 phút từ `Booking.created_at` | **CONFIRMED** | Worker và transaction phải dùng cùng quy tắc |
+| Sales cutoff | Không hard-code cutoff; `booking_closes_at` nullable | **CONFIRMED / OPEN** | Chốt mốc cuối cùng trước triển khai |
+| Cancellation/refund | Hủy trước payment có; sau payment và refund không có | **CONFIRMED / OUT OF SCOPE — DEMO** | Không xây refund workflow MVP |
+| Showtime cancellation | Không hỗ trợ demo | **OUT OF SCOPE — DEMO** | Chỉ giữ status/history để mở rộng |
+| Currency/precision | VND, `numeric(14,0)` | **PROPOSED** | Xác nhận cùng gateway |
+| Payment provider | Chưa chọn | **OPEN** | Chốt webhook, idempotency, transaction ID |
+| Ticket validation window | Chưa chốt | **OPEN** | Cần cho service và test |
+| Couple/eligibility | Couple là một đơn vị, demo ưu tiên Adult | **PROPOSED** | Xác nhận trước seed TicketType/SeatType |
+
+## 37. Validation checklist cho relational modeling và SQL
+
+- [ ] Bổ sung `Cinema` và FK `CinemaRoom.cinema_id`; kiểm tra unique code/name theo chi nhánh.
+- [ ] Chốt nullable/default/check cho mọi status và timestamp, đặc biệt `created_at`, `expires_at`, `paid_at`, `booking_closes_at`.
+- [ ] Dùng `numeric(14,0)` cho mọi giá VND; kiểm thử công thức snapshot và tổng tiền.
+- [ ] Tạo composite FK và partial unique index chống đặt trùng ghế; kiểm thử hai transaction đồng thời.
+- [ ] Tạo exclusion constraint cho lịch phòng với `room_available_at`.
+- [ ] Kiểm thử các transition Booking/Payment/Ticket và callback lặp; bảo đảm không tạo ticket trùng.
+- [ ] Kiểm thử không cascade xóa booking, payment, event, ticket và dữ liệu chi nhánh có lịch sử.
+- [ ] Chốt các mục **OPEN** và đối chiếu migration/schema/EF Core trước khi code ứng dụng.
