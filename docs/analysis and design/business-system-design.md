@@ -146,10 +146,9 @@ flowchart LR
     Booking -.->|include| CreateBooking
     CancelBooking -.->|include| ReleaseSeats
     Payment -.->|successful and verified| ConfirmBooking
-    Payment -.->|definitively failed/cancelled| ReleaseSeats
 ```
 
-**Lưu ý:** Sơ đồ trên là mô hình chức năng ở mức tổng quan. Booking chỉ giữ ghế và tạo trạng thái pending; Payment là giao dịch độc lập; Ticket chỉ được phát hành sau payment được xác minh thành công. Payment pending/unknown không được giải phóng ghế hoặc cho phép bán xung đột. Nếu kết quả vẫn chưa rõ sau khi hết hạn, việc reconciliation nâng cao là **OUT OF SCOPE — DEMO**.
+**Lưu ý:** Sơ đồ trên là mô hình chức năng ở mức tổng quan. Booking chỉ giữ ghế và tạo trạng thái pending; Payment là giao dịch độc lập; Ticket chỉ được phát hành sau payment được xác minh thành công. Payment `failed`/`cancelled` **không** trực tiếp giải phóng ghế: booking vẫn `pending` nếu còn hạn và ghế vẫn `held` (khách có thể thử lại); ghế chỉ được giải phóng khi khách hủy booking pending hoặc worker hết hạn — hết hạn chỉ chuyển `expired` + `released` khi booking quá hạn và không còn payment `created`/`pending`/`unknown` (`database-design.md` mục 31.5/34.1, BR-BOOK-004). Payment pending/unknown không được giải phóng ghế hoặc cho phép bán xung đột. Nếu kết quả vẫn chưa rõ sau khi hết hạn, việc reconciliation nâng cao là **OUT OF SCOPE — DEMO**.
 
 ### 1.5. Mô tả các Use Case quan trọng
 
@@ -173,7 +172,7 @@ flowchart LR
 | Actor | Customer |
 | Preconditions | Khách hàng truy cập được hệ thống; suất chiếu còn hiệu lực và cho phép đặt vé. |
 | Main Flow | 1. Khách hàng chọn phim và suất chiếu. 2. Hệ thống hiển thị sơ đồ ghế. 3. Khách hàng chọn ghế. 4. Backend khóa/kiểm tra lại tình trạng ghế trong transaction. 5. Hệ thống tạo Booking pending và giữ toàn bộ ghế thành công trong cùng transaction. Countdown 5 phút bắt đầu từ thời điểm tạo booking. 6. Khách hàng tiếp tục Make Payment. |
-| Alternative Flow | Khách hàng thay đổi lựa chọn ghế trước khi tạo đơn; hệ thống cập nhật danh sách ghế được chọn nếu ghế vẫn còn khả dụng. |
+| Alternative Flow | Khách hàng thay đổi lựa chọn ghế trước khi tạo đơn; hệ thống cập nhật danh sách ghế được chọn nếu ghế vẫn còn khả dụng. Nếu khách đã bấm thanh toán nhưng muốn đổi ghế: dùng luồng "Hủy thanh toán / Đổi ghế" của UC-03A (cổng xác nhận chưa thu thì payment `cancelled`, booking `cancelled`, ghế `released` — đặt lại ngay). |
 | Exception Flow | Suất chiếu không còn khả dụng; ghế vừa được khách hàng khác đặt; đơn đặt vé không thể được tạo. Hệ thống thông báo lỗi và yêu cầu khách hàng chọn lại. |
 | Postconditions | Booking pending và các detail held được tạo; không có ghế nào được giữ một phần nếu có xung đột. Booking hết hạn hoặc bị khách hủy trước payment thì các ghế được release. Chưa phát hành Ticket khi payment chưa được xác nhận. |
 
@@ -196,7 +195,7 @@ flowchart LR
 | Use Case Name | Cancel Booking |
 | Actor | Customer |
 | Preconditions | Customer đã đăng nhập và là chủ sở hữu Booking; Booking đang ở trạng thái `pending`, các detail liên quan đang `held`, và chưa có Payment `succeeded` được áp dụng. |
-| Main Flow | 1. Customer chọn hủy Booking. 2. Backend xác thực quyền sở hữu và khóa theo thứ tự `Showtime → Booking → Payment attempts` như luồng payment confirmation. 3. Backend đọc lại quyền sở hữu, Booking, Payment và detail sau khi lấy đủ khóa. 4. Nếu Booking vẫn `pending`, chưa có Payment `succeeded` được áp dụng và không có Payment `created`, `pending` hoặc `unknown`, hệ thống chuyển Booking sang `cancelled`, chuyển toàn bộ detail `held` sang `released`, ghi thời điểm/lý do và commit trong một transaction. |
+| Main Flow | 1. Customer chọn hủy Booking. 2. Backend xác thực quyền sở hữu và khóa theo thứ tự `Showtime → Booking → Payment attempts` như luồng payment confirmation. 3. Backend đọc lại quyền sở hữu, Booking, Payment và detail sau khi lấy đủ khóa. 4. Nếu Booking vẫn `pending`, chưa có Payment `succeeded` được áp dụng và không có Payment `created`, `pending` hoặc `unknown`, hệ thống chuyển Booking sang `cancelled`, chuyển toàn bộ detail `held` sang `released`, ghi thời điểm/lý do và commit trong một transaction. **Hủy thanh toán để đổi ghế (cập nhật theo yêu cầu UX):** nếu có Payment `created`/`pending`/`unknown`, backend chủ động gọi Cancel/Query API của cổng (ngoài transaction); nếu cổng xác nhận chưa thu tiền, payment chuyển `cancelled` (kết quả từ cổng đã xác minh) rồi Booking `cancelled` + detail `released` — khách đổi ghế ngay không phải chờ hết hạn; nếu cổng báo đã thu hoặc kết quả không chắc chắn, từ chối hủy và giữ allocation. |
 | Alternative Flow | Nếu đã có Payment `created`, `pending` hoặc `unknown`, hệ thống từ chối cancellation, không đổi Payment status và không giải phóng ghế. Customer có thể thử lại sau khi Payment có kết quả chắc chắn. Nếu payment confirmation lấy khóa trước, cancellation chờ rồi đọc lại `confirmed`/`applied_at` và bị từ chối. |
 | Exception Flow | Booking không thuộc Customer, đã `confirmed`, `expired` hoặc đã `cancelled`; Booking đã được xử lý đồng thời; hoặc có detail không còn `held`. Hệ thống từ chối thao tác và không cập nhật một phần. |
 | Postconditions | Thành công: Booking `cancelled`, toàn bộ detail được `released`, không phát hành Ticket và ghế có thể được booking khác sử dụng sau commit. Thất bại: dữ liệu Booking và ghế giữ nguyên. |

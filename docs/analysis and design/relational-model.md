@@ -348,11 +348,13 @@ discount_amount = round(base_amount * discount_percent_snapshot / 100, 0)
 unit_price = base_amount + surcharge_amount - discount_amount
 ```
 
-Lưu ý công thức: giảm giá chỉ áp dụng trên `base_amount`, không áp dụng trên `surcharge_amount`; phụ thu ghế được tính một lần cho mỗi `booking_detail`, kể cả ghế Couple. Đối với ghế Couple (`capacity_units = 2`), `base_amount` được nhân hai vì một detail đại diện cho toàn bộ ghế đôi; một ticket duy nhất đại diện cho quyền sử dụng toàn bộ ghế đôi và soát vé xác nhận quyền này một lần. `discount_percent_snapshot` là mức giảm của từng loại vé được áp dụng cho detail; các detail trong cùng booking có thể dùng các loại vé khác nhau và backend tự xác minh điều kiện áp dụng.
+Lưu ý công thức: giảm giá chỉ áp dụng trên `base_amount`, không áp dụng trên `surcharge_amount`; phụ thu ghế được tính một lần cho mỗi `booking_detail`, kể cả ghế Couple. Đối với ghế Couple (`capacity_units = 2`), `base_amount` được nhân hai vì một detail đại diện cho toàn bộ ghế đôi. **Ticket theo ghế Couple (cập nhật theo yêu cầu UX):** mỗi detail Couple phát hành 2 vé độc lập (mỗi người một mã, soát riêng — khách đi cùng đến trễ không bị chặn toàn bộ ghế đôi); số vé theo detail là bất biến nghiệp vụ bảo đảm bởi service phát hành idempotent, không còn UQ `ticket.booking_detail_id`. `discount_percent_snapshot` là mức giảm của từng loại vé được áp dụng cho detail; các detail trong cùng booking có thể dùng các loại vé khác nhau và backend tự xác minh điều kiện áp dụng.
 
-Miền giá trị bắt buộc (CHECK): `base_amount > 0`; `surcharge_amount >= 0`; `discount_percent_snapshot` nằm trong `[0, 100]`; `0 <= discount_amount <= base_amount` (mức giảm không vượt giá gốc; cho phép bằng khi `discount_percent_snapshot = 100`, xem điểm cần xác nhận về vé miễn phí bên dưới); `0 <= unit_price` và `unit_price = base_amount + surcharge_amount - discount_amount`; `booking.total_amount > 0`. Tiền VND dùng số nguyên đồng (integer), làm tròn bằng `round(..., 0)` theo quy tắc round half up áp dụng cho `discount_amount`.
+Miền giá trị bắt buộc (CHECK): `base_amount > 0`; `surcharge_amount >= 0`; `discount_percent_snapshot` nằm trong `[0, 100]`; `0 <= discount_amount <= base_amount`; `0 <= unit_price` và `unit_price = base_amount + surcharge_amount - discount_amount`; `booking.total_amount > 0`. Tiền VND dùng số nguyên đồng (integer), làm tròn bằng `round(..., 0)` theo quy tắc round half up áp dụng cho `discount_amount`.
 
-Điểm cần xác nhận về vé miễn phí: miền giá trị cho phép `discount_percent_snapshot = 100`, tức `discount_amount = base_amount`. Khi `surcharge_amount = 0`, `unit_price = 0` (vé miễn phí); khi phụ thu dương, `unit_price = surcharge_amount > 0`. Hiện có mâu thuẫn chưa chốt giữa các tài liệu: `database-design.md` ghi "giá cuối cùng phải > 0; bản đầu không xử lý booking miễn phí", trong khi miền `discount_percent [0, 100]` cho phép mức giảm 100%. Mô hình tạm thời chọn phương án mở: CHECK cho phép `unit_price >= 0` và `discount_percent` tới 100 (không chặn vé miễn phí ở mức CHECK từng detail), đồng thời giữ `booking.total_amount > 0` — một booking chỉ gồm toàn vé miễn phí (tổng 0) bị chặn ở mức booking, phù hợp với "bản đầu không xử lý booking miễn phí" của `database-design.md` mà vẫn không mâu thuẫn với miền `[0, 100]`. Nếu nghiệp vụ sau này cấm hẳn vé miễn phí, cần bổ sung CHECK `discount_percent_snapshot < 100` hoặc yêu cầu `unit_price > 0` cho từng detail; điểm này cần xác nhận với chủ dự án.
+Quyết định OQ-06 (đã chốt — Option B, APPROVED): `unit_price >= 0` — một detail được phép giá 0 (khi `discount_percent_snapshot = 100` và `surcharge_amount = 0`), nhưng `booking.total_amount > 0` chặn booking gồm toàn vé giá 0; `payment.amount > 0` và MVP không tạo payment attempt số tiền 0. Hỗ trợ mức database cho detail giá 0 không đồng nghĩa triển khai luồng vé miễn phí/100% giảm hay luồng xác nhận booking tổng 0 — các luồng đó nằm ngoài phạm vi MVP. Nếu nghiệp vụ sau này cần vé miễn phí hoàn chỉnh, cập nhật theo phương án C của OQ-06 (cho phép booking tổng 0 với luồng xác nhận riêng).
+
+Điểm cần xác nhận về vé miễn phí — **đã chốt (OQ-06, Option B — APPROVED):** miền giá trị cho phép `discount_percent_snapshot = 100`, tức `discount_amount = base_amount`. Khi `surcharge_amount = 0`, `unit_price = 0` (detail miễn phí); khi phụ thu dương, `unit_price = surcharge_amount > 0`. Booking tổng 0 (chỉ gồm vé miễn phí) bị chặn bởi `booking.total_amount > 0` và nằm ngoài phạm vi MVP; MVP không xây luồng xác nhận không-thanh-toán. Một booking có thể chứa detail giá 0 miễn là tổng của booking vẫn dương. Nếu nghiệp vụ sau này cấm hẳn vé giá 0, cần bổ sung CHECK `discount_percent_snapshot < 100` hoặc yêu cầu `unit_price > 0` cho từng detail.
 
 `booking.total_amount` bằng tổng `unit_price` của toàn bộ detail gốc của booking — được tính một lần trong transaction tạo booking, không tính lại dựa trên các detail còn `held` hoặc `sold` sau khi chúng chuyển trạng thái. `booking.total_amount`, `payment.amount` và toàn bộ snapshot giá là bất biến sau khi tạo; chúng không thay đổi khi danh mục, giá hiện hành hay `discount_percent` của `ticket_type`/`seat_type` thay đổi. Mọi payment attempt được khởi tạo với `amount` và `currency` đúng bằng `booking.total_amount` và `booking.currency` tại thời điểm tạo payment (số tiền và tiền tệ của booking không đổi nên mọi attempt dùng cùng giá trị này). Việc bảo đảm nhất quán tổng tiền khi ghi dữ liệu là trách nhiệm của application transaction tạo booking (MVP không thêm trigger tính tổng; CHECK domain constraint chỉ bảo vệ miền giá trị).
 
@@ -361,7 +363,7 @@ Miền giá trị bắt buộc (CHECK): `base_amount > 0`; `surcharge_amount >= 
 ```text
 ticket(
     id [PK],
-    booking_detail_id [AK, FK -> booking_detail.id],
+    booking_detail_id [FK -> booking_detail.id],
     ticket_code [AK],
     status,
     issued_at,
@@ -372,7 +374,7 @@ ticket(
 )
 ```
 
-UQ `booking_detail_id` bảo đảm mỗi detail có tối đa một ticket. Ticket chỉ được tạo sau khi payment hợp lệ được áp dụng. Trạng thái gồm `valid`, `used`, `voided`; cập nhật `valid -> used` phải có điều kiện để một vé không được soát thành công hai lần.
+Mỗi detail phát hành đúng `capacity_units_snapshot` vé (1 cho ghế thường, 2 cho ghế Couple — hai mã QR độc lập, mỗi người soát riêng, khách đi cùng đến trễ vẫn vào được bằng vé của mình). Không còn UQ trên `booking_detail_id`; số vé theo detail là bất biến nghiệp vụ bảo đảm bởi service trong transaction phát hành (đếm vé hiện có, chỉ chèn phần thiếu — idempotent, callback lặp không phát hành thừa). Ticket chỉ được tạo sau khi payment hợp lệ được áp dụng. Trạng thái gồm `valid`, `used`, `voided`; cập nhật `valid -> used` phải có điều kiện để một vé không được soát thành công hai lần. Ghế Couple được soát từng vé riêng thay vì một lần cho cả ghế đôi (cập nhật so với quyết định trước: theo yêu cầu UX, khách đến trễ không bị chặn toàn bộ ghế đôi).
 
 ### 3.16. `payment`
 
@@ -503,6 +505,7 @@ Ghi chú: unique constraint chỉ bảo đảm tính duy nhất của event reco
 refund(
     id [PK],
     payment_id [AK, FK -> payment.id],
+    provider [FK ghép -> payment(id, provider)],
     merchant_refund_id [AK],
     provider_refund_id [NULL],
     amount,
@@ -514,16 +517,20 @@ refund(
     next_retry_at [NULL],
     last_error [NULL]
 )
+
+UQ-P: (provider, provider_refund_id) WHERE provider_refund_id IS NOT NULL
 ```
 
 UQ `payment_id` biểu diễn chính sách tối đa một yêu cầu hoàn toàn bộ cho một payment. Relation này chỉ phục vụ khả năng mở rộng và truy vết; refund không thuộc phạm vi demo hiện tại.
+
+Đã thêm cột `provider` vào `refund` (phi chuẩn hóa có kiểm soát, quyết định nhóm): `provider` được khóa chặt bằng FK ghép `refund(payment_id, provider) → payment(id, provider)` (yêu cầu UQ-C `payment(id, provider)`), nhờ đó không thể lệch provider giữa refund và payment mà không cần trigger. Tính duy nhất `provider_refund_id` theo provider giờ được bảo đảm trực tiếp bằng partial unique index `ux_refund_provider_refund_id(provider, provider_refund_id) WHERE provider_refund_id IS NOT NULL` — giải quyết điểm hạn chế trước đây của mô hình.
 
 Về định danh hoàn tiền, phân biệt hai loại mã:
 
 - `merchant_refund_id` — khóa nghiệp vụ do backend sinh cho lần yêu cầu hoàn, duy nhất toàn phần (AK), dùng cho idempotency khi gửi yêu cầu hoàn lên cổng.
 - `provider_refund_id` — mã giao dịch refund do provider cấp sau khi xử lý, nullable vì chỉ tồn tại sau khi provider phản hồi. Yêu cầu nghiệp vụ là không có hai refund của cùng provider mang cùng một `provider_refund_id` (tương tự UQ-P `(provider, provider_transaction_id)` của `payment`).
 
-Hạn chế của mô hình hiện tại: PostgreSQL không thể tạo unique index trên `refund` tham chiếu trực tiếp cột `payment.provider` qua join, còn `refund` không có cột `provider` riêng. Do đó tính duy nhất của `provider_refund_id` theo provider là **yêu cầu nghiệp vụ nhưng chưa được bảo đảm trực tiếp bằng index trong schema hiện tại** — nó phải được kiểm tra bởi service khi ghi dữ liệu refund (refund ngoài phạm vi demo nên rủi ro thấp trong MVP).
+**Đã giải quyết (cập nhật mô hình theo quyết định nhóm — DBAUDIT-003/016):** thêm cột `provider` vào `refund` (phi chuẩn hóa có kiểm soát): `provider` được khóa chặt bằng FK ghép `refund(payment_id, provider) → payment(id, provider)` (yêu cầu UQ-C `payment(id, provider)`), nhờ đó không thể lệch provider giữa refund và payment mà không cần trigger. Tính duy nhất `provider_refund_id` theo provider giờ được bảo đảm trực tiếp bằng partial unique index `ux_refund_provider_refund_id(provider, provider_refund_id) WHERE provider_refund_id IS NOT NULL`. Đoạn trên giữ lại làm lịch sử phân tích; hiện trạng mới thay thế hạn chế này.
 
 Điểm cần xác nhận (khi thiết kế schema vật lý): nếu muốn bảo đảm bằng index, cần cân nhắc lưu thêm `provider` trên `refund` kèm cơ chế bảo đảm nhất quán `refund.provider = payment.provider` (CHECK/trigger/service), hoặc chấp nhận kiểm tra ở tầng service. Trong phạm vi MVP hiện tại, mô hình không thêm thuộc tính mới và để lại quyết định này cho bước thiết kế schema. Vì refund ngoài phạm vi demo, mô hình không mở rộng thành workflow refund hoàn chỉnh.
 
@@ -596,7 +603,7 @@ Mặc định các quan hệ lịch sử và tài chính dùng `ON DELETE RESTRI
 | Booking - BookingDetail | 1:1..N theo nghiệp vụ | FK ghép của `booking_detail`; tối thiểu một detail được bảo đảm trong transaction tạo booking. |
 | Seat - BookingDetail | 1:0..N qua các suất | FK ghép của `booking_detail`; UQ-P ngăn trùng trong cùng suất. |
 | TicketType - BookingDetail | 1:0..N | `booking_detail.ticket_type_id`. |
-| BookingDetail - Ticket | 1:0..1 | UQ `ticket.booking_detail_id`. |
+| BookingDetail - Ticket | 1:0..N (đúng capacity_units_snapshot: 1 ghế thường = 1 vé, ghế Couple = 2 vé riêng) | FK `ticket.booking_detail_id`; số vé theo detail do service phát hành idempotent (không còn UQ). |
 | Booking - Payment | 1:0..N | `payment.booking_id`. |
 | Payment - PaymentEvent | 1:0..N | `payment_event.payment_id`. |
 | Payment - Refund | 1:0..1 | UQ `refund.payment_id`. |
@@ -625,10 +632,10 @@ Phân biệt cơ chế bảo đảm:
 | `user_role` | `(user_id, role_id)` (PK) | — | Không cấp trùng role. |
 | `booking` | `booking_code`; `(user_id, request_key)` | UQ-C `(id, showtime_id, cinema_room_id)` | Tra cứu công khai, idempotency; UQ-C làm đích FK ghép. |
 | `booking_detail` | `(booking_id, seat_id)` | UQ-C `(booking_id, showtime_id, cinema_room_id)`; UQ-P `(showtime_id, seat_id) WHERE allocation_status IN ('held','sold')` | AK toàn phần: một ghế không lặp trong cùng booking, kể cả detail đã `released`. UQ-P có điều kiện: chống giữ/bán trùng ghế trong cùng suất (không phải candidate key, không tự giải phóng ghế theo thời gian). |
-| `ticket` | `booking_detail_id`; `ticket_code` | — | Một vé/detail và mã vé duy nhất. |
+| `ticket` | `ticket_code` | — (số vé theo detail = `capacity_units_snapshot`, do service phát hành idempotent; không còn UQ `booking_detail_id`) | Mã vé duy nhất; soát từng vé riêng. |
 | `payment` | `merchant_request_id` | UQ-P `(provider, provider_transaction_id) WHERE ... IS NOT NULL`; UQ-P `booking_id` đang mở; UQ-P `booking_id` đã áp dụng | Idempotency; định danh giao dịch cổng có điều kiện. |
 | `payment_event` | `(payment_id, event_key)` | — | Chống nhận/xử lý trùng sự kiện. |
-| `refund` | `payment_id`; `merchant_refund_id` | — (duy nhất theo provider của `provider_refund_id` là yêu cầu nghiệp vụ, chưa được bảo đảm trực tiếp bằng index trong schema hiện tại — xem 3.18) | Một yêu cầu hoàn toàn bộ/payment và idempotency hoàn. |
+| `refund` | `payment_id`; `merchant_refund_id` | UQ-P `(provider, provider_refund_id) WHERE provider_refund_id IS NOT NULL` — `provider` được khóa bằng FK ghép với `payment(id, provider)` (xem 3.18) | Một yêu cầu hoàn toàn bộ/payment và idempotency hoàn. |
 
 Ghi chú phân loại:
 
@@ -684,7 +691,7 @@ Mô hình không tuyên bố 3NF nghiêm ngặt ở mọi relation. Các thuộc
 
 ### 9.2. Domain integrity
 
-- Các cột số lượng/thời lượng dương; phụ thu và số tiền giảm không âm (`0 <= discount_amount <= base_amount`, cho phép giảm 100% — xem điểm cần xác nhận về vé miễn phí ở 3.14).
+- Các cột số lượng/thời lượng dương; phụ thu và số tiền giảm không âm (`0 <= discount_amount <= base_amount`, cho phép giảm 100% trên một detail — OQ-06 Option B đã chốt).
 - `discount_percent` nằm trong `[0, 100]`.
 - Giá trị VND dùng số nguyên đồng; booking/payment dùng `currency = 'VND'` trong MVP.
 - Mọi cột trạng thái chỉ nhận giá trị trong tập đã quy định.
@@ -704,15 +711,15 @@ Các quy tắc cụ thể:
 - Một ghế chỉ có tối đa một `booking_detail` đang `held` hoặc `sold` trong cùng showtime — bảo đảm trực tiếp bằng partial unique index `(showtime_id, seat_id) WHERE allocation_status IN ('held','sold')`.
 - Hai showtime không được chồng khoảng `[starts_at, room_available_at)` trong cùng phòng, trừ showtime `cancelled` — bảo đảm trực tiếp bằng exclusion constraint (mục 3.9).
 - `seat.status` (trạng thái vật lý), `booking.status` (trạng thái đơn), `booking_detail.allocation_status` (trạng thái phân bổ trong suất) và `ticket.status` (trạng thái vé) là bốn trạng thái độc lập; không dùng một trạng thái thay thế trạng thái khác.
-- Tạo booking và toàn bộ detail là thao tác all-or-nothing trong một transaction; booking phải có ít nhất một detail (invariant của transaction — FK không tự bảo đảm điều này). Trong cùng transaction, backend kiểm tra điều kiện, đọc giá hiệu lực, ghi snapshot vào detail và tính `total_amount` (quy trình 5 bước ở 3.14); client không được quyết định giá cuối cùng hay mức giảm. Nếu nghiệp vụ cấm vé miễn phí hoặc booking tổng 0, đây là invariant của service khi tạo booking (CHECK chỉ bảo vệ miền `unit_price >= 0`); điểm cần xác nhận — xem 3.14.
+- Tạo booking và toàn bộ detail là thao tác all-or-nothing trong một transaction; booking phải có ít nhất một detail (invariant của transaction — FK không tự bảo đảm điều này). Trong cùng transaction, backend kiểm tra điều kiện, đọc giá hiệu lực, ghi snapshot vào detail và tính `total_amount` (quy trình 5 bước ở 3.14); client không được quyết định giá cuối cùng hay mức giảm. Booking tổng 0 (chỉ gồm vé giá 0) bị chặn bởi `booking.total_amount > 0` và nằm ngoài phạm vi MVP theo OQ-06 Option B; CHECK chỉ bảo vệ miền `unit_price >= 0`.
 - Booking `pending` tương ứng mọi detail `held`; `confirmed` tương ứng `sold`; `expired/cancelled` tương ứng `released` (invariant của service; database không tự thực thi tương ứng trạng thái booking-detail).
-- Thời gian giữ ghế 5 phút xác định bởi `[booking.created_at, booking.expires_at)`. Partial unique index chỉ dựa trên `allocation_status`, không chứa điều kiện `now()` và không tự giải phóng ghế theo thời gian. Worker có trách nhiệm chuyển booking hết hạn sang `expired`, detail sang `released` và cập nhật `released_at`. Trước khi giữ ghế mới, hệ thống phải xử lý hết hạn các booking `pending` đã quá `expires_at` liên quan trong cùng transaction, bảo đảm khi worker chậm hoặc ngừng hoạt động request đặt ghế mới vẫn không phá vỡ tính toàn vẹn.
+- Thời gian giữ ghế 5 phút xác định bởi `[booking.created_at, booking.expires_at)`. Partial unique index chỉ dựa trên `allocation_status`, không chứa điều kiện `now()` và không tự giải phóng ghế theo thời gian. Worker có trách nhiệm chuyển booking hết hạn sang `expired`, detail sang `released` và cập nhật `released_at` — chỉ khi booking quá hạn và không còn payment attempt `created`/`pending`/`unknown` cần giữ để xử lý (điều kiện hai phần theo `database-design.md` mục 31.5/34.1 và BR-BOOK-004); thời hạn tối đa của cửa sổ chờ do attempt đang mở gây ra chưa được chốt (OQ-07 — OPEN). Trước khi giữ ghế mới, hệ thống phải xử lý hết hạn các booking `pending` đã quá `expires_at` liên quan trong cùng transaction, bảo đảm khi worker chậm hoặc ngừng hoạt động request đặt ghế mới vẫn không phá vỡ tính toàn vẹn.
 - Hai request đồng thời không thể giữ hoặc bán cùng một ghế trong cùng suất: partial unique index từ chối hàng phân bổ hiệu lực thứ hai; race giữa giải phóng (release) và giữ mới được tuần tự hóa bởi transaction.
 - Chỉ payment `succeeded`, đúng số tiền/tiền tệ, đã xác minh và được áp dụng mới có thể chuyển booking sang `confirmed` và phát hành ticket.
 - Xác nhận booking, chuyển toàn bộ detail sang `sold`, đặt `payment.applied_at` và tạo ticket phải nằm trong cùng transaction (nguyên tử; callback lặp không tạo thêm ticket). Invariant áp dụng payment đầy đủ tại 3.16: UQ-P `booking_id WHERE applied_at IS NOT NULL` chỉ bảo đảm tối đa một payment được áp dụng cho booking; các điều kiện trạng thái, số tiền, tiền tệ và tính đủ điều kiện của booking là invariant của transaction/service, không được thay thế bằng UQ-P.
 - Payment `succeeded` đến muộn sau khi booking đã `expired`/`cancelled` hoặc không còn đủ điều kiện xác nhận: không được tự động áp dụng (`applied_at` không đặt), không xác nhận booking, không phát hành ticket và không tự động chiếm lại ghế đã giải phóng; kết quả thành công được giữ nguyên trạng để đối soát qua `reconciliation_status` (xem 3.16).
 - `payment_event.status = failed` là trạng thái xử lý sự kiện (callback/đối soát), không phải `payment.status = failed` (kết quả tài chính của payment); hai trạng thái độc lập và không được suy lẫn nhau (xem 3.17).
-- Chỉ một lần soát vé có thể chuyển `ticket.valid -> used` thành công (conditional update: chỉ update khi status hiện tại là `valid`; ghế Couple được soát một lần cho toàn bộ ghế đôi).
+- Chỉ một lần soát vé có thể chuyển `ticket.valid -> used` thành công (conditional update: chỉ update khi status hiện tại là `valid`; ghế Couple phát hành 2 vé riêng — từng vé soát riêng).
 - User `locked` hoặc `deactivated` không được tiếp tục truy cập theo chính sách xác thực; role `inactive` không cấp quyền mới; bản ghi `user_role` còn tồn tại không mặc nhiên nghĩa là quyền vẫn hợp lệ — authorization phải kết hợp `app_user.status`, `role.is_active` và tập role hiệu lực tại thời điểm kiểm tra, thực hiện ở backend. Đăng ký công khai chỉ cấp role `CUSTOMER`; việc cấp/thu hồi role quản trị được backend kiểm soát. JWT/access token đã phát hành giữ hiệu lực đến khi hết hạn trừ khi có cơ chế thu hồi; thay đổi role/status có thể không phản ánh ngay vào token đang hiệu lực — đây là giới hạn được chấp nhận trong MVP (không thêm relation quản lý token). Authorization được thực hiện ở backend, không dựa vào giao diện hay việc người dùng biết UUID/mã công khai.
 - Thay đổi suất chiếu trong MVP: cho phép sửa giờ/phòng khi suất chưa có booking và không vi phạm ràng buộc lịch (exclusion constraint vẫn thực thi). Suất đã có booking `confirmed` không được đổi `movie_id`, giờ hoặc phòng trong MVP; suất có booking `pending` chỉ được xử lý sau khi các booking đó hết hạn hoặc bị hủy. Hủy suất phải lưu trạng thái (`cancelled`), thời điểm (`cancelled_at`) và lý do (`cancellation_reason`); khôi phục suất đã hủy phải kiểm tra lại xung đột lịch phòng trong transaction (mục 3.9). Khi rạp hủy suất: (1) dữ liệu lịch sử — `booking`, `booking_detail`, `ticket`, `payment` liên quan không bị xóa, giữ nguyên trạng thái để truy vết; (2) workflow tự động thông báo khách, đổi lịch hoặc hoàn tiền khi rạp hủy suất chưa được triển khai trong demo (ngoài phạm vi demo, không phải quyết định nghiệp vụ); (3) chính sách về quyền lợi của khách đã thanh toán (hoàn tiền, đổi vé hoặc phương án khác) phải được chủ dự án xác nhận ở tầng nghiệp vụ — việc chưa triển khai workflow không có nghĩa là nghiệp vụ đã quyết định không hoàn tiền, và mô hình này không tự kết luận chính sách đó.
 - Xóa danh mục (movie, genre, seat_type, ticket_type, cinema, cinema_room, role...): ưu tiên soft-delete/chuyển trạng thái ngừng hoạt động (`archived`, `is_active = false`, `status = 'inactive'`) cho danh mục đã được sử dụng. Ngừng hoạt động không đồng nghĩa xóa bản ghi. `booking`, `booking_detail`, `ticket`, `payment` và `payment_event` không bị xóa dây chuyền; mặc định `ON DELETE RESTRICT` cho quan hệ lịch sử và tài chính. Chỉ cho phép xóa vật lý khi không vi phạm FK và chính sách lưu trữ. Không bổ sung audit-log relation nếu chưa có yêu cầu cụ thể.
@@ -722,13 +729,13 @@ Các quy tắc cụ thể:
 - MVP vận hành một cinema nhưng giữ relation `cinema` để sẵn sàng mở rộng nhiều chi nhánh.
 - Booking giữ ghế 5 phút kể từ `booking.created_at`.
 - Không hard-code cutoff 10/15/30 phút trước giờ chiếu; `booking_closes_at` là nullable và chính sách cuối cùng còn cần chốt.
-- Ghế Couple được chốt là một đơn vị bán: `capacity_units = 2`, một `booking_detail` và một ticket duy nhất đại diện cho quyền sử dụng toàn bộ ghế đôi (không tạo hai ticket); giá cơ sở nhân hai, cộng phụ thu ghế một lần, áp dụng giảm giá của loại vé; soát vé xác nhận quyền ghế đôi một lần.
+- Ghế Couple được chốt là một đơn vị bán: `capacity_units = 2`, một `booking_detail` đại diện cho ghế đôi nhưng phát hành 2 vé độc lập (cập nhật theo yêu cầu UX: mỗi người một mã QR, soát riêng; khách đến trễ không bị chặn toàn bộ ghế đôi); giá cơ sở nhân hai, cộng phụ thu ghế một lần, áp dụng giảm giá của loại vé.
 - Một booking có thể chứa nhiều `booking_detail` với các loại vé khác nhau (mỗi detail một ghế, đúng một `ticket_type_id`); backend xác minh điều kiện áp dụng loại vé và tự tính giảm giá; mỗi ghế chỉ có một loại vé trong MVP; không hỗ trợ tách thanh toán theo từng detail.
 - `payment.unknown` biểu thị kết quả chưa xác định; khi `pending`/`unknown` phải đối soát cổng trước khi retry. Nếu nhiều attempt cùng thành công, chỉ một được áp dụng; các attempt còn lại ghi nhận để đối soát.
 - Customer cancellation sau thanh toán, workflow hủy suất bởi rạp (thông báo/đổi lịch/hoàn tiền tự động), reconciliation phức tạp là ngoài phạm vi demo. Chính sách quyền lợi khách đã thanh toán khi rạp hủy suất cần được chủ dự án xác nhận; việc chưa triển khai workflow không đồng nghĩa nghiệp vụ đã quyết định không hoàn tiền.
 - Relation `refund` vẫn được mô hình hóa để giữ khả năng mở rộng, không có nghĩa workflow refund đã được triển khai.
 - Authorization không được suy ra từ việc biết UUID; backend luôn kiểm tra role và quyền sở hữu tài nguyên.
-- Điểm cần chủ dự án xác nhận (chưa có tài liệu yêu cầu quy định): (1) chính sách quyền lợi khách đã thanh toán khi rạp hủy suất (hoàn tiền, đổi vé hoặc phương án khác); (2) có được phép bán vé giảm 100% (vé miễn phí) hay không — mô hình hiện tạm cho phép miền giá trị và chặn booking tổng 0 qua `total_amount > 0` (xem 3.14); (3) cách bảo đảm tính duy nhất của `provider_refund_id` theo provider khi thiết kế schema vật lý — hiện ghi nhận là yêu cầu nghiệp vụ chưa được bảo đảm bằng index, không thêm cột `refund.provider` trong MVP (xem 3.18).
+- Điểm cần chủ dự án xác nhận (chưa có tài liệu yêu cầu quy định): (1) chính sách quyền lợi khách đã thanh toán khi rạp hủy suất (hoàn tiền, đổi vé hoặc phương án khác). Đã chốt: chính sách vé miễn phí — OQ-06 Option B: `unit_price >= 0` cho detail, `booking.total_amount > 0`, `payment.amount > 0`; booking tổng 0 ngoài phạm vi MVP (xem 3.14). Đã chốt: duy nhất `provider_refund_id` theo provider — thêm `refund.provider` khóa bằng FK ghép với `payment(id, provider)` kèm partial unique index (xem 3.18). Đã chốt: cửa sổ chờ giải phóng ghế — grace period sau `expires_at`, worker truy vấn cổng, chưa thu tiền thì ép `failed`/`cancelled` và giải phóng (OQ-07; xem 3.13/9.3).
 
 ## 11. Đối chiếu mô hình
 
@@ -745,7 +752,7 @@ Các quy tắc cụ thể:
 | Composite unique constraint phục vụ FK ghép | 3: `seat(id, cinema_room_id)`, `showtime(id, cinema_room_id)`, `booking(id, showtime_id, cinema_room_id)` — không được tính là candidate key |
 | Giải phóng ghế hết hạn | Worker + xử lý hết hạn trong transaction tạo booking; partial index không phụ thuộc `now()` |
 | Payment idempotency | `merchant_request_id`, UQ-P attempt đang mở, UQ-P payment đã áp dụng (tối đa một payment áp dụng/booking) và `payment_event(payment_id, event_key)` |
-| Phát hành vé idempotent | UQ `ticket.booking_detail_id` |
+| Phát hành vé idempotent | Không còn UQ `ticket.booking_detail_id`; số vé theo detail là bất biến nghiệp vụ do service phát hành idempotent (đếm vé hiện có, chèn phần thiếu) trong transaction áp dụng payment; UQ `ticket_code` |
 
 ## 12. Tài liệu tham chiếu
 
