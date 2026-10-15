@@ -18,7 +18,7 @@ MVP vận hành một chi nhánh nhưng mô hình hỗ trợ nhiều rạp. Bả
 
 ### Điểm cần đồng bộ trước khi viết DDL
 
-Relational model chọn CHECK <code>booking_detail.unit_price &gt;= 0</code>, nhưng giữ <code>booking.total_amount &gt; 0</code>. Database design trước đó ghi giá cuối cùng phải lớn hơn 0 và MVP không xử lý booking miễn phí. Đặc tả này theo lựa chọn mới hơn trong relational model; cần xác nhận và đồng bộ hai tài liệu trước khi triển khai SQL.
+Relational model chọn CHECK <code>booking_detail.unit_price &gt;= 0</code>, nhưng giữ <code>booking.total_amount &gt; 0</code>. Database design trước đó ghi giá cuối cùng phải lớn hơn 0 và MVP không xử lý booking miễn phí. <strong>Đã đồng bộ theo quyết định OQ-06 (Option B — APPROVED):</strong> <code>unit_price &gt;= 0</code> trên từng detail, <code>booking.total_amount &gt; 0</code> và <code>payment.amount &gt; 0</code>; booking có thể chứa detail giá 0 miễn là tổng vẫn dương; booking tổng 0 (miễn phí toàn bộ) nằm ngoài phạm vi MVP và MVP không xây luồng xác nhận không-thanh-toán hay hệ thống khuyến mãi. Backend tính và kiểm tra giá từ dữ liệu server, không tin giá/tổng do client gửi.
 
 ## 2. Bảng và quan hệ
 
@@ -83,7 +83,7 @@ Ràng buộc: <code>uq_genre_code</code>; unique expression index <code>ux_genre
 | <code>movie_id</code> | <code>bigint</code> | Không | — | PK ghép, FK | → <code>movie(id)</code> |
 | <code>genre_id</code> | <code>bigint</code> | Không | — | PK ghép, FK | → <code>genre(id)</code> |
 
-PK <code>(movie_id, genre_id)</code> ngăn gán lặp. FK movie dùng <code>ON DELETE CASCADE</code> chỉ khi phim đủ điều kiện hard delete; FK genre dùng RESTRICT. Index bổ sung: <code>ix_movie_genre_genre_movie(genre_id, movie_id)</code>.
+PK <code>(movie_id, genre_id)</code> ngăn gán lặp. FK movie dùng <code>ON DELETE CASCADE</code> chỉ khi phim đủ điều kiện hard delete. FK genre dùng RESTRICT. Lưu ý PostgreSQL: CASCADE là vô điều kiện trong DDL; an toàn ở đây là bảo vệ gián tiếp — phim đã có lịch không xóa được vì <code>showtime.movie_id</code> dùng RESTRICT, nên CASCADE trên <code>movie_genre.movie_id</code> chỉ có thể kích hoạt trên phim không còn tham chiếu lịch sử. Index bổ sung: <code>ix_movie_genre_genre_movie(genre_id, movie_id)</code>.
 
 ### 3.4. cinema
 
@@ -96,7 +96,7 @@ PK <code>(movie_id, genre_id)</code> ngăn gán lặp. FK movie dùng <code>ON D
 | <code>phone</code> | <code>varchar(30)</code> | Có | NULL | — | Không mặc định duy nhất |
 | <code>status</code> | <code>varchar(20)</code> | Không | <code>active</code> | — | <code>active</code>, <code>inactive</code> |
 
-Ràng buộc: <code>uq_cinema_code</code>; CHECK status và chuỗi bắt buộc không rỗng. Không hard delete rạp đã có phòng/lịch/đơn.
+Ràng buộc: <code>uq_cinema_code</code>; CHECK status và chuỗi bắt buộc không rỗng. Không hard delete rạp đã có phòng/lịch/đơn. Index bổ sung: <code>ix_cinema_room_cinema_id(cinema_id)</code> phục vụ FK cinema và tra cứu phòng theo rạp.
 
 ### 3.5. cinema_room
 
@@ -208,7 +208,7 @@ Ràng buộc: <code>uq_role_code</code>; CHECK code/name không rỗng. Mã seed
 | <code>assigned_at</code> | <code>timestamptz</code> | Không | <code>CURRENT_TIMESTAMP</code> | — | Thời điểm cấp |
 | <code>assigned_by_user_id</code> | <code>bigint</code> | Có | NULL | FK | → <code>app_user(id)</code> |
 
-PK <code>(user_id, role_id)</code> ngăn cấp trùng. FK user_id có thể CASCADE chỉ khi user chưa có dữ liệu lịch sử cần giữ; role_id và assigned_by_user_id dùng RESTRICT. Index bổ sung: <code>ix_user_role_role_user(role_id, user_id)</code>, <code>ix_user_role_assigned_by(assigned_by_user_id)</code>.
+PK <code>(user_id, role_id)</code> ngăn cấp trùng. FK user_id có thể CASCADE chỉ khi user chưa có dữ liệu lịch sử cần giữ. Tương tự FK movie_genre, CASCADE là vô điều kiện trong DDL; an toàn là bảo vệ gián tiếp do <code>booking.user_id</code>, <code>ticket.validated_by_user_id</code> và <code>user_role.assigned_by_user_id</code> dùng RESTRICT, nên tài khoản đã có dữ liệu lịch sử không thể bị xóa vật lý (chỉ `deactivated`). role_id và assigned_by_user_id dùng RESTRICT. Index bổ sung: <code>ix_user_role_role_user(role_id, user_id)</code>, <code>ix_user_role_assigned_by(assigned_by_user_id)</code>.
 
 ### 3.13. booking
 
@@ -234,7 +234,7 @@ PK <code>(user_id, role_id)</code> ngăn cấp trùng. FK user_id có thể CASC
 
 FK user và FK ghép <code>(showtime_id, cinema_room_id) → showtime(id, cinema_room_id)</code> dùng RESTRICT. UNIQUE: booking_code; <code>(user_id, request_key)</code>; <code>(id, showtime_id, cinema_room_id)</code> là UQ kỹ thuật làm đích FK ghép từ detail.
 
-CHECK: total_amount dương; currency VND; expires_at lớn hơn created_at; status hợp lệ; confirmed phải có confirmed_at, pending/expired không có; cancelled phải có cancelled_at và lý do không rỗng, status khác không có trường hủy. Check không thể tính tổng các detail. Transaction tạo booking phải tạo ít nhất một detail và giữ toàn bộ ghế nguyên tử. Hạn giữ là 5 phút từ created_at do service/worker thực thi. Cùng user/request_key nhưng khác fingerprint bị từ chối.
+CHECK: total_amount dương; currency VND; expires_at lớn hơn created_at; status hợp lệ; confirmed phải có confirmed_at, pending/expired không có; cancelled phải có cancelled_at và lý do không rỗng, status khác không có trường hủy. Một booking `cancelled` được phép giữ lại `confirmed_at` nếu trước đó từng được xác nhận (phù hợp `database-design.md` mục 23.1; trong MVP luồng hủy sau xác nhận không tồn tại nên trạng thái này không xảy ra, CHECK vẫn cho phép để mở rộng sau này không phải đổi constraint). Check không thể tính tổng các detail. Transaction tạo booking phải tạo ít nhất một detail và giữ toàn bộ ghế nguyên tử. Hạn giữ là 5 phút từ created_at do service/worker thực thi. Cùng user/request_key nhưng khác fingerprint bị từ chối.
 
 Index bổ sung: <code>ix_booking_user_history(user_id, created_at DESC, id DESC)</code>; <code>ix_booking_showtime_status(showtime_id, status, id)</code>; <code>ix_booking_expiry(expires_at, id) WHERE status = 'pending'</code>.
 
@@ -264,7 +264,7 @@ FK ghép: <code>(booking_id, showtime_id, cinema_room_id) → booking(id, showti
 
 CHECK: capacity_units_snapshot thuộc {1,2}; base_amount dương; surcharge_amount không âm; discount_percent_snapshot từ 0 đến 100; <code>0 &lt;= discount_amount &lt;= base_amount</code>; <code>unit_price &gt;= 0</code> và <code>unit_price = base_amount + surcharge_amount - discount_amount</code>; status hợp lệ; released tương đương released_at có giá trị. Giá snapshot do backend tính, không cập nhật theo danh mục. Giảm giá chỉ áp dụng base_amount; phụ thu tính một lần mỗi detail. Tổng booking được tính trong transaction, không phải CHECK liên bảng.
 
-Index bổ sung: <code>ix_booking_detail_seat_room(seat_id, cinema_room_id)</code>; <code>ix_booking_detail_ticket_type(ticket_type_id)</code>.
+Index bổ sung: <code>ix_booking_detail_seat_room(seat_id, cinema_room_id)</code>; <code>ix_booking_detail_ticket_type(ticket_type_id)</code>; <code>ix_booking_detail_showtime_seat(showtime_id, seat_id)</code> — index toàn phần phục vụ tra cứu mọi detail theo suất (kể cả `released`), kiểm tra RESTRICT khi xóa showtime và làm đường tra cứu cho FK ghép; index partial `ux_booking_detail_active_seat` vẫn giữ vai trò ràng buộc duy nhất, không thay thế index toàn phần này.
 
 ### 3.15. ticket
 
@@ -307,7 +307,14 @@ FK booking_detail và validated_by_user dùng RESTRICT. CHECK status/timestamp: 
 
 FK booking dùng RESTRICT. UNIQUE merchant_request_id. Partial unique indexes: <code>ux_payment_provider_transaction(provider, provider_transaction_id) WHERE provider_transaction_id IS NOT NULL</code>; <code>ux_payment_open_booking(booking_id) WHERE status IN ('created', 'pending', 'unknown')</code>; <code>ux_payment_applied_booking(booking_id) WHERE applied_at IS NOT NULL</code>.
 
-CHECK: amount dương; currency VND; received_amount nếu có thì không âm; status/reconciliation_status hợp lệ; chuỗi bắt buộc không rỗng. Succeeded yêu cầu paid_at, verified_at, received_amount, received_currency và provider_transaction_id. applied_at chỉ được đặt khi succeeded và received_amount/received_currency khớp amount/currency. Đối chiếu amount/currency với booking, điều kiện booking pending và cập nhật booking/detail/ticket là invariant của service transaction.
+CHECK: amount dương; currency VND; received_amount nếu có thì không âm; status/reconciliation_status hợp lệ; chuỗi bắt buộc không rỗng. Succeeded yêu cầu paid_at, verified_at, received_amount, received_currency và provider_transaction_id. Phân bố cột theo trạng thái (CHECK cùng hàng):
+
+- `paid_at` được phép có từ trạng thái `pending`/`unknown` trở đi nếu cổng đã báo thời điểm thu trước khi backend xác minh; không bắt buộc có trên `pending`/`unknown`; không có trên `created` và `failed`/`cancelled` chưa từng thu.
+- `verified_at`, `received_amount`, `received_currency` chỉ được đặt khi `status = 'succeeded'`; các trạng thái khác không có ba cột này.
+- `provider_transaction_id` được phép đặt ngay khi cổng trả về mã giao dịch (kể cả khi payment còn `pending`/`unknown`), để phục vụ đối soát; unique theo provider vẫn chỉ áp dụng khi khác NULL.
+- `applied_at` chỉ được đặt khi `status = 'succeeded'` và `received_amount`/`received_currency` khớp `amount`/`currency`.
+
+Việc cho phép `paid_at`/`provider_transaction_id` xuất hiện trước khi xác minh phản ánh hành vi cổng báo thu sớm; định nghĩa chi tiết lifecycle của cổng cụ thể còn phụ thuộc OQ-01 (OPEN) và có thể cần điều chỉnh khi chọn cổng. Đối chiếu amount/currency với booking, điều kiện booking pending và cập nhật booking/detail/ticket là invariant của service transaction.
 
 Index bổ sung: <code>ix_payment_booking_created(booking_id, created_at DESC)</code>; <code>ix_payment_reconcile_due(next_reconcile_at, id) WHERE status IN ('created', 'pending', 'unknown')</code>; <code>ix_payment_reconciliation_queue(reconciliation_status, created_at, id) WHERE reconciliation_status IN ('needs_review', 'refund_required')</code>; <code>ix_payment_paid_at(paid_at) WHERE status = 'succeeded'</code>.
 
@@ -328,7 +335,7 @@ Index bổ sung: <code>ix_payment_booking_created(booking_id, created_at DESC)</
 | <code>next_retry_at</code> | <code>timestamptz</code> | Có | <code>CURRENT_TIMESTAMP</code> | — | NULL khi không retry |
 | <code>last_error</code> | <code>varchar(500)</code> | Có | NULL | — | Lỗi đã lọc |
 
-FK payment dùng RESTRICT. UNIQUE <code>(payment_id, event_key)</code>; CHECK source/status, retry_count không âm, chuỗi bắt buộc không rỗng và processed tương đương processed_at có giá trị. Event được lưu trước ACK; đánh dấu processed và cập nhật nghiệp vụ phải commit cùng transaction xử lý. Index bổ sung: <code>ix_payment_event_retry(next_retry_at, id) WHERE status IN ('received', 'failed')</code>. Không lưu secret hoặc dữ liệu thẻ trong payload.
+FK payment dùng RESTRICT. UNIQUE <code>(payment_id, event_key)</code>; CHECK source/status, retry_count không âm, chuỗi bắt buộc không rỗng và processed tương đương processed_at có giá trị. Event được lưu trước ACK; đánh dấu processed và cập nhật nghiệp vụ phải commit cùng transaction xử lý. Xử lý đồng thời cùng một event được tuần tự hóa bằng khóa: worker phải claim dòng event bằng `SELECT ... FOR UPDATE` (hoặc `FOR UPDATE SKIP LOCKED` theo protocol khóa mục 31 của database-design) trước khi xử lý; worker không giữ khóa không xử lý được event. Không thêm trạng thái `processing` vào miền `status` hiện tại (`received`, `processed`, `failed`); nếu sau này muốn claim bằng chuyển trạng thái có điều kiện, phải mở rộng miền trạng thái qua migration — quyết định này chưa chốt. Index bổ sung: <code>ix_payment_event_retry(next_retry_at, id) WHERE status IN ('received', 'failed')</code>. Không lưu secret hoặc dữ liệu thẻ trong payload.
 
 ### 3.18. refund
 
@@ -359,7 +366,7 @@ Index bổ sung: <code>ix_refund_retry(next_retry_at, id) WHERE status IN ('pend
 - Service transaction bảo đảm booking có ít nhất một detail; tổng booking bằng tổng snapshot; giá/loại vé do server tính; chuyển trạng thái booking-detail-payment-ticket nguyên tử; expiry/release; xác minh callback và quyền sở hữu.
 - Worker xử lý booking hết hạn, đối soát payment và retry sự kiện. Thời gian trôi qua không tự loại hàng khỏi partial index; không dùng điều kiện index phụ thuộc <code>now()</code>.
 - Không cascade xóa dữ liệu booking/payment/ticket. FK lịch sử dùng RESTRICT; cascade chỉ áp dụng cho relation nối thuần túy như đã nêu.
-- Một ghế có tối đa một detail held/sold trên mỗi suất. Booking pending giữ ghế 5 phút từ created_at; worker/service chuyển booking và detail sang expired/released trong cùng transaction.
+- Một ghế có tối đa một detail held/sold trên mỗi suất. Booking pending giữ ghế 5 phút từ created_at; worker/service chuyển booking và detail sang expired/released trong cùng transaction, chỉ khi booking quá hạn và không còn payment attempt `created`/`pending`/`unknown` cần giữ để xử lý (điều kiện hai phần theo `database/database-design.md` mục 31.5/34.1 và BR-BOOK-004). Thời hạn tối đa của cửa sổ chờ do attempt đang mở gây ra chưa được chốt (OQ-07 — OPEN); việc chốt cửa sổ không thay đổi điều kiện hai phần này.
 - Mỗi booking tối đa một payment attempt created/pending/unknown và tối đa một payment có applied_at. Các attempt succeeded khác vẫn được lưu để tra soát.
 - Callback trùng bị chặn bởi UNIQUE(payment_id, event_key); mỗi booking_detail tối đa một ticket; soát vé bằng cập nhật có điều kiện valid → used.
 

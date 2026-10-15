@@ -146,10 +146,9 @@ flowchart LR
     Booking -.->|include| CreateBooking
     CancelBooking -.->|include| ReleaseSeats
     Payment -.->|successful and verified| ConfirmBooking
-    Payment -.->|definitively failed/cancelled| ReleaseSeats
 ```
 
-**Lưu ý:** Sơ đồ trên là mô hình chức năng ở mức tổng quan. Booking chỉ giữ ghế và tạo trạng thái pending; Payment là giao dịch độc lập; Ticket chỉ được phát hành sau payment được xác minh thành công. Payment pending/unknown không được giải phóng ghế hoặc cho phép bán xung đột. Nếu kết quả vẫn chưa rõ sau khi hết hạn, việc reconciliation nâng cao là **OUT OF SCOPE — DEMO**.
+**Lưu ý:** Sơ đồ trên là mô hình chức năng ở mức tổng quan. Booking chỉ giữ ghế và tạo trạng thái pending; Payment là giao dịch độc lập; Ticket chỉ được phát hành sau payment được xác minh thành công. Payment `failed`/`cancelled` **không** trực tiếp giải phóng ghế: booking vẫn `pending` nếu còn hạn và ghế vẫn `held` (khách có thể thử lại); ghế chỉ được giải phóng khi khách hủy booking pending hoặc worker hết hạn — hết hạn chỉ chuyển `expired` + `released` khi booking quá hạn và không còn payment `created`/`pending`/`unknown` (`database-design.md` mục 31.5/34.1, BR-BOOK-004). Payment pending/unknown không được giải phóng ghế hoặc cho phép bán xung đột. Nếu kết quả vẫn chưa rõ sau khi hết hạn, việc reconciliation nâng cao là **OUT OF SCOPE — DEMO**.
 
 ### 1.5. Mô tả các Use Case quan trọng
 

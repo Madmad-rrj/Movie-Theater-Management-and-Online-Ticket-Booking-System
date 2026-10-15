@@ -506,7 +506,7 @@ Có thể triển khai bản đầu chỉ với `ADULT` giảm 0%. Danh mục kh
 | `surcharge_amount`          | `numeric(14,0)` NN, CHECK >= 0               | Phụ thu ghế bằng VND trên đơn vị bán |
 | `discount_percent_snapshot` | `numeric(5,2)` NN, CHECK BETWEEN 0 AND 100 | Tỷ lệ giảm đã áp dụng          |
 | `discount_amount`           | `numeric(14,0)` NN, CHECK >= 0               | Số tiền giảm bằng VND sau làm tròn |
-| `unit_price`                | `numeric(14,0)` NN, CHECK > 0                | Giá cuối cùng bằng VND của đơn vị bán |
+| `unit_price`                | `numeric(14,0)` NN, CHECK >= 0               | Giá cuối cùng bằng VND của đơn vị bán; được phép bằng 0 (decision OQ-06, Option B) |
 | `allocation_status`         | `varchar(20)` NN, DEFAULT `'held'`       | `held`, `sold`, `released`      |
 | `released_at`               | `timestamptz` NULL                         | Thời điểm giải phóng             |
 
@@ -520,7 +520,7 @@ unit_price      = base_amount + surcharge_amount - discount_amount
 booking.total_amount = tổng unit_price của các detail
 ```
 
-CHECK cùng hàng: `discount_amount <= base_amount`, công thức làm tròn giảm giá và công thức `unit_price`. Giá cuối cùng phải > 0; bản đầu không xử lý booking miễn phí. Các giá trị snapshot được backend tính từ danh mục đang có hiệu lực trong transaction tạo booking.
+CHECK cùng hàng: `discount_amount <= base_amount`, công thức làm tròn giảm giá và công thức `unit_price`. **Quyết định OQ-06 (đã chốt — Option B):** `unit_price >= 0` — một detail được phép có giá 0 (ví dụ giảm 100% trên detail đó), nhưng `booking.total_amount > 0` nên booking gồm toàn vé giá 0 (tổng 0) vẫn bị chặn ở mức booking; booking tổng 0 nằm ngoài phạm vi MVP. MVP không cần hệ thống quản lý khuyến mãi hay luồng giảm 100% hoàn chỉnh — hỗ trợ mức database cho detail giá 0 không đồng nghĩa triển khai luồng vé miễn phí; backend vẫn tính và kiểm tra giá từ dữ liệu server, không tin giá/tổng do client gửi. Các giá trị snapshot được backend tính từ danh mục đang có hiệu lực trong transaction tạo booking.
 
 ### 13.2. Quan hệ và phân bổ ghế
 
