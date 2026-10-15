@@ -43,7 +43,7 @@ Relational model chọn CHECK <code>booking_detail.unit_price &gt;= 0</code>, nh
 | <code>payment_event</code> | Callback/kết quả đối soát | <code>id</code> |
 | <code>refund</code> | Cấu trúc mở rộng cho một yêu cầu hoàn/payment | <code>id</code> |
 
-Movie–Genre và AppUser–Role là M:N qua bảng nối. Cinema–CinemaRoom, CinemaRoom–Seat, Movie–Showtime, Booking–Payment và Payment–PaymentEvent là 1:N. Booking–BookingDetail là 1:N; mỗi booking phải có ít nhất một detail do transaction bảo đảm. BookingDetail–Ticket và Payment–Refund là 1:0..1 nhờ UNIQUE.
+Movie–Genre và AppUser–Role là M:N qua bảng nối. Cinema–CinemaRoom, CinemaRoom–Seat, Movie–Showtime, Booking–Payment và Payment–PaymentEvent là 1:N. Booking–BookingDetail là 1:N; mỗi booking phải có ít nhất một detail do transaction bảo đảm. BookingDetail–Ticket là 1:0..N — mỗi detail phát hành đúng <code>capacity_units_snapshot</code> ticket (1 cho ghế thường, 2 cho ghế Couple); Payment–Refund là 1:0..1 nhờ UNIQUE payment_id.
 
 ## 3. Đặc tả từng bảng
 
@@ -271,7 +271,7 @@ Index bổ sung: <code>ix_booking_detail_seat_room(seat_id, cinema_room_id)</cod
 | Cột | Kiểu PostgreSQL | NULL? | Mặc định | Khóa/duy nhất | CHECK / ghi chú |
 |---|---|---:|---|---|---|
 | <code>id</code> | <code>bigint GENERATED ALWAYS AS IDENTITY</code> | Không | Identity | PK | — |
-| <code>booking_detail_id</code> | <code>bigint</code> | Không | — | UQ, FK | → <code>booking_detail(id)</code>; tối đa một vé/detail |
+| <code>booking_detail_id</code> | <code>bigint</code> | Không | — | FK | → <code>booking_detail(id)</code>; mỗi detail phát hành đúng <code>capacity_units_snapshot</code> vé |
 | <code>ticket_code</code> | <code>uuid</code> | Không | — | UQ | Backend sinh mã |
 | <code>status</code> | <code>varchar(20)</code> | Không | <code>valid</code> | — | <code>valid</code>, <code>used</code>, <code>voided</code> |
 | <code>issued_at</code> | <code>timestamptz</code> | Không | — | — | Thời điểm phát hành |
@@ -280,7 +280,7 @@ Index bổ sung: <code>ix_booking_detail_seat_room(seat_id, cinema_room_id)</cod
 | <code>voided_at</code> | <code>timestamptz</code> | Có | NULL | — | Thời điểm vô hiệu hóa |
 | <code>void_reason</code> | <code>text</code> | Có | NULL | — | Lý do vô hiệu |
 
-FK booking_detail và validated_by_user dùng RESTRICT. CHECK status/timestamp: valid không có mốc dùng/hủy; used có used_at và validated_by_user_id, không có dữ liệu hủy; voided có voided_at và lý do không rỗng, không có used_at. Vé used không được void theo quy tắc hiện tại. Index bổ sung: <code>ix_ticket_validated_by_user(validated_by_user_id)</code>.
+FK booking_detail và validated_by_user dùng RESTRICT; không còn UNIQUE trên booking_detail_id — số vé theo detail là bất biến nghiệp vụ: mỗi detail phát hành đúng <code>capacity_units_snapshot</code> vé (1 ghế thường = 1 vé, ghế Couple = 2 vé độc lập, mỗi người soát vé riêng). Idempotency phát hành do service bảo đảm trong transaction áp dụng payment (đếm vé hiện có của detail, chỉ chèn phần thiếu). CHECK status/timestamp: valid không có mốc dùng/hủy; used có used_at và validated_by_user_id, không có dữ liệu hủy; voided có voided_at và lý do không rỗng, không có used_at. Vé used không được void theo quy tắc hiện tại. Index bổ sung: <code>ix_ticket_validated_by_user(validated_by_user_id)</code>; <code>ix_ticket_booking_detail(booking_detail_id)</code> phục vụ tra cứu/đếm vé theo detail (trước đây do UQ đảm nhiệm).
 
 ### 3.16. payment
 
@@ -305,7 +305,7 @@ FK booking_detail và validated_by_user dùng RESTRICT. CHECK status/timestamp: 
 | <code>next_reconcile_at</code> | <code>timestamptz</code> | Có | <code>CURRENT_TIMESTAMP</code> | — | NULL khi không còn retry |
 | <code>created_at</code> | <code>timestamptz</code> | Không | <code>CURRENT_TIMESTAMP</code> | — | Thời điểm tạo attempt |
 
-FK booking dùng RESTRICT. UNIQUE merchant_request_id. Partial unique indexes: <code>ux_payment_provider_transaction(provider, provider_transaction_id) WHERE provider_transaction_id IS NOT NULL</code>; <code>ux_payment_open_booking(booking_id) WHERE status IN ('created', 'pending', 'unknown')</code>; <code>ux_payment_applied_booking(booking_id) WHERE applied_at IS NOT NULL</code>.
+FK booking dùng RESTRICT. UNIQUE merchant_request_id; UQ kỹ thuật <code>(id, provider)</code> làm đích FK ghép từ refund. Partial unique indexes: <code>ux_payment_provider_transaction(provider, provider_transaction_id) WHERE provider_transaction_id IS NOT NULL</code>; <code>ux_payment_open_booking(booking_id) WHERE status IN ('created', 'pending', 'unknown')</code>; <code>ux_payment_applied_booking(booking_id) WHERE applied_at IS NOT NULL</code>.
 
 CHECK: amount dương; currency VND; received_amount nếu có thì không âm; status/reconciliation_status hợp lệ; chuỗi bắt buộc không rỗng. Succeeded yêu cầu paid_at, verified_at, received_amount, received_currency và provider_transaction_id. Phân bố cột theo trạng thái (CHECK cùng hàng):
 
@@ -345,6 +345,7 @@ Bảng này là cấu trúc mở rộng, không phải luồng MVP.
 |---|---|---:|---|---|---|
 | <code>id</code> | <code>bigint GENERATED ALWAYS AS IDENTITY</code> | Không | Identity | PK | — |
 | <code>payment_id</code> | <code>bigint</code> | Không | — | UQ, FK | → <code>payment(id)</code>; tối đa một refund/payment |
+| <code>provider</code> | <code>varchar(30)</code> | Không | — | FK ghép, UQ-P | → <code>payment(id, provider)</code>; khớp provider của payment (phi chuẩn hóa có kiểm soát) |
 | <code>merchant_refund_id</code> | <code>uuid</code> | Không | — | UQ | Backend sinh idempotency key |
 | <code>provider_refund_id</code> | <code>varchar(150)</code> | Có | NULL | — | Mã do provider cấp |
 | <code>amount</code> | <code>numeric(18,2)</code> | Không | — | — | Lớn hơn 0 |
@@ -356,9 +357,9 @@ Bảng này là cấu trúc mở rộng, không phải luồng MVP.
 | <code>next_retry_at</code> | <code>timestamptz</code> | Có | <code>CURRENT_TIMESTAMP</code> | — | NULL khi không retry |
 | <code>last_error</code> | <code>varchar(500)</code> | Có | NULL | — | Lỗi đã lọc |
 
-FK payment và requested_by_user dùng RESTRICT. UNIQUE payment_id và merchant_refund_id; CHECK amount dương, status hợp lệ, chuỗi bắt buộc không rỗng và succeeded tương đương completed_at có giá trị.
+FK ghép <code>(payment_id, provider) → payment(id, provider)</code> dùng RESTRICT bảo đảm <code>refund.provider = payment.provider</code> mà không cần trigger; requested_by_user dùng RESTRICT. UNIQUE payment_id (tối đa một refund/payment) và merchant_refund_id; CHECK amount dương, status hợp lệ, chuỗi bắt buộc không rỗng và succeeded tương đương completed_at có giá trị.
 
-Index bổ sung: <code>ix_refund_retry(next_retry_at, id) WHERE status IN ('pending', 'unknown', 'failed')</code>; <code>ix_refund_requested_by(requested_by_user_id)</code>; <code>ix_refund_completed_at(completed_at) WHERE status = 'succeeded'</code>. Tính duy nhất của provider_refund_id theo provider chưa enforce được bằng index vì provider chỉ nằm ở payment; hiện để service kiểm tra hoặc thay đổi mô hình ở bước sau.
+Index bổ sung: partial unique index <code>ux_refund_provider_refund_id(provider, provider_refund_id) WHERE provider_refund_id IS NOT NULL</code> — bảo đảm duy nhất theo provider; nhờ cột <code>provider</code> được khóa bằng FK ghép với <code>payment.provider</code>, không có rủi ro lệch dữ liệu giữa hai cột; <code>ix_refund_retry(next_retry_at, id) WHERE status IN ('pending', 'unknown', 'failed')</code>; <code>ix_refund_requested_by(requested_by_user_id)</code>; <code>ix_refund_completed_at(completed_at) WHERE status = 'succeeded'</code>.
 
 ## 4. Toàn vẹn xuyên bảng
 
@@ -366,9 +367,10 @@ Index bổ sung: <code>ix_refund_retry(next_retry_at, id) WHERE status IN ('pend
 - Service transaction bảo đảm booking có ít nhất một detail; tổng booking bằng tổng snapshot; giá/loại vé do server tính; chuyển trạng thái booking-detail-payment-ticket nguyên tử; expiry/release; xác minh callback và quyền sở hữu.
 - Worker xử lý booking hết hạn, đối soát payment và retry sự kiện. Thời gian trôi qua không tự loại hàng khỏi partial index; không dùng điều kiện index phụ thuộc <code>now()</code>.
 - Không cascade xóa dữ liệu booking/payment/ticket. FK lịch sử dùng RESTRICT; cascade chỉ áp dụng cho relation nối thuần túy như đã nêu.
-- Một ghế có tối đa một detail held/sold trên mỗi suất. Booking pending giữ ghế 5 phút từ created_at; worker/service chuyển booking và detail sang expired/released trong cùng transaction, chỉ khi booking quá hạn và không còn payment attempt `created`/`pending`/`unknown` cần giữ để xử lý (điều kiện hai phần theo `database/database-design.md` mục 31.5/34.1 và BR-BOOK-004). Thời hạn tối đa của cửa sổ chờ do attempt đang mở gây ra chưa được chốt (OQ-07 — OPEN); việc chốt cửa sổ không thay đổi điều kiện hai phần này.
+- Một ghế có tối đa một detail held/sold trên mỗi suất. Booking pending giữ ghế 5 phút từ created_at; worker/service chuyển booking và detail sang expired/released trong cùng transaction, chỉ khi booking quá hạn và không còn payment attempt `created`/`pending`/`unknown` cần giữ để xử lý (điều kiện hai phần theo `database/database-design.md` mục 31.5/34.1 và BR-BOOK-004). Cửa sổ chờ bị chặn bởi grace period (OQ-07 — RESOLVED, chính sách): sau khi quá <code>expires_at</code> thêm một khoảng ân hạn (đề xuất 2–3 phút, giá trị chính xác là cấu hình triển khai), worker truy vấn trạng thái cổng; nếu cổng xác nhận chưa thu tiền, payment chuyển `failed`/`cancelled` và booking chuyển `expired` + detail `released` trong cùng transaction; nếu cổng không phản hồi xác đáng, payment giữ `unknown` và `reconciliation_status` sang `needs_review` — ghế vẫn giữ (ưu tiên an toàn tài chính), worker tiếp tục retry đối soát.
 - Mỗi booking tối đa một payment attempt created/pending/unknown và tối đa một payment có applied_at. Các attempt succeeded khác vẫn được lưu để tra soát.
-- Callback trùng bị chặn bởi UNIQUE(payment_id, event_key); mỗi booking_detail tối đa một ticket; soát vé bằng cập nhật có điều kiện valid → used.
+- Callback trùng bị chặn bởi UNIQUE(payment_id, event_key); mỗi booking_detail phát hành đúng capacity_units_snapshot ticket (ghế Couple = 2 vé riêng, mỗi người soát riêng); soát vé bằng cập nhật có điều kiện valid → used trên từng vé.
+- Mã provider_refund_id duy nhất theo provider được bảo đảm trực tiếp bằng refund.provider (FK ghép với payment(id, provider)) và partial unique index ux_refund_provider_refund_id.
 
 ## 5. Chuẩn hóa và snapshot
 
