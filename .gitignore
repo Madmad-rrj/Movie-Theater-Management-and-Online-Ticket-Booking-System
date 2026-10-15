@@ -1,0 +1,64 @@
+# ==============================
+# .NET / ASP.NET Core
+# ==============================
+**/bin/
+**/obj/
+**/Debug/
+**/Release/
+.vs/
+*.user
+*.suo
+*.cache
+
+# ==============================
+# Node.js / React / Vite
+# ==============================
+**/node_modules/
+**/dist/
+**/.vite/
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# ==============================
+# Environment variables / Secrets
+# ==============================
+.env
+.env.*
+!.env.example
+!.env.sample
+secrets.json
+**/secrets.json
+
+# ==============================
+# IDE / Editor
+# ==============================
+.idea/
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+
+# ==============================
+# OS
+# ==============================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ==============================
+# Logs / Temporary files
+# ==============================
+*.log
+*.tmp
+*.temp
+
+# ==============================
+# Test / Coverage outputs
+# ==============================
+**/TestResults/
+**/coverage/
+
+# ==============================
+# Personal identity — do not commit
+# ==============================
+**/identity.md
