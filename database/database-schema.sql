@@ -107,6 +107,7 @@ CREATE TABLE cinema_room (
     CONSTRAINT ck_cinema_room_status CHECK (status IN ('active', 'maintenance', 'inactive'))
 );
 CREATE UNIQUE INDEX ux_cinema_room_name_normalized ON cinema_room (cinema_id, lower(btrim(name)));
+CREATE INDEX ix_cinema_room_cinema_id ON cinema_room (cinema_id);
 
 CREATE TABLE seat_type (
     id                bigint GENERATED ALWAYS AS IDENTITY,
@@ -354,6 +355,7 @@ CREATE UNIQUE INDEX ux_booking_detail_active_seat
     ON booking_detail (showtime_id, seat_id) WHERE allocation_status IN ('held', 'sold');
 CREATE INDEX ix_booking_detail_seat_room ON booking_detail (seat_id, cinema_room_id);
 CREATE INDEX ix_booking_detail_ticket_type ON booking_detail (ticket_type_id);
+CREATE INDEX ix_booking_detail_showtime_seat ON booking_detail (showtime_id, seat_id);
 
 -- =====================================================================
 -- 6. VE
@@ -369,7 +371,6 @@ CREATE TABLE ticket (
     voided_at             timestamptz,
     void_reason           text,
     CONSTRAINT pk_ticket PRIMARY KEY (id),
-    CONSTRAINT uq_ticket_booking_detail UNIQUE (booking_detail_id),   -- toi da 1 ve / detail
     CONSTRAINT uq_ticket_code UNIQUE (ticket_code),
     CONSTRAINT fk_ticket_booking_detail FOREIGN KEY (booking_detail_id) REFERENCES booking_detail (id)
         ON UPDATE RESTRICT ON DELETE RESTRICT,
@@ -392,6 +393,7 @@ CREATE TABLE ticket (
     )
 );
 CREATE INDEX ix_ticket_validated_by_user ON ticket (validated_by_user_id);
+CREATE INDEX ix_ticket_booking_detail ON ticket (booking_detail_id);
 
 -- =====================================================================
 -- 7. THANH TOAN
@@ -433,6 +435,7 @@ CREATE TABLE payment (
             AND received_currency IS NOT NULL
             AND provider_transaction_id IS NOT NULL)
     ),
+    CONSTRAINT uq_payment_id_provider UNIQUE (id, provider),   -- dich FK ghep tu refund
     CONSTRAINT ck_payment_applied CHECK (
         applied_at IS NULL
         OR (status = 'succeeded'
@@ -484,6 +487,7 @@ CREATE INDEX ix_payment_event_retry
 CREATE TABLE refund (
     id                    bigint GENERATED ALWAYS AS IDENTITY,
     payment_id            bigint        NOT NULL,
+    provider              varchar(30)   NOT NULL,               -- khop provider cua payment (FK ghep)
     merchant_refund_id    uuid          NOT NULL,
     provider_refund_id    varchar(150),
     amount                numeric(18,2) NOT NULL,
@@ -497,7 +501,7 @@ CREATE TABLE refund (
     CONSTRAINT pk_refund PRIMARY KEY (id),
     CONSTRAINT uq_refund_payment UNIQUE (payment_id),               -- toi da 1 refund / payment
     CONSTRAINT uq_refund_merchant_refund_id UNIQUE (merchant_refund_id),
-    CONSTRAINT fk_refund_payment FOREIGN KEY (payment_id) REFERENCES payment (id)
+    CONSTRAINT fk_refund_payment FOREIGN KEY (payment_id, provider) REFERENCES payment (id, provider)
         ON UPDATE RESTRICT ON DELETE RESTRICT,
     CONSTRAINT fk_refund_requested_by_user FOREIGN KEY (requested_by_user_id) REFERENCES app_user (id)
         ON UPDATE RESTRICT ON DELETE RESTRICT,
@@ -507,6 +511,8 @@ CREATE TABLE refund (
     CONSTRAINT ck_refund_status CHECK (status IN ('pending', 'unknown', 'succeeded', 'failed')),
     CONSTRAINT ck_refund_completed CHECK ((status = 'succeeded') = (completed_at IS NOT NULL))
 );
+CREATE UNIQUE INDEX ux_refund_provider_refund_id
+    ON refund (provider, provider_refund_id) WHERE provider_refund_id IS NOT NULL;
 CREATE INDEX ix_refund_retry ON refund (next_retry_at, id) WHERE status IN ('pending', 'unknown', 'failed');
 CREATE INDEX ix_refund_requested_by ON refund (requested_by_user_id);
 CREATE INDEX ix_refund_completed_at ON refund (completed_at) WHERE status = 'succeeded';
