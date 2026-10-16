@@ -3,7 +3,7 @@
 ```text
 Movie Theater Management and Online Ticket Booking System/
 │
-├── AGENT.md                               # Hướng dẫn làm việc cho AI Agent trong dự án
+├── AGENTS.md                               # Hướng dẫn làm việc cho AI Agent trong dự án
 ├── docker-compose.yml                     # Cấu hình chạy các service bằng Docker
 ├── .gitignore                             # Danh sách file/thư mục bị Git bỏ qua
 ├── PROJECT_STRUCTURE.md                   # Mô tả cấu trúc thư mục và mục đích từng thành phần
@@ -26,7 +26,7 @@ Movie Theater Management and Online Ticket Booking System/
 │   │
 │   ├── management/                        # Tài liệu quản lý dự án và quy trình làm việc
 │   │   ├── git-workflow.md                # Quy tắc branch, commit, pull request và merge
-│   │   └── AGENT_LOG/                     # Log làm việc của từng AI Agent/thành viên
+│   │   └── ai-usage/                     # Log làm việc của từng AI Agent/thành viên
 │   │       ├── 0098.md                    # Log làm việc của agent 0098
 │   │       ├── 0235.md                    # Log làm việc của agent 0235
 │   │       ├── 0244.md                    # Log làm việc của agent 0244
@@ -80,7 +80,7 @@ Movie Theater Management and Online Ticket Booking System/
 
 | File                               | Mục đích chính                                                                           | Vị trí hiện tại                   |
 | ---------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------- |
-| `AGENT.md`                         | Hướng dẫn làm việc cho AI Agent (phạm vi, quy trình, quy tắc code)                       | Root                              |
+| `AGENTS.md`                         | Hướng dẫn làm việc cho AI Agent (phạm vi, quy trình, quy tắc code)                       | Root                              |
 | `README.md`                        | Giới thiệu dự án, công nghệ, yêu cầu môi trường và hướng dẫn chạy                        | Root                              |
 | `PROJECT_STRUCTURE.md`             | Giải thích cấu trúc repository                                                           | Root                              |
 | `database-design.md`               | Lý do lựa chọn thiết kế, quy tắc nghiệp vụ dữ liệu, tính toàn vẹn, concurrency và các quyết định thiết kế                              | `database/`                       |
