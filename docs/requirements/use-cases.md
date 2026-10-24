@@ -84,6 +84,7 @@ Bảng dưới đây tổng hợp các Use Case trong hệ thống theo nhóm ng
 | **Quản lý vé** | Xem vé và mã QR; Gửi vé qua Email | Customer, hệ thống | Tham chiếu yêu cầu nghiệp vụ liên quan. Việc phát hành và gửi vé phải tuân thủ điều kiện sau commit được quy định tại `database/database-design.md`, Mục 31.4. |
 | **Soát vé** | **UC-05: Soát vé tại rạp (Validate Ticket)** | Staff | **Đặc tả chi tiết tại tài liệu này.** |
 | **Quản trị hệ thống** | Quản lý phim, rạp, phòng chiếu, ghế, suất chiếu, người dùng và vai trò | Admin; Manager theo quyền được xác định | Tham chiếu các yêu cầu `FR-MGT-*`, `BR-ROOM-*`, `BR-ST-*` và các quyết định phân quyền tại `OQ-04`. |
+| **Hỗ trợ và tư vấn khách hàng** | **UC-11: Trò chuyện với Promethe-Nous (Chat with Promethe-Nous)** | Customer; hệ thống chatbot và các nguồn dữ liệu được phê duyệt | **Đặc tả chi tiết tại tài liệu này.** Tra cứu/xếp hạng phim, phân tích doanh thu từ nguồn có dữ liệu, gợi ý phim và hướng dẫn lịch chiếu/đặt vé. Không tự thay đổi booking, payment, ghế hoặc ticket. |
 
 ### 3.1. Luồng Customer đặt vé
 
@@ -100,7 +101,7 @@ Luồng trên mô tả tương tác giao diện và liên kết các Use Case. C
 
 ### 3.2. Quy ước phạm vi đặc tả
 
-- **Đặc tả chi tiết:** UC-01, UC-02, UC-03, UC-04, UC-04A, UC-05, UC-06, UC-07, UC-08, UC-09 và UC-10 có luồng xử lý chi tiết trong tài liệu này.
+- **Đặc tả chi tiết:** UC-01, UC-02, UC-03, UC-04, UC-04A, UC-05, UC-06, UC-07, UC-08, UC-09, UC-10 và UC-11 có luồng xử lý chi tiết trong tài liệu này.
 - **Tham chiếu:** Các nghiệp vụ xem sơ đồ ghế, đăng ký tài khoản, quản trị user/role, quản lý vé và CRUD quản trị được dẫn chiếu đến tài liệu yêu cầu hoặc thiết kế tương ứng. Không xem việc liệt kê trong bảng là bằng chứng rằng nghiệp vụ đã có đặc tả chi tiết đầy đủ.
 - **Phân quyền:** Customer, Staff, Manager và Admin là các nhóm tác nhân khác nhau. Quyền thực hiện từng nghiệp vụ phải tuân theo quyết định phân quyền đã thống nhất; không mặc định Manager có quyền thực hiện mọi nghiệp vụ đối soát hoặc hoàn tiền khi `OQ-04` chưa được chốt.
 - **Phạm vi demo:** UC-04A và luồng đối soát tài chính tự động đối với payment thành công đến muộn nằm ngoài phạm vi demo theo `business-system-analysis.md`, Mục 3.1. UC-04/UC-04A vẫn được mô tả để xác định hợp đồng hành vi và cách sử dụng mô hình dữ liệu hiện có (`refund`, `payment.reconciliation_status`). Việc đặc tả không đồng nghĩa với cam kết triển khai đầy đủ cơ chế đối soát hoặc thực thi hoàn tiền trong demo.
@@ -1297,7 +1298,131 @@ Cho phép Customer xem các booking, payment, booking detail và ticket thuộc 
 
 ---
 
-## 15. Tính nhất quán giữa các UC (Cross-UC lifecycle)
+## 15. UC-11: Trò chuyện với Promethe-Nous (Chat with Promethe-Nous)
+
+### 15.1. Mục tiêu
+
+Cho phép Customer đặt câu hỏi bằng ngôn ngữ tự nhiên để tra cứu và xếp hạng phim, xem thông tin doanh thu khi có nguồn dữ liệu phù hợp, nhận gợi ý phim và được hướng dẫn về lịch chiếu, giá vé và quy trình đặt vé. Promethe-Nous phải tạo câu trả lời dựa trên dữ liệu truy xuất được, nêu rõ phạm vi và thời điểm dữ liệu khi cần thiết, đồng thời thông báo khi dữ liệu không có hoặc không đủ căn cứ.
+
+UC này cung cấp thông tin và hướng dẫn; bản thân chatbot không xác nhận thanh toán, tạo booking, giữ ghế, hủy booking, phát hành vé hoặc thay đổi trạng thái nghiệp vụ.
+
+### 15.2. Tác nhân
+
+- **Tác nhân chính:** Customer.
+- **Tác nhân phụ:** Promethe-Nous chatbot service; Backend API; cơ sở dữ liệu phim và lịch chiếu; nguồn dữ liệu doanh thu/xếp hạng bên ngoài được phê duyệt; kho tri thức hướng dẫn đặt vé; dịch vụ hỗ trợ khách hàng nếu được tích hợp.
+- **Tác nhân được phân quyền riêng:** Staff, Manager hoặc Admin chỉ được truy cập báo cáo nội bộ nếu chức năng đó được phê duyệt và có cơ chế xác thực/phân quyền riêng. Báo cáo doanh thu nội bộ không thuộc phạm vi Customer của UC này.
+
+### 15.3. Trigger
+
+Customer mở giao diện Promethe-Nous và gửi một câu hỏi hoặc yêu cầu tư vấn về phim, doanh thu, đề xuất phim, lịch chiếu, giá vé hoặc quy trình đặt vé.
+
+### 15.4. Tiền điều kiện
+
+1. Giao diện chatbot và dịch vụ xử lý hội thoại có thể truy cập.
+2. Hệ thống có ít nhất một nguồn dữ liệu hoặc kho tri thức phù hợp với loại câu hỏi. Nguồn bên ngoài chỉ được sử dụng nếu đã được tích hợp và phê duyệt.
+3. Với thông tin nội bộ như lịch chiếu, giá vé và trạng thái booking của chính Customer, chatbot phải truy xuất từ nguồn chính thức của hệ thống; không suy diễn từ nội dung hội thoại hoặc dữ liệu cũ.
+4. Customer không cần đăng nhập để hỏi thông tin phim công khai và nhận gợi ý chung. Nếu yêu cầu cần dữ liệu cá nhân, lịch sử booking hoặc chức năng giới hạn theo vai trò, Customer phải được xác thực và Backend phải kiểm tra quyền truy cập.
+5. Dữ liệu về doanh thu, số vé bán, lượt xem và điểm đánh giá phải được phân biệt theo định nghĩa và nguồn tương ứng. Nếu nguồn không cung cấp một chỉ số, chatbot không được thay thế chỉ số đó bằng chỉ số khác.
+
+### 15.5. Luồng chính
+
+1. **[Customer]** Mở Promethe-Nous và gửi câu hỏi.
+2. Hệ thống tiếp nhận câu hỏi, xác định ý định, phim/thực thể được nhắc đến, thị trường, khoảng thời gian và chỉ số mà Customer muốn biết.
+3. Hệ thống xác định nhóm yêu cầu và nguồn dữ liệu phù hợp:
+   - Tra cứu phim, danh sách phim và xếp hạng.
+   - Phân tích doanh thu phim theo thị trường và khoảng thời gian.
+   - Gợi ý phim theo sở thích hoặc tiêu chí được nêu.
+   - Tra cứu lịch chiếu, giá vé và hướng dẫn đặt vé.
+4. Hệ thống truy xuất dữ liệu từ nguồn phù hợp. Dữ liệu phim và lịch chiếu nội bộ được lấy từ API/Database chính thức; dữ liệu doanh thu, xếp hạng hoặc đánh giá bên ngoài chỉ được lấy từ nguồn đã tích hợp và được phê duyệt.
+5. Hệ thống xử lý câu hỏi theo nhóm:
+   - **Tra cứu và xếp hạng phim:** có thể trả lời phim đang chiếu nào có doanh thu phòng vé toàn cầu cao nhất, Top 10 phim theo doanh thu trong phạm vi được chỉ định, phim dẫn đầu doanh thu cuối tuần hoặc phim có điểm đánh giá khán giả cao nhất khi có dữ liệu đủ căn cứ. Câu hỏi “được xem nhiều nhất tại Việt Nam” chỉ được trả lời theo lượt xem hoặc số vé bán nếu nguồn thực sự cung cấp chỉ số đó; không tự coi doanh thu là lượt xem.
+   - **Phân tích doanh thu:** có thể tra cứu doanh thu hiện tại, doanh thu ngày đầu, cuối tuần mở màn hoặc tuần đầu, so sánh doanh thu trong nước với toàn cầu và mức tăng trưởng theo kỳ. Hệ thống phải xác định hoặc làm rõ thị trường, khoảng thời gian, đơn vị tiền tệ và định nghĩa chỉ số. “Tuần đầu” không được tự động đồng nhất với “cuối tuần mở màn” hoặc tuần dương lịch.
+   - **Gợi ý phim:** lọc hoặc xếp hạng các phim dựa trên dữ liệu sẵn có như thể loại, thời lượng, phân loại độ tuổi, mô tả và nội dung đánh giá. Ví dụ: phim kinh dị đang chiếu, phim tương tự *Interstellar*, phim phù hợp cho gia đình hoặc phim dưới hai giờ.
+   - **Lịch chiếu và hướng dẫn đặt vé:** truy vấn lịch chiếu hiện hành, lọc suất chiếu theo thời gian như sau 19:00, trả lời giá vé từ nguồn chính thức và hướng dẫn các bước chọn suất, chọn ghế và checkout. Việc hiển thị lịch chiếu hoặc sơ đồ ghế không bảo đảm ghế vẫn khả dụng; Backend vẫn là nguồn xác nhận khi Customer thực hiện UC-01.
+6. Hệ thống tạo câu trả lời bằng ngôn ngữ tự nhiên, nêu tiêu chí xếp hạng, thị trường, kỳ báo cáo, đơn vị tiền tệ, thời điểm cập nhật và nguồn dữ liệu khi các thông tin này có ý nghĩa đối với kết quả.
+7. **[Customer]** Đọc câu trả lời và có thể đặt câu hỏi tiếp theo trong cùng cuộc hội thoại.
+8. Hệ thống xử lý câu hỏi tiếp theo với ngữ cảnh cần thiết, nhưng vẫn truy xuất lại dữ liệu thay đổi theo thời gian như lịch chiếu, giá vé và trạng thái booking.
+9. **[Customer]** Kết thúc hội thoại hoặc rời giao diện chatbot.
+
+### 15.6. Luồng thay thế và ngoại lệ
+
+- **A1 — Câu hỏi chưa đủ rõ:** Nếu thiếu tiêu chí ảnh hưởng đáng kể đến kết quả, chẳng hạn thị trường, khoảng thời gian, “doanh thu” hay “lượt xem”, hệ thống hỏi lại hoặc nêu rõ giả định trước khi trả lời. Không âm thầm chọn một định nghĩa gây hiểu nhầm.
+- **A2 — Không có nguồn dữ liệu cho chỉ số được hỏi:** Hệ thống thông báo không có dữ liệu đáng tin cậy để xác nhận. Có thể cung cấp chỉ số gần liên quan nếu phân biệt rõ, nhưng không được trình bày chỉ số thay thế như câu trả lời chính xác cho câu hỏi ban đầu.
+- **A3 — Không có dữ liệu lịch sử:** Nếu nguồn chỉ có dữ liệu hiện tại mà không có dữ liệu lưu theo thời gian, hệ thống không suy ra doanh thu ngày đầu, tuần đầu, mức tăng trưởng hoặc so sánh lịch sử.
+- **A4 — Nguồn dữ liệu mâu thuẫn hoặc không đồng nhất:** Hệ thống không gộp các số liệu có định nghĩa, thị trường, tiền tệ hoặc kỳ báo cáo khác nhau như thể chúng tương đương. Nêu rõ khác biệt hoặc báo rằng chưa thể kết luận.
+- **A5 — Không có phim phù hợp:** Trả lời rằng chưa tìm thấy phim đáp ứng tiêu chí và có thể đề xuất nới lỏng một hoặc nhiều tiêu chí. Không tự bịa phim, thời lượng, phân loại độ tuổi hoặc lịch chiếu.
+- **A6 — Lịch chiếu, giá vé hoặc dữ liệu thay đổi:** Hệ thống truy vấn lại nguồn chính thức nếu có thể. Nếu không thể xác minh dữ liệu mới nhất, thông báo thời điểm dữ liệu đã biết và khuyến nghị kiểm tra trên giao diện đặt vé chính thức.
+- **A7 — Customer báo đã thanh toán nhưng chưa nhận vé:** Hệ thống hướng dẫn Customer kiểm tra booking/lịch sử giao dịch hoặc chuyển đến kênh hỗ trợ phù hợp. Nếu có tích hợp tra cứu booking, chỉ hiển thị trạng thái do Backend xác nhận và chỉ sau khi kiểm tra quyền sở hữu. Chatbot không tự kết luận đã thanh toán thành công, không tự đánh dấu booking `confirmed` và không phát hành vé.
+- **A8 — Dịch vụ hoặc nguồn dữ liệu không khả dụng:** Hệ thống thông báo không thể xác minh yêu cầu ở thời điểm hiện tại, không bịa câu trả lời từ dữ liệu cũ; cho phép thử lại hoặc dùng nguồn hỗ trợ chính thức.
+- **A9 — Yêu cầu vượt phạm vi hoặc cần quyền cao hơn:** Hệ thống giải thích giới hạn và chuyển hướng phù hợp. Các yêu cầu về báo cáo doanh thu nội bộ, dữ liệu cá nhân hoặc thao tác quản trị không được trả lời cho Customer nếu chưa có quyền tương ứng.
+- **A10 — Câu hỏi về “đạo diễn nổi tiếng” hoặc “ngôi sao hạng A”:** Nếu không có tiêu chí xếp loại được thống nhất hoặc nguồn đáng tin cậy, hệ thống trình bày thông tin tiểu sử/sự nghiệp có nguồn hoặc hỏi Customer muốn dùng tiêu chí nào; không khẳng định nhãn chủ quan như một sự thật khách quan.
+- **A11 — Câu hỏi ngoài chủ đề phim/rạp:** Hệ thống lịch sự thông báo phạm vi hỗ trợ và mời Customer đặt câu hỏi thuộc phạm vi chatbot.
+
+### 15.7. Hậu điều kiện
+
+**Thành công**
+- Customer nhận được câu trả lời hoặc gợi ý phù hợp với câu hỏi, dựa trên dữ liệu truy xuất được.
+- Với số liệu có yếu tố thời gian hoặc thị trường, câu trả lời thể hiện phạm vi báo cáo và nguồn/thời điểm dữ liệu khi có thể.
+- Không có thay đổi nghiệp vụ đối với booking, booking_detail, payment, ticket hoặc phân bổ ghế chỉ do hội thoại chatbot.
+
+**Thành công một phần**
+- Hệ thống trả lời phần có đủ căn cứ và nêu rõ phần chưa thể xác minh, thiếu dữ liệu hoặc cần Customer làm rõ.
+- Không trình bày suy đoán là dữ liệu xác thực.
+
+**Thất bại**
+- Hệ thống thông báo lỗi hoặc không thể xác minh câu trả lời.
+- Không tạo hoặc thay đổi trạng thái giao dịch đặt vé/thanh toán/vé.
+- Dữ liệu cá nhân hoặc báo cáo nội bộ không được tiết lộ nếu chưa đáp ứng điều kiện xác thực và phân quyền.
+
+### 15.8. Quy tắc nghiệp vụ và ràng buộc liên quan
+
+- Duyệt phim và thông tin phim: tham chiếu UC-06, `FR-MOVIE-001/002`.
+- Lịch chiếu và thông tin suất chiếu: tham chiếu UC-07, `FR-SHOW-001`.
+- Giữ ghế và xác nhận ghế khả dụng: tham chiếu UC-01; chatbot không thay thế kiểm tra authoritative của Backend.
+- Checkout và payment: tham chiếu UC-09 và UC-02; chatbot không tự khởi tạo hoặc áp dụng kết quả payment chỉ từ hội thoại.
+- Booking, vé và trạng thái của Customer: tham chiếu UC-10 và UC-05 khi phù hợp.
+- Nguồn dữ liệu doanh thu, xếp hạng, lượt xem và đánh giá bên ngoài chưa được xác định trong tài liệu này; không xem việc nêu chức năng là bằng chứng rằng nguồn dữ liệu đã được tích hợp.
+- Thông tin cá nhân, booking và dữ liệu nội bộ phải tuân thủ cơ chế xác thực, authorization và nguyên tắc tối thiểu quyền truy cập hiện hành.
+
+### 15.9. Tiêu chí nghiệm thu
+
+- **AC-UC11-01 — Tra cứu phim:** Trả lời được câu hỏi về phim khi nguồn dữ liệu cần thiết có sẵn; dữ liệu thiếu được nêu rõ.
+- **AC-UC11-02 — Xếp hạng theo doanh thu:** Kết quả nêu rõ thị trường, kỳ báo cáo, tiền tệ và nguồn dữ liệu nếu các thông tin đó có sẵn; không nhầm doanh thu với lượt xem hoặc số vé bán.
+- **AC-UC11-03 — Top 10:** Danh sách tuân theo tiêu chí và phạm vi thời gian được yêu cầu; không bổ sung mục không có dữ liệu căn cứ.
+- **AC-UC11-04 — Doanh thu theo kỳ:** Phân biệt doanh thu ngày đầu, cuối tuần mở màn, bảy ngày đầu và tuần dương lịch; không suy ra dữ liệu lịch sử khi nguồn không cung cấp.
+- **AC-UC11-05 — So sánh thị trường:** Chỉ so sánh các số liệu có thể đối chiếu về phạm vi, kỳ báo cáo và đơn vị; nếu không tương thích thì nêu rõ giới hạn.
+- **AC-UC11-06 — Gợi ý phim:** Các gợi ý phù hợp với tiêu chí được cung cấp và chỉ dùng thuộc tính phim có dữ liệu.
+- **AC-UC11-07 — Lịch chiếu và giá vé:** Trả lời từ nguồn chính thức hiện hành khi khả dụng; không khẳng định lịch/giá cũ là dữ liệu mới nhất.
+- **AC-UC11-08 — Hỗ trợ thanh toán/nhận vé:** Không tuyên bố payment thành công hoặc vé đã phát hành nếu chưa được Backend xác nhận.
+- **AC-UC11-09 — Không thay đổi giao dịch:** Hội thoại thông thường không tạo booking, giữ ghế, khởi tạo/ap dụng payment, hủy booking hoặc phát hành vé.
+- **AC-UC11-10 — Bảo vệ dữ liệu:** Chỉ truy cập dữ liệu booking cá nhân hoặc báo cáo nội bộ khi đã xác thực và được Backend cấp quyền.
+- **AC-UC11-11 — Nguồn không khả dụng:** Thông báo giới hạn và không tạo số liệu, lịch chiếu hoặc thông tin phim không có căn cứ.
+- **AC-UC11-12 — Câu hỏi mơ hồ/chủ quan:** Hỏi làm rõ hoặc nêu tiêu chí áp dụng cho các khái niệm như “được xem nhiều nhất”, “nổi tiếng” và “hạng A”.
+
+### 15.10. UC liên quan
+
+- **UC-06:** Duyệt danh sách và thông tin phim.
+- **UC-07:** Xem lịch chiếu và chọn suất chiếu.
+- **UC-01:** Giữ ghế và tạo booking — chỉ được thực hiện qua luồng đặt vé chính thức.
+- **UC-09:** Checkout và thanh toán.
+- **UC-02:** Xử lý webhook thanh toán.
+- **UC-10:** Tra cứu vòng đời booking của Customer.
+- **UC-05:** Soát vé tại rạp, nếu Customer cần hiểu trạng thái vé hoặc quy trình vào rạp.
+
+### 15.11. Câu hỏi mở
+
+- **OQ-UC-11-01:** Chọn và phê duyệt nguồn dữ liệu bên ngoài cho doanh thu phòng vé toàn cầu, doanh thu tại Việt Nam, xếp hạng và điểm đánh giá; xác định điều khoản truy cập, giới hạn sử dụng và tần suất cập nhật.
+- **OQ-UC-11-02:** Có nguồn dữ liệu lượt xem hoặc số vé bán theo thị trường hay không? Nếu không, không được triển khai câu trả lời “phim được xem nhiều nhất” như một thống kê đã xác minh.
+- **OQ-UC-11-03:** Định nghĩa chính thức “doanh thu hiện tại”, “ngày đầu”, “cuối tuần mở màn”, “tuần đầu” và “tăng trưởng tuần”; xác định múi giờ, tiền tệ, thị trường và cách xử lý tỷ giá nếu cần.
+- **OQ-UC-11-04:** Chọn tiêu chí/nguồn cho “đạo diễn nổi tiếng”, “ngôi sao hạng A” và xếp hạng đánh giá khán giả.
+- **OQ-UC-11-05:** Xác định nguồn chính thức và chính sách cập nhật cho giá vé, lịch chiếu và thông tin hỗ trợ khách hàng.
+- **OQ-UC-11-06:** Có cho phép chatbot truy xuất booking của Customer sau xác thực hay chỉ hướng dẫn Customer tự mở trang lịch sử đặt vé?
+- **OQ-UC-11-07:** Có mở rộng Promethe-Nous sang báo cáo doanh thu nội bộ cho Staff/Manager/Admin hay không? Nếu có, cần đặc tả riêng phạm vi dữ liệu, phân quyền và audit; không mặc định Customer được truy cập các báo cáo này.
+- **OQ-UC-11-08:** Chốt chính sách lưu hội thoại, thời gian lưu, lọc thông tin nhạy cảm và việc sử dụng hội thoại để cải thiện hệ thống.
+
+---
+
+## 16. Tính nhất quán giữa các UC (Cross-UC lifecycle)
 
 Bảng chuyển trạng thái cốt lõi (giá trị khớp schema — mục 2):
 | Sự kiện | booking | booking_detail | payment | payment_event | ticket | refund |
@@ -1321,7 +1446,7 @@ Bảng chuyển trạng thái cốt lõi (giá trị khớp schema — mục 2):
 - **Refund accepted ≠ refund completed:** chỉ `refund.status = 'succeeded'` mới dẫn tới `reconciliation_status = 'resolved'`.
 - **Idempotency & retry:** mọi luồng lặp (webhook trùng, worker chạy lại, refund retry, quét lại) phải idempotent nhờ khóa sự kiện/UQ + điều kiện cập nhật theo trạng thái; không luồng nào sinh tác động nghiệp vụ thứ hai từ cùng sự kiện.
 
-## 16. Câu hỏi mở và traceability
+## 17. Câu hỏi mở và traceability
 
 | ID | Mâu thuẫn / quyết định còn thiếu | Vì sao quan trọng | Hành vi an toàn tạm (đề xuất, chưa phải quyết định) | Ảnh hưởng |
 | :--- | :--- | :--- | :--- | :--- |
@@ -1334,13 +1459,17 @@ Bảng chuyển trạng thái cốt lõi (giá trị khớp schema — mục 2):
 | OQ-01 | Cổng thanh toán cụ thể (`business-system-analysis.md` §13). | Hợp đồng ACK/signature/query/refund/idempotency của cổng. | Middleware trung lập cổng; chi tiết theo adapter. | UC-02, UC-04A, UC-09, UC-10; API spec. |
 | OQ-03 | Cửa sổ soát vé (`business-system-analysis.md` §13). | Tiền đề UC-05 bước 4. | Lấy từ cấu hình; từ chối ngoài cửa sổ. | UC-05; cấu hình rạp. |
 | OQ-04 | Ranh giới quyền Staff/Manager/Admin (`business-system-analysis.md` §13). | Authz UC-04, UC-05, UC-08, quản trị và các quyền tra cứu/thanh toán. | Staff = soát vé; Manager/Admin theo PROPOSED. | UC-04, UC-05, UC-08, UC-09, UC-10; authorization. |
+| **OQ-UC-11-01** | Chưa chọn nguồn dữ liệu được phê duyệt cho doanh thu/xếp hạng phim bên ngoài. | Không thể xác minh thống kê thế giới/Việt Nam nếu thiếu nguồn ổn định và định nghĩa tương thích. | Chỉ trả lời chỉ số có nguồn; nếu không có thì thông báo chưa thể xác minh. | UC-11; tích hợp nguồn dữ liệu. |
+| **OQ-UC-11-02** | Chưa xác nhận nguồn dữ liệu lượt xem hoặc số vé bán theo thị trường. | Không thể suy ra “phim được xem nhiều nhất” từ doanh thu. | Phân biệt lượt xem, số vé bán, doanh thu và điểm đánh giá. | UC-11; nguồn thống kê. |
+| **OQ-UC-11-03** | Chưa chốt định nghĩa kỳ doanh thu và tiêu chí “nổi tiếng/ngôi sao hạng A”. | Kết quả xếp hạng có thể khác nhau theo thị trường, khoảng thời gian và tiêu chí. | Làm rõ phạm vi hoặc nêu tiêu chí/giả định trong câu trả lời. | UC-11; câu trả lời và kiểm thử. |
+| **OQ-UC-11-04** | Chưa quyết định chatbot có được truy xuất booking của Customer hoặc báo cáo nội bộ hay không. | Liên quan quyền riêng tư và phân quyền. | Mặc định chỉ hướng dẫn; mọi truy vấn cá nhân/nội bộ phải qua xác thực và authorization. | UC-11; Backend authorization. |
 
 ---
 
-## 17. Truy vết nguồn (traceability)
+## 18. Truy vết nguồn (traceability)
 
 - Quy tắc nghiệp vụ: `docs/requirements/business-system-analysis.md` — §7 (FR), §8 (BR), §12 (AC), §13 (OQ).
-- Use case tổng quan: `docs/analysis and design/business-system-design.md` — UC-01..UC-05; tài liệu này đặc tả chi tiết UC-06..UC-10.
+- Use case tổng quan: `docs/analysis and design/business-system-design.md` — UC-01..UC-05; tài liệu này đặc tả chi tiết UC-06..UC-11. UC-11 là phần mở rộng chatbot được bổ sung trong tài liệu này; các nguồn dữ liệu doanh thu/xếp hạng và quyết định tích hợp liên quan vẫn cần được chốt tại các OQ của UC-11.
 - Thiết kế entity/concurrency: `database/database-design.md` — §12–15 (entity), §23 (constraints), §26–27 (schedule/seat), §31–34 (transaction/concurrency protocol), §37 (checklist).
 - Mô hình quan hệ: `docs/analysis and design/relational-model.md` — §3 (relation), §9 (invariants).
 - Schema vật lý: `database/database-schema.md` — §3.1 (movie), §3.13–3.18, §4; DDL: `database/database-schema.sql`.
