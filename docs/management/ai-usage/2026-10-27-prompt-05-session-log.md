@@ -6,7 +6,7 @@
 
 ## Prompt của người dùng — diễn đạt lại phần công việc
 
-> Giúp tui ghi lại mấy prompt từ đầu session tới giờ vào ai-usage nha. Mỗi prompt một file Markdown, theo mẫu đang có, ghi đầy đủ một chút.
+> Ghi lại các prompt trong session vào ai-usage. Tạo một file Markdown cho mỗi prompt theo mẫu hiện có. Ghi đầy đủ yêu cầu, công việc đã thực hiện và kết quả.
 
 ## Phản hồi của AI — tóm tắt công việc và kết quả
 
