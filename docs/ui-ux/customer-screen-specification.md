@@ -628,3 +628,80 @@ Các hàng dưới đây là khoảng trống đối chiếu giữa nhu cầu m�
 | DL-09 | KH-06/08 | Booking DTO có qrCodeUrl; DTO vé riêng chưa có QR; schema không lưu ảnh QR và nguồn còn nêu payload mã vé hoặc payload có chữ ký | Cách cung cấp/render QR, payload chính thức, authorization và lỗi tải ảnh; không tự chọn payload hoặc tạo endpoint ảnh công khai. |
 
 Ngoài field dữ liệu, cần thống nhất response envelope: API contract mục 3 mô tả `{ data, pagination? }`, trong khi nhiều ví dụ DTO auth/booking/payment viết trực tiếp object. Frontend không tự hỗ trợ hai cấu trúc như thể đã chốt; xem CX-12.
+
+## 6. Điểm chưa đồng bộ và quyết định cần review
+
+### 6.1. Đối chiếu nguồn và ảnh hưởng
+
+Bảng ghi cả mâu thuẫn thực sự và khác biệt mức độ chi tiết/tổ chức. Chỉ các yêu cầu đã chốt có căn cứ mới được dùng như baseline nghiệp vụ; các khác biệt chưa đủ bằng chứng không được tự chuyển thành quyết định chính thức.
+
+| Mã | Bằng chứng trong nguồn | Ảnh hưởng và cách ghi nhận tại đặc tả này |
+|---|---|---|
+| CX-01 | S09 user flow mục 3/4 mô tả quá expires_at thì expired/released; UI state mục 5 cũng viết quá hạn là mở khóa. S01 BR-BOOK-004, OQ-07 và S07 mục 4 yêu cầu xét attempt đang mở. | Phân biệt countdown bằng 0 với expired/released. Dùng quy tắc hai phần đã chốt; không tự nhả ghế trên client. Các tài liệu UI phụ thuộc cần được đồng bộ trong tác vụ riêng. |
+| CX-02 | S01 mục 3.1 và S03 mục 0 không áp cutoff cố định 10/15/30 phút, cho bán sát giờ; seed gán booking_closes_at = starts_at − 10 phút. S02 UC-01 còn yêu cầu created_at + 5 phút không vượt mốc đóng bán/giờ bắt đầu; S05 mục 12 có đoạn lấy mốc sớm hơn. | Có cả khác biệt dữ liệu demo với chính sách và khác biệt cách xác định hạn khi bán sát giờ. Không tự đặt cutoff mới hoặc rút/ngầm kéo dài countdown. Backend trả khả năng bán và hạn; cần chốt thống nhất trước kiểm thử sát giờ, theo OQ-02. |
+| CX-03 | S02 UC-02 bước 5 yêu cầu chưa quá expires_at, nhưng ngoại lệ A9 nói payment thành công trong grace period được áp dụng bình thường; UC-03 cũng chuyển một số succeeded/pending quá hạn sang kiểm tra áp dụng. S04 mục 14 và S05 mục 31.5 có nhánh đã thu sau hạn thì không áp dụng. | Chưa thống nhất điều kiện applied trong grace period khi booking vẫn pending/held. Không viết cả hai cách thành cùng một chính sách; UI chỉ báo confirmed theo server, không tự confirm từ payment succeeded. Nhóm cần quyết định để chốt backend/test. |
+| CX-04 | S01 FR-SHOW-001 chỉ hiển thị suất scheduled còn bán; UI cũ yêu cầu suất đóng/hủy có ô disabled. | Không bắt API công khai trả suất đóng/hủy ngoài yêu cầu. Disabled áp dụng khi dữ liệu hiện có cho biết không thể chọn; không tự dựng danh sách suất ẩn. |
+| CX-05 | S09 mapping mục 3.7 gộp đăng nhập/đăng ký thành response token + user; DTO register mục 2.1 chỉ có user, login mục 2.2 mới có token. | Đăng ký không tự tạo phiên. Đề xuất chuyển đăng nhập và giữ đích quay lại, chờ contract xác thực sau register. |
+| CX-06 | S07 dùng PK bigint, booking_code/ticket_code UUID; S08 DTO dùng chuỗi “uuid” cho nhiều ID và ví dụ bookingCode/ticketCode dạng BK-/TK-. | Kiểu ID/public identifier và dạng mã chưa đồng bộ. UI coi định danh là giá trị opaque từ API; không parse tiền tố/ngày/số hoặc tự chuyển bigint/UUID. Không tự thêm cột public ID vào schema. |
+| CX-07 | S01 FR-BOOK-003/BR-BOOK-008 và S05 mục 31.5 có luồng Cancel/Query cổng để đổi ghế; một số đoạn S05 mục 12, S03 UC-03A Alternative Flow và kiểm tra cũ ở FR-BOOK-003 vẫn nói có attempt mở thì luôn từ chối hủy. S10 UI state chặn hủy lúc xử lý. | Ghi nhận luồng đổi ghế trong yêu cầu đã cập nhật: chỉ thành công khi cổng xác nhận chưa thu; không coi đây là được phép ép hủy mọi attempt. Contract và trạng thái UI bất đồng bộ còn DL-07. |
+| CX-08 | S04 mục 4 nêu MovieDetail kèm showtimes, Checkout, PaymentResult, MyTickets/MyBookings; S09–S10 tách Movie Detail, Showtime, Payment, Booking Confirmation. Ví dụ ở PROJECT_STRUCTURE còn đặt Booking Confirmation trước Payment. | Đây là khác biệt tổ chức và một ví dụ thứ tự chưa đồng bộ. Giữ 8 nhóm màn hình của bộ UI hiện có, vé sau confirm. Không chốt số route/component hoặc thêm màn hình xác nhận trước thanh toán như yêu cầu mới. |
+| CX-09 | FR-MOVIE-001 cấm archived trong danh sách, nhưng S08 chưa nói đầy đủ chính sách GET chi tiết phim ended/archived hoặc sắp chiếu có suất mở bán. | Không suy truy cập trực tiếp luôn 404 hoặc tự cấm đặt chỉ theo movie.status. Backend cần chốt tính hiển thị/khả dụng; UI xử lý dữ liệu và lỗi được trả. |
+| CX-10 | Vision PA1 phần Product Perspective/AD-05/PF-07 và kế hoạch PA1 Construction/Sprint 4 mô tả simulated payment. S01 mục 3.1, FR-PAY và S04 mục 8 mô tả Payment Gateway bên ngoài, OQ-01 chưa chọn cổng. | Phạm vi thanh toán demo giữa tài liệu PA và tài liệu nghiệp vụ chưa đồng nhất. Phần màn hình mô tả luồng an toàn theo S01, không khẳng định đã duyệt tích hợp cổng thật hoặc tên cổng cụ thể. Nếu chọn simulator, cần nhóm duyệt và đồng bộ nguồn/API; không thêm nút “giả lập thành công” cho Customer trong đặc tả này. |
+| CX-11 | S05 mục 14 còn câu BookingDetail 1–0..1 Ticket và mục 32.1 còn nói FK unique tới detail; S01 BR-BOOK-009, S06 mục 3.15 và DDL ticket không còn unique booking_detail_id, quy định capacity_units vé/detail. | Giữ quyết định mới đã ghi rõ: Couple một detail/hai vé; service phát hành idempotent. Các đoạn 1–0..1/unique cũ cần đồng bộ, không dùng để gộp hai vé Couple thành một QR. |
+| CX-12 | S08 API contract mục 3 quy định envelope data/pagination, còn ví dụ DTO auth/booking/payment thường chỉ viết object. | Đây là điểm trình bày chưa rõ ở ví dụ, chưa đủ để kết luận hai cấu trúc đều hợp lệ. Contract tích hợp cần chỉ rõ wrapper cho từng endpoint; UI không hard-code hai dạng hoặc bỏ envelope tùy ý. |
+
+Một số đoạn S05 mục 34–36 và S06 mục 9.3 còn ghi cửa sổ đối soát OPEN/ngoài phạm vi, trong khi S01 OQ-07 đã ghi RESOLVED về **chính sách** grace period và S02 UC-04 phân biệt truy vấn/ghi nhận kết quả trong phạm vi với thực thi refund ngoài demo. Không coi toàn bộ đối soát là ngoài phạm vi và không coi refund đã được triển khai. Tại tài liệu này, truy vấn kết quả và bảo toàn payment là yêu cầu, thực thi hoàn tiền vẫn ngoài demo.
+
+Việc demo không có workflow tự xử lý khi rạp hủy suất không phải quyết định rằng khách mất quyền lợi. OQ-05 còn OPEN; UI không tự cam kết hoàn tiền/đổi vé, cũng không tự tuyên bố khách không được hoàn trong mọi trường hợp rạp hủy.
+
+### 6.2. Giữ đúng trạng thái các OQ liên quan
+
+| Câu hỏi / quyết định | Trạng thái theo nguồn | Tác động tới màn hình |
+|---|---|---|
+| OQ-01 — cổng thanh toán | OPEN | Phương thức, payUrl/return, callback, Query/Cancel và thông báo lỗi cổng chưa thể chốt chi tiết. |
+| OQ-02 — mốc đóng bán | OPEN; không cutoff cố định 10/15/30 phút là baseline | KH-03/04/05 không tự đặt cutoff, cần xử lý CX-02. |
+| OQ-03 — cửa sổ soát vé | OPEN | Không tự ghi đến trước 30 phút hoặc hết hiệu lực sau một số phút cụ thể. |
+| OQ-04 — quyền quản trị / needs_review | OPEN, Manager còn Proposed | Customer chỉ xem dữ liệu của mình, không có công cụ xử lý đối soát hay quản trị. |
+| OQ-05 — quyền lợi khi rạp hủy suất | OPEN | Không khẳng định chính sách hoàn/đổi vé đã chốt. |
+| OQ-06 — detail giá 0 / booking miễn phí | RESOLVED — Option B | Detail có thể 0, tổng booking/payment dương; không cần xin chốt lại hoặc tự mở luồng booking 0 đồng. |
+| OQ-07 — chính sách grace period | RESOLVED về chính sách | Không expired/released chỉ từ countdown. Con số cụ thể chưa chốt, CX-03 vẫn cần làm rõ điều kiện applied. |
+| OQ-08 — eligibility vé giảm và chi tiết UX Couple | OPEN về điều kiện/cách xác minh | Couple một đơn vị/hai vé là phần đã chốt; không mở lại quyết định này. Student/Child chưa có quy trình eligibility hoàn chỉnh. |
+| OQ-09 — hiệu năng/khả dụng | TBD | Không tự đặt SLA 2 giây/99,9% hoặc tuyên bố đã đạt mục tiêu. |
+| OQ-UC-02/03/04 — leo thang/retry/grace cụ thể | Chưa chốt giá trị | Không hard-code thông điệp chắc chắn hết chờ sau 120 giây hoặc tần suất polling/worker. |
+| OQ-UC-05 — fingerprint và thứ tự ghế | Proposed | Giữ requestKey cho retry cùng ý định; chuẩn hóa nội dung theo contract cuối cùng. |
+| OQ-UC-06/07 — chứng cứ xác minh/ngữ cảnh soát | Proposed | Thuộc backend/staff; không thêm thao tác xác minh chữ ký hoặc validate vào màn hình Customer. |
+
+Giới hạn số booking pending/ghế held và rate limiting tại S04 mục 12a là **Proposed**, chưa được duyệt. Không biến N = 2 booking, M = 6 ghế hoặc 10 request/phút thành validation chính thức trên màn hình.
+
+## 7. Truy vết nghiệm thu và phạm vi kiểm chứng
+
+### 7.1. Ma trận kiểm thử đề nghị khi triển khai
+
+Các kịch bản dưới đây là **đầu vào kiểm thử, chưa được chạy**. Những ca cần backend/database/cổng phải kiểm tra tích hợp trên môi trường phù hợp; mock UI không chứng minh transaction, ownership hoặc idempotency server.
+
+| Nhóm tiêu chí | Kịch bản đại diện | Nguồn yêu cầu / kết quả cần kiểm chứng |
+|---|---|---|
+| NT-01..05 | Danh sách hai nhóm, phân trang, phim trùng tên, thiếu poster, movie 404/lỗi mạng | FR-MOVIE-001/002; không archived trong danh sách, đúng định danh, không tạo dữ liệu thiếu. |
+| NT-06..08 | Đổi ngày nhanh, chuyển ngày UTC/VN, suất vừa đóng/hủy, không có suất | FR-SHOW-001, BR-ST-003; đúng ngày, không response cũ ghi đè, không nhận đặt suất không bán. |
+| NT-09/10 | Available/held/sold, bảo trì/inactive, chọn Couple và Standard | FR-SHOW-002, BR-BOOK-003/009/010; selected chưa held, đúng đơn vị ghế/số chỗ/loại vé. |
+| NT-11 | Hai khách cùng ghế; một request chứa ghế trùng và ghế trống | AC-BOOK-002, BR-BOOK-002/006; một bên giữ, bên xung đột không giữ một phần. |
+| NT-12 | Mất response tạo booking rồi retry cùng key; cùng key đổi payload; replay đơn expired/confirmed | S02 UC-01 A1/A2/A6, API contract mục 7; không đơn thứ hai, không gia hạn, báo conflict đúng. |
+| NT-13/14/28 | Giá danh mục đổi sau tạo, mixed ticket type, Couple, detail giá 0 và tổng booking 0 | BR-BOOK-005, OQ-06; server chốt giá, giữ snapshot, chặn tổng 0. Contract báo giá/liên hệ cần bổ sung trước. |
+| NT-14/17 | Reload/tab khác, countdown về 0, worker chậm, booking quá hạn có attempt mở | BR-BOOK-004, AC-BOOK-003; UI không nhả ghế hoặc tự reset, phân biệt pending quá hạn và expired. |
+| NT-15/19 | Tạo attempt hai lần, timeout khởi tạo/GET, unknown, failed/cancelled còn hạn | BR-PAY-002/003/008, AC-PAY-002; không thu trùng do retry mù, không giả failed, retry đúng điều kiện. |
+| NT-16/19 | Query redirect tự ghi success, payment succeeded chưa applied, late success sau expired | FR-PAY-005, BR-PAY-004/007, AC-PAY-004; không vé giả hoặc reclaim ghế. CX-03 cần chốt cho grace period. |
+| NT-18 | Hủy chưa có attempt; cổng xác nhận chưa thu; cổng đã thu/chưa rõ; race với confirm | AC-BOOK-004..006; chỉ báo hủy khi backend chốt, không giải phóng ghế sai. |
+| NT-20..22 | Confirmed có Standard/VIP/Couple, callback lặp, QR lỗi, một vé Couple đã used | BR-BOOK-009, AC-PAY-003, FR-TICKET-001; đúng số/mã vé, không tạo thêm, trạng thái riêng từng vé. |
+| NT-23..25 | Form sai, email trùng, locked/deactivated, register không token, login quay lại | FR-AUTH-001/002/004, BR-AUTH-003/004; lỗi đúng, không cấp role/phiên sai. |
+| NT-26/27/29 | Me bookings phân trang/rỗng, chi tiết người khác, URL vé người khác, đổi tài khoản | FR-BOOK-004, BR-AUTH-002, AC-SEC-002; backend từ chối và UI không giữ dữ liệu riêng tư cũ. |
+| Xuyên màn hình | Desktop/mobile, sơ đồ cuộn trong khối, bottom bar không che ghế, focus/form lỗi | NFR-USE-001/002, S10; kiểm tra 320/768/1024/1440px; hướng dẫn accessibility bổ sung là đề xuất UI. |
+
+### 7.2. Điều kiện để nghiệm thu triển khai
+
+1. Review các màn hình và đề xuất UI, chốt contract DL-01..09 theo phạm vi MVP thực tế. Không đánh dấu một màn hình tích hợp hoàn tất khi dữ liệu bắt buộc chưa được API định nghĩa.
+2. Chốt các mâu thuẫn ảnh hưởng tiền/ghế, nhất là CX-02/CX-03/CX-07/CX-10; cập nhật tài liệu nguồn theo quy trình nhóm trước khi dùng làm cơ sở test cuối cùng.
+3. Triển khai endpoint, authorization, transaction, worker và tích hợp thanh toán theo quyết định đã được duyệt; UI không thay trách nhiệm backend.
+4. Chạy các ca phù hợp mục 7.1; ghi riêng đã chạy/thành công/thất bại/chưa chạy và môi trường kiểm chứng. Không dùng danh sách tiêu chí trong tài liệu như bằng chứng test đã pass.
+5. Kiểm tra liên kết, tên trạng thái, field DTO, tham chiếu FR/BR/OQ và tính nhất quán với các tài liệu UI phụ thuộc khi có thay đổi được duyệt.
+
+**Giới hạn của bản đặc tả này:** được viết từ file và tài liệu trong repository, gồm đối chiếu nội dung PA/kế hoạch; không có xác minh database đang chạy, gateway đang kết nối, giao diện trình duyệt hoặc ca kiểm thử runtime. Những nhãn trạng thái, endpoint và dữ liệu Proposed phải được chốt trước khi triển khai thực tế; tài liệu không tự đóng các câu hỏi mở của dự án.
