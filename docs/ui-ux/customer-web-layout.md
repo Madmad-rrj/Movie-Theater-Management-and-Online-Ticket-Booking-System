@@ -365,3 +365,92 @@ flowchart TD
 ```
 
 Đây là sơ đồ sắp xếp nội dung, không phải luồng áp dụng thanh toán. Kết quả đang chờ, lỗi tải vé hoặc không đủ quyền thay phần nội dung liên quan bằng phản hồi phù hợp; khung header/main/footer vẫn giữ nguyên.
+
+### 5.7. KH-07 — Đăng nhập / đăng ký
+
+Hai form cùng cách căn chỉnh, nằm trong vùng hẹp căn giữa main. Giữ header/footer dùng chung; không tự thêm ảnh nền, hình nhân vật hoặc mảng quảng cáo chiếm nửa màn hình như yêu cầu bắt buộc.
+
+| Vùng | Quy tắc bố trí |
+|---|---|
+| Tiêu đề và hướng dẫn | Nằm trên form; phân biệt rõ đăng nhập hay đăng ký. Thông tin quay lại bước đặt vé nếu có chỉ là một đoạn ngắn. |
+| Nhãn và input | Mỗi trường một nhóm, nhãn rõ và lỗi ngay bên dưới; không chỉ dùng placeholder thay nhãn. |
+| Thứ tự đăng nhập | Email → mật khẩu → nút đăng nhập → liên kết đăng ký. |
+| Thứ tự đăng ký | **Đề xuất bố cục:** họ tên → email → mật khẩu → điện thoại tùy chọn → nút đăng ký → liên kết đăng nhập. Nhập lại mật khẩu chỉ khi thiết kế được chọn dùng. |
+| Lỗi chung | Ngay trên nhóm nút hoặc đầu form, không đẩy lên một toast xa trường nhập duy nhất. |
+| Nút chính | Cùng trục form, đủ chỗ cho nhãn và loading; không thay vị trí khi đổi từ bình thường sang đang gửi. |
+
+Form đăng ký dài được cuộn cùng trang; không ép toàn bộ form vào một thẻ có chiều cao cố định. Trên mobile, form dùng chiều rộng container có padding; bàn phím ảo không làm input đang focus hoặc lỗi phía dưới bị thanh cố định che.
+
+Nếu chỉ có vài trường, không cần bố trí hai cột input. **Đề xuất bố cục:** giữ một cột trên desktop để thứ tự đọc thống nhất và tránh nhầm field khi hiển thị lỗi. Không thêm một vùng “Quên mật khẩu”, OTP hoặc mạng xã hội khi chức năng chưa được chốt.
+
+### 5.8. KH-08 — Tài khoản / booking của tôi
+
+Vùng chính gồm tiêu đề “Booking của tôi”, danh sách booking, điều khiển phân trang và cách mở chi tiết. Bố cục phải cho khách nhận diện được mã đơn, phim/suất, tổng tiền và thao tác phù hợp mà không phải đọc qua nhiều khối trang trí.
+
+**Đề xuất bố cục:** desktop dùng danh sách thẻ hoặc bảng; mobile ưu tiên thẻ xếp dọc. Nếu chọn bảng, các cột quan trọng không bị giấu chỉ để vừa chiều rộng; chuyển sang thẻ hoặc xử lý tràn trong khối khi thực sự cần.
+
+| Vùng | Nội dung và bố trí |
+|---|---|
+| Tiêu đề tài khoản | Cùng trục nội dung, không đặt ở sidebar như tiêu đề duy nhất của trang. |
+| Mỗi booking | Mã, phim, ngày/giờ, ghế/phòng nếu có, trạng thái, tổng tiền; hành động gắn với đúng đơn. |
+| Danh sách nhiều đơn | Xếp dọc trong main; phân trang sau danh sách, không cuộn riêng một vùng thấp giữa trang. |
+| Chi tiết booking | Mã/khối thông tin/giá/vé theo thứ tự phù hợp; có thể dùng lại cách bố trí tóm tắt và thẻ vé của KH-05/06. Trang riêng hay vùng chi tiết là lựa chọn thiết kế. |
+| Hồ sơ | Chỉ có form trường được cho phép khi đã chốt dữ liệu và thao tác; không tự dựng ảnh đại diện, ngày sinh hay địa chỉ. |
+| Điều hướng phụ | Sidebar tùy chọn nếu có đủ mục thực cần điều hướng; không tạo các mục rỗng để lấp bố cục. |
+
+Nếu dùng sidebar: desktop bên trái hẹp, main chi tiết bên phải; mobile chuyển thành tabs ngang hoặc menu phù hợp. Tabs dài được cuộn trong khối và vẫn chỉ rõ mục đang xem. Không có sidebar thì nội dung dùng container bình thường, không giữ một cột trống bên trái.
+
+Mã dài, nhiều ghế và tên phim dài được xuống dòng trong thẻ. Nút hủy/thanh toán/xem vé không chồng lên badge hoặc số tiền. Khi danh sách rỗng, thông báo và nút xem phim nằm trong vùng danh sách; không loại bỏ toàn bộ khung tài khoản.
+
+## 6. Bố cục thích ứng theo thiết bị
+
+### 6.1. Nhóm kích thước
+
+| Nhóm | Chiều rộng viewport | Cách tổ chức chính |
+|---|---|---|
+| Desktop | Từ 1024px | Header ngang, grid phim 3 cột; trang ghế hai cột. |
+| Tablet | Từ 768px đến 1023px | Grid phim 2 cột; trang ghế chuyển tóm tắt xuống dưới; menu thu gọn nếu tràn. |
+| Mobile | Dưới 768px | Header thu gọn và drawer; grid phim 1 cột; các khối dài xếp dọc. |
+
+Chiều rộng được tính theo viewport, không theo tên dòng điện thoại hay độ phân giải phần cứng. Không tạo nhóm “tablet nhỏ” hoặc “mobile lớn” mới như breakpoint đã thống nhất nếu chưa review thiết kế.
+
+### 6.2. Ma trận thay đổi bố cục
+
+| Khối / màn hình | Desktop | Tablet | Mobile |
+|---|---|---|---|
+| Header | Logo, menu, tài khoản cùng hàng | Giữ menu khi đủ rộng, thu gọn mục nếu tràn | Logo và nút menu; điều hướng/tài khoản trong drawer. |
+| Danh sách phim | 3 cột | 2 cột | 1 cột. |
+| Chi tiết phim | Poster trái, thông tin phải | Một hoặc hai cột là đề xuất theo không gian thực | Poster và thông tin xếp dọc. |
+| Lịch chiếu | Bộ chọn ngày trên danh sách suất | Giữ nhóm ngày đọc được | Dropdown hoặc cuộn ngày trong khối; suất xuống dòng khi cần. |
+| Chọn ghế | Sơ đồ trái, tóm tắt phải | Sơ đồ trên, tóm tắt dưới | Sơ đồ cuộn ngang cục bộ; chi tiết dưới, thanh đặt ở đáy. |
+| Thanh toán | Một cột gọn, căn giữa | Một cột | Một cột vừa container, không tự thêm bottom bar. |
+| Xác nhận / vé | Một cột; các thẻ vé theo luồng dọc | Một cột | Một cột; mã và QR không bị cắt. |
+| Đăng nhập / đăng ký | Form một cột, vùng hẹp là đề xuất | Form trong vùng hẹp vừa viewport | Form toàn bề rộng container, có padding. |
+| Booking của tôi | Bảng hoặc thẻ là đề xuất | Thẻ/bảng theo bề rộng thực | Thẻ xếp dọc là đề xuất ưu tiên. |
+
+### 6.3. Sơ đồ chọn bố cục
+
+```mermaid
+flowchart TD
+    viewport["Chiều rộng viewport hiện tại"] --> desktopCheck{"Từ 1024px?"}
+    desktopCheck -->|"Có"| desktop["Bố cục desktop"]
+    desktop --> desktopGrid["Phim 3 cột, ghế 2 vùng cạnh nhau"]
+    desktopCheck -->|"Không"| tabletCheck{"Từ 768px?"}
+    tabletCheck -->|"Có"| tablet["Bố cục tablet"]
+    tablet --> tabletGrid["Phim 2 cột, tóm tắt ghế xuống dưới"]
+    tabletCheck -->|"Không"| mobile["Bố cục mobile"]
+    mobile --> mobileGrid["Phim 1 cột, menu ngăn kéo"]
+    mobileGrid --> localScroll["Ghế cuộn trong khối, thanh đặt ở đáy"]
+```
+
+Đổi kích thước chỉ thay cách bố trí. Lựa chọn ghế, ngày đang xem, form đang nhập và booking hiện tại không được tự reset vì component đổi từ hai cột thành một cột. Cùng một hành động phải có một cách thực hiện rõ ràng; không tạo hai nút gửi độc lập cùng lúc chỉ để phục vụ hai breakpoint.
+
+### 6.4. Kích thước kiểm tra và nội dung tràn
+
+Kiểm tra tối thiểu ở 320px, 768px, 1024px và 1440px. **Đề xuất bổ sung khi review:** kiểm tra sát ranh giới 767/768px và 1023/1024px, xoay thiết bị và viewport thấp để phát hiện header, drawer hoặc thanh đáy che nội dung.
+
+- Màn hình hẹp: cho chữ xuống dòng, không thu nhỏ toàn bộ trang bằng phép scale để vừa viewport.
+- Sơ đồ ghế rộng: giữ kích thước vùng bấm, cho cuộn trong khối; các vùng header/tóm tắt/footer vẫn nằm gọn trong trang.
+- Ngày và tabs nhiều: cuộn trong vùng điều khiển hoặc chuyển kiểu đã thống nhất; không kéo giãn toàn bộ body.
+- Mã đơn/vé hoặc tên không có dấu cách: có cách ngắt dòng trong container, giữ đủ giá trị để đọc.
+- Thiết bị có bàn phím ảo: vẫn tiếp cận input, lỗi và nút gửi; không bắt khách đóng bàn phím mới thấy thông báo lỗi.
