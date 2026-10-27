@@ -6,7 +6,7 @@
 
 ## Prompt của người dùng — diễn đạt lại
 
-> Mỗi lần viết xong một phần thì commit giúp tui nha. Chỉ sửa file đang làm, đừng thêm file mới hay để mấy file linh tinh trong thư mục project.
+> Commit sau mỗi phần nội dung hoàn thành. Chỉ sửa file đang làm. Không tạo file mới hoặc để lại file không liên quan trong thư mục dự án.
 
 ## Phản hồi của AI — tóm tắt công việc và kết quả
 
