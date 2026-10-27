@@ -164,3 +164,92 @@ Poster trong danh sách dùng khung có tỉ lệ nhất quán để grid không
 Card cần dành chỗ cho tiêu đề và nhãn; tên dài được xuống dòng hoặc có cách đọc đầy đủ. Không ép toàn bộ card có chiều cao cố định nếu điều đó cắt mất nội dung quan trọng. **Đề xuất bố cục:** có thể căn hàng nút cùng đáy trong một hàng grid nếu vẫn cho vùng chữ giãn tự nhiên.
 
 Ảnh thay thế khi thiếu poster giữ kích thước khối tương đương. QR được giữ nguyên tỉ lệ vuông và vùng trắng quanh mã; không dùng cách cắt ảnh poster cho QR, không phủ badge hoặc icon lên phần mã cần quét.
+
+## 5. Bố cục theo từng màn hình
+
+### 5.1. KH-01 — Trang chủ / danh sách phim
+
+Thứ tự trong main: tiêu đề danh sách → nhóm đang chiếu/sắp chiếu → vùng danh sách phim → điều khiển phân trang hoặc tải thêm. Nếu có banner với nội dung hợp lệ, banner là vùng giới thiệu tùy chọn; không thay thế danh sách phim và không che menu phân nhóm.
+
+```text
+┌───────────────────────────────────────────────────┐
+│ Tiêu đề danh sách phim                            │
+│ [Đang chiếu] [Sắp chiếu]                           │
+├────────────────┬────────────────┬─────────────────┤
+│ Poster         │ Poster         │ Poster          │
+│ Tên phim       │ Tên phim       │ Tên phim        │
+│ Nhãn tuổi      │ Nhãn tuổi      │ Nhãn tuổi       │
+│ Xem chi tiết   │ Xem chi tiết   │ Xem chi tiết    │
+├────────────────┴────────────────┴─────────────────┤
+│ Phân trang hoặc tải thêm                          │
+└───────────────────────────────────────────────────┘
+```
+
+Khung trên minh họa desktop. Tablet có 2 card/hàng; mobile có 1 card/hàng, giữ thứ tự đọc và thao tác xem chi tiết. Đây không phải yêu cầu luôn phải đủ ba phim hoặc có một nút tách khỏi vùng card.
+
+| Vùng | Quy tắc bố trí |
+|---|---|
+| Tiêu đề và phân nhóm | Cùng trục với grid; nhóm đang chọn rõ ràng. Trên mobile cho nhãn đủ chỗ, không đẩy tab ra ngoài trang. |
+| Poster | Cùng hệ khung ảnh giữa các card; giữ vị trí khi loading hoặc ảnh lỗi. |
+| Tên và nhãn | Tên có ưu tiên đọc trước; badge tuổi/trạng thái không phủ lên tên hoặc nút. Nếu đặt badge trên poster thì không che nội dung cần nhận diện. |
+| Hành động xem chi tiết | Toàn card có thể là vùng điều hướng theo thiết kế; tránh các vùng bấm lồng nhau gây khó thao tác. |
+| Điều khiển danh sách | Nằm sau grid và trước footer; không nổi cố định che hàng phim cuối. Chỉ chọn một kiểu phân trang/tải thêm được thống nhất. |
+
+Không có phim hoặc lỗi tải: thay vùng grid bằng thông báo và hành động phù hợp, vẫn giữ tiêu đề/phân nhóm. Không lấp card bằng dữ liệu giả để giữ số cột. Tìm kiếm/lọc nâng cao chỉ có vùng riêng khi đã chốt dữ liệu và chức năng; không tự thêm thanh tìm kiếm chỉ để lấp khoảng trắng.
+
+### 5.2. KH-02 — Chi tiết phim
+
+Desktop chia hai vùng: poster bên trái; thông tin và nút “Chọn suất chiếu” bên phải. Tiêu đề phim nằm trong vùng thông tin, không dùng tiêu đề trùng ở cả hai cột.
+
+```text
+┌───────────────────┬───────────────────────────────┐
+│ Poster            │ Tên phim                      │
+│                   │ Tuổi · Thời lượng · Thể loại  │
+│                   │ Ngày phát hành · Ngôn ngữ     │
+│                   │ Mô tả                         │
+│                   │ Xem trailer khi có dữ liệu    │
+│                   │ [Chọn suất chiếu]             │
+└───────────────────┴───────────────────────────────┘
+```
+
+- Poster không tự kéo cao theo một mô tả rất dài; phần mô tả có thể giãn xuống theo luồng trang.
+- Thông tin ngắn được nhóm gần tên phim; mô tả là một khối văn bản riêng, không trộn với nhãn tuổi hoặc giá.
+- Trailer chỉ có vùng hiển thị khi có dữ liệu. Nhúng video hay dùng liên kết/nút mở trailer là **đề xuất bố cục cần review**; không để khung video trống lớn nếu chưa có trailer.
+- Nút xem lịch nằm cạnh vùng thông tin quyết định; không chỉ đặt ở footer hoặc một banner khác.
+- Mobile: poster, thông tin và hành động xếp một cột; giữ tên phim đầy đủ và không co poster làm chữ/nút bị chen sang hai bên.
+- **Đề xuất bố cục:** tablet có thể dùng một hoặc hai cột tùy độ dài nội dung và bề rộng thực, miễn nút và mô tả vẫn đọc được; không tạo breakpoint mới để mô tả lựa chọn này như quy định đã chốt.
+
+Nếu chi tiết phim và lịch chiếu được gộp trong một trang, khối lịch nằm sau thông tin phim và tuân thủ KH-03. Cách gộp trang là lựa chọn thiết kế; không hiển thị hai bộ chọn lịch khác nhau cùng điều khiển một nội dung mà không có lý do.
+
+### 5.3. KH-03 — Lịch chiếu
+
+Thứ tự đọc: phim đang xem → ngày đang chọn → danh sách suất → phản hồi không có suất/lỗi nếu có. Thông tin rạp chỉ đặt khi có dữ liệu phù hợp; không tạo bộ chọn chuỗi rạp/tỉnh cho bố cục một rạp.
+
+| Vùng | Desktop / tablet | Mobile |
+|---|---|---|
+| Ngữ cảnh phim | Tên phim, có thể kèm poster thu nhỏ | Giữ tên phim rõ; poster thu nhỏ là tùy chọn. |
+| Chọn ngày | Tabs nằm trên danh sách, có nhãn ngày đọc đầy đủ | Dropdown hoặc hàng ngày cuộn ngang trong khối; ngày đang chọn luôn nhận biết được. |
+| Suất | Danh sách xếp dọc theo giờ; mỗi item nhóm giờ, phòng và giá cơ sở | Item đủ rộng cho chữ; nếu cần, xuống dòng trong item thay vì ép thành hàng nút nhỏ. |
+| Phản hồi | Ngay dưới vùng ngày, tại vị trí danh sách suất | Giữ điều khiển ngày để khách đổi ngày khi danh sách rỗng. |
+
+Một item suất phải nhận diện được ngày/giờ, phòng và giá cơ sở nếu có. Không dùng màu hoặc chỉ ghi một giờ mà thiếu ngữ cảnh khi danh sách gồm nhiều ngày. Không hiển thị “còn X ghế” chỉ để điền vào item khi không có dữ liệu.
+
+**Đề xuất bố cục:** các suất có cùng thông tin có thể dùng nhịp căn chỉnh thống nhất để so sánh giờ/phòng/giá; trạng thái không thể chọn đi kèm nhãn giải thích nếu item đó đang được hiển thị. Không phải yêu cầu tải và dựng thêm suất đóng bán.
+
+### 5.3.1. Sơ đồ thứ tự đọc của các trang duyệt phim
+
+```mermaid
+flowchart TD
+    browsePage["Vùng nội dung trang duyệt phim"] --> screenKind{"Loại màn hình?"}
+    screenKind -->|"Danh sách phim"| listTitle["Tiêu đề và nhóm phim"]
+    listTitle --> movieGrid["Grid card phim"]
+    movieGrid --> pagination["Điều khiển danh sách"]
+    screenKind -->|"Chi tiết phim"| movieIntro["Poster và thông tin phim"]
+    movieIntro --> movieDescription["Mô tả và trailer nếu có"]
+    movieDescription --> showtimeAction["Hành động xem lịch"]
+    screenKind -->|"Lịch chiếu"| movieContext["Ngữ cảnh phim"]
+    movieContext --> datePicker["Chọn ngày"]
+    datePicker --> showtimeList["Danh sách suất hoặc phản hồi"]
+```
+
+Sơ đồ mô tả thứ tự nhóm nội dung bên trong từng màn hình. Nó không yêu cầu poster desktop phải nằm trên thông tin thay vì bên trái; khi chia hai cột, thứ tự đọc vẫn phải có nghĩa khi trở thành một cột.
