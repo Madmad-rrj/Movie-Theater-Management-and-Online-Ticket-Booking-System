@@ -558,6 +558,41 @@ flowchart TD
 
 Sau đăng nhập, chỉ quay về đích đã lưu; không tự mở cả trang ghế và lịch sử. Nếu khách đổi ý hoặc chưa đăng nhập thành công, giữ họ tại luồng xác thực. Back/Forward không tạo yêu cầu đặt vé hoặc thu tiền mới.
 
+### 4.3. Luồng chọn ghế và tạo booking
+
+Trước khi server tạo booking, chọn ghế chỉ là lựa chọn trên giao diện. Thử lại sau timeout phải giữ cùng `requestKey` và nội dung; thay đổi ghế là một ý định đặt khác. Nhánh khôi phục không có nghĩa là tự gửi lại yêu cầu liên tục.
+
+```mermaid
+flowchart TD
+    openSeats(["Mở màn hình chọn ghế"]) --> loadSeats["Tải suất và sơ đồ ghế"]
+    loadSeats --> canSell{"Suất còn bán?"}
+    canSell -->|"Không"| returnShows["Thông báo và quay lại lịch chiếu"]
+    canSell -->|"Có"| chooseSeats["Chọn ghế và loại vé"]
+    chooseSeats --> submit["Nhấn Đặt vé"]
+    submit --> selectionValid{"Lựa chọn hợp lệ?"}
+    selectionValid -->|"Không"| fieldErrors["Hiển thị lỗi lựa chọn"]
+    fieldErrors --> chooseSeats
+    selectionValid -->|"Có"| authenticated{"Có phiên hợp lệ?"}
+    authenticated -->|"Chưa"| signIn["Đăng nhập và giữ đích quay lại"]
+    signIn -->|"Thành công"| loadSeats
+    authenticated -->|"Có"| sendBooking["Gửi ghế, loại vé và requestKey"]
+    sendBooking --> result{"Kết quả từ server?"}
+    result -->|"Có booking trả về"| readBooking["Đọc trạng thái booking"]
+    readBooking --> nextScreen["Mở màn hình phù hợp với booking"]
+    result -->|"Ghế xung đột"| conflict["Báo ghế vừa bị chọn; không giữ một phần"]
+    conflict --> loadSeats
+    result -->|"Suất đã đóng"| returnShows
+    result -->|"Lỗi validation"| fieldErrors
+    result -->|"Key khác nội dung"| keyConflict["Báo xung đột yêu cầu"]
+    result -->|"Timeout hoặc mất response"| uncertain["Chưa kết luận đã tạo đơn hay chưa"]
+    uncertain -->|"Khách chọn khôi phục"| recover["Khôi phục cùng key và nội dung"]
+    recover --> result
+```
+
+Booking trả về `pending` còn phù hợp thì mở KH-05; `confirmed` thì mở KH-06; `expired`/`cancelled` thì hiển thị kết quả kết thúc, không tái mở đơn. Việc đăng nhập hoặc tải lại sơ đồ không tự gửi lại hành động “Đặt vé”. Nếu ghế đã thay đổi sau đăng nhập, khách phải kiểm tra và chọn lại.
+
+Một Couple gửi một item cho cả ghế đôi, không gửi hai item trùng `seatId`. Countdown chỉ bắt đầu hiển thị sau khi có booking và `expiresAt` từ server.
+
 ## 5. Tiêu chí nghiệm thu tổng hợp
 
 Các tiêu chí dưới đây dùng để chuẩn bị kiểm thử màn hình; không phải báo cáo kiểm thử đã hoàn thành.
