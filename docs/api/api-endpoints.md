@@ -34,7 +34,7 @@ Truy vết: FR-AUTH-001..004, BR-AUTH-001..005, UC-08.
 | POST | `/api/auth/register` | Đăng ký; server chỉ cấp `CUSTOMER` | `RegisterRequest` → `RegisteredUser` | Public | `201`; `409 EMAIL_ALREADY_EXISTS` |
 | POST | `/api/auth/login` | Tạo phiên sau xác minh tài khoản | `LoginRequest` → `AuthSession` | Public | `200`; `401 INVALID_CREDENTIALS` cho sai thông tin hoặc tài khoản không active |
 | POST | `/api/auth/logout` | Kết thúc phiên hiện tại; cơ chế thu hồi theo contract/TBD | — → — | Phiên của chính mình | `204` |
-| GET | `/api/users/me` | Khôi phục thông tin user/quyền sau refresh | — → `CurrentUser` | Phiên của chính mình | `200` |
+| GET | `/api/users/me` | Khôi phục profile và quyền của token hiện tại sau tải lại trang; không làm mới quyền token | — → `CurrentUser` | Phiên của chính mình | `200` |
 | PATCH | `/api/users/me` | Cập nhật hồ sơ; không sửa role/status từ route này | `ProfileWrite` → `CurrentUser` | Phiên của chính mình | `200` |
 
 Đăng ký thành công không mặc nhiên cấp token như đăng nhập. Chính sách mật khẩu, thời hạn/refresh/thu hồi phiên còn `TBD` được theo dõi trong contract.
@@ -91,7 +91,7 @@ Truy vết: FR-ADMIN-BOOK-001, FR-TICKET-001/002, UC-05; OQ-03, OQ-04, OQ-UC-07.
 
 | Method | URL | Mục đích / query | Request → data | Quyền | Thành công; lỗi bổ sung |
 |---|---|---|---|---|---|
-| GET | `/api/tickets/{ticketCode}` | Đọc vé của mình hoặc tra cứu phục vụ soát vé | — → `Ticket` | Customer/chủ sở hữu **hoặc** Staff/soát vé | `200`; `404 TICKET_NOT_FOUND` |
+| GET | `/api/tickets/{ticketCode}` | Đọc vé của mình hoặc tra cứu phục vụ soát vé | — → `Ticket` (chủ sở hữu) / `AdmissionTicket` (Staff) | Customer/chủ sở hữu **hoặc** Staff/soát vé | `200`; `404 TICKET_NOT_FOUND` |
 | POST | `/api/tickets/{ticketCode}/validate` | Soát vé một lần | — → `TicketValidation` | Staff/soát vé | `200`; `409 TICKET_ALREADY_USED`, `422` vé voided/sai suất/ngoài cửa sổ được cấu hình |
 | GET | `/api/manage/bookings` | `bookingCode` bắt buộc, khớp chính xác; chỉ dữ liệu soát vé | — → `AdmissionBooking[]` (0 hoặc 1 phần tử) | Staff/soát vé | `200`; không mở tìm kiếm khách/payment hàng loạt |
 
@@ -113,7 +113,7 @@ Truy vết: FR-MGT-MOVIE-001/002, FR-MGT-ROOM-001, FR-MGT-ST-001..003, BR-ROOM-0
 | PUT | `/api/manage/genres/{genreId}` | Sửa thể loại | `GenreWrite` → `Genre` | Admin/danh mục | `200`; `409` trùng định danh duy nhất |
 | DELETE | `/api/manage/genres/{genreId}` | Xóa thể loại chưa được phim tham chiếu | — → — | Admin/danh mục | `204`; `409` đang được tham chiếu |
 | GET | `/api/manage/cinemas` | Rạp phân trang | — → `Page<Cinema>` | Admin/danh mục | `200` |
-| POST | `/api/manage/cinemas` | Tạo rạp; không mặc nhiên mở phạm vi vận hành đa chi nhánh | `CinemaWrite` → `Cinema` | Admin/danh mục | `201`; `409` trùng mã |
+| POST | `/api/manage/cinemas` | Đề xuất cấu hình rạp; vận hành thêm chi nhánh ngoài demo, chỉ mở sau chốt TBD-20 | `CinemaWrite` → `Cinema` | Admin/danh mục; scope TBD-20 | Dự kiến `201`; `409 DUPLICATE_RESOURCE` |
 | PUT | `/api/manage/cinemas/{cinemaId}` | Sửa rạp/trạng thái | `CinemaWrite` → `Cinema` | Admin/danh mục | `200`; `409` phụ thuộc chưa xử lý |
 | GET | `/api/manage/cinemas/{cinemaId}/rooms` | Phòng phân trang | — → `Page<Room>` | Admin/danh mục | `200` |
 | POST | `/api/manage/cinemas/{cinemaId}/rooms` | Tạo phòng | `RoomWrite` → `Room` | Admin/danh mục | `201`; `409` trùng mã/tên phòng |

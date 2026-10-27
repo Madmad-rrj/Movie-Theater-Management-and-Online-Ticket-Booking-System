@@ -365,7 +365,7 @@ FE hiển thị cần xác nhận/đối soát và đọc Booking; không hiển
 | Schema | Trường response |
 |---|---|
 | `AdmissionTicket` | `ticketCode: Uuid`, `bookingCode: Uuid`, `seatLabel: string`, `ticketTypeName: string`, `status: TicketStatus`, `showtimeId: Id`, `showtimeStartsAt: Instant`, `validatedAt: Instant\|null`. Chỉ dữ liệu phục vụ vào rạp. |
-| `Ticket` | Toàn bộ AdmissionTicket. **Chỉ khi đọc theo policy chủ sở hữu** thêm `qrCodeUrl: string\|null`; Staff projection bỏ trường này. FE phân nhánh theo policy, không giả định luôn có QR. |
+| `Ticket` | Toàn bộ AdmissionTicket + `qrCodeUrl: string\|null`; chỉ trả theo policy chủ sở hữu. Staff nhận schema AdmissionTicket riêng, không nhận trường QR. |
 | `TicketValidation` | `ticketCode: Uuid`, `status: "used"`, `validatedAt: Instant`, `validatedByUserId: Id` từ principal Staff, không lấy từ client. |
 
 Mã vé là UUID ngẫu nhiên; QR encoding (mã hay payload ký) và cách cung cấp ảnh còn TBD-21. qrCodeUrl null cho tới khi cơ chế được chốt; không tạo URL công khai bỏ qua quyền. Không đổi ticketCode thành BK-/TK-. Admission lookup không cung cấp QR để tải hàng loạt. 409 TICKET_ALREADY_USED không ghi đè audit; 422 TICKET_NOT_VALID cho trạng thái không cho vào. Điều kiện chọn suất/cửa sổ còn TBD-14, không ngầm chấp nhận vé mọi suất.
@@ -394,11 +394,56 @@ Lỗi quản trị: sai định dạng 400; sai miền/FK/role 422 VALIDATION_ER
 
 ## 7. Authentication và authorization
 
-JWT bearer theo architecture §7: kiểm tra email/password/account active, đọc roles, ký subject/roles/hạn. Request xác minh token trước truy cập; principal là nguồn current user, không nhận userId/role/validatedByUserId từ body/query hoặc token chưa xác minh.
+Nguồn: architecture §7, FR-AUTH-001..004, BR-AUTH-001..005, UC-05/08/09/10. Quyền từng route tại [API Endpoints](api-endpoints.md); dữ liệu trả phải đồng thời thỏa schema và policy dưới đây.
 
-Đăng ký chỉ CUSTOMER. Backend kiểm tra role và ownership; biết mã không đủ quyền. Thiếu bearer hợp lệ 401, thiếu quyền 403; role không tự kế thừa. Manager, vận hành tài chính/tra cứu mở rộng chờ OQ-04.
+### 7.1. Principal và người dùng hiện tại
 
-MVP không thu hồi tức thời token cũ (BR-AUTH-004, UC-08). Logout không hủy booking/payment và không bảo đảm bearer cũ mất hiệu lực; FE xóa phiên cục bộ. TTL/refresh/storage FE là TBD-02. Ma trận từng nhóm hoàn thiện trong CIN-SUB-071.
+- Route bearer nhận `Authorization: Bearer <token>` qua HTTPS. Backend xác minh chữ ký, issuer/audience cấu hình và hạn token trước khi dùng claim; không tin JWT chỉ được decode ở FE.
+- Ánh xạ claim đề xuất: `sub` là app_user.id dạng Id; `roles` là mảng RoleCode; `exp` là giây Unix của JWT, không phải Instant trong DTO. AuthSession.expiresAt được chuyển từ exp này.
+- currentUser.id lấy từ sub đã xác minh. userId/role/validatedByUserId do client gửi không được chọn chủ booking hay người thao tác. `/users/me` và lịch sử `/users/me/bookings` không nhận ID thay cho me.
+- Login chỉ thành công khi account active; role inactive không được cấp mới. Đăng ký công khai chỉ tạo CUSTOMER.
+- CurrentUser.roles phản ánh quyền dùng cho authorization của token hiện tại; ManageUser.roles phản ánh tập role gán trong DB. Refresh trang/GET me không cấp token mới hoặc tự thay quyền token.
+- Thiếu/sai/hết hạn bearer: 401 UNAUTHENTICATED. Identity hợp lệ thiếu role/ownership: 403 FORBIDDEN. Login sai hoặc account không active: 401 INVALID_CREDENTIALS với thông điệp chung.
+
+BR-AUTH-004 chấp nhận token cũ có thể giữ quyền đến hết hạn. Không cam kết thu hồi tức thời hoặc tự làm mới claim. Logout trả 204, FE xóa phiên cục bộ; không hủy booking/payment, không bảo đảm bearer cũ bị vô hiệu. TTL, refresh, storage và hiệu lực khóa account lên token đang sống là TBD-02.
+
+### 7.2. Ma trận nhóm quyền và phạm vi tài nguyên
+
+| Nhóm nghiệp vụ | Policy | Phạm vi |
+|---|---|---|
+| Register/login; phim/lịch/ghế/danh mục public | Public | Dữ liệu công khai, không có người giữ ghế/mã booking |
+| Logout; GET/PATCH users/me | Một role CUSTOMER/STAFF/MANAGER/ADMIN trong principal | Chính user; PATCH chỉ ProfileWrite |
+| Tạo booking; lịch sử của tôi | CUSTOMER | Tạo/lọc theo sub; không nhận owner từ client |
+| Đọc/hủy booking | CUSTOMER và booking.user_id=sub | Hủy còn phải thỏa lifecycle §5.2 |
+| Tạo/đọc payment | CUSTOMER và booking của payment thuộc sub | Chính payment/booking; không được ghi trạng thái tài chính |
+| Đọc ticket theo luồng Customer | CUSTOMER và booking của ticket thuộc sub | Ticket của chính mình, không suy quyền từ ticketCode |
+| Đọc ticket; lookup booking phục vụ soát | STAFF | AdmissionTicket/AdmissionBooking; không dùng DTO đầy đủ của Customer |
+| Validate ticket | STAFF | Kiểm tra booking/detail/ticket/cửa sổ §5.4, không soát mọi trạng thái |
+| Quản trị danh mục/phòng/ghế/suất | ADMIN | Trường ghi trong schema và invariant §5.5; policy còn TBD chưa được mở |
+| Quản trị user/status/roles | ADMIN | Tài khoản đích trong path; actor/audit vẫn từ principal |
+| Quản trị Manager; payment/reconcile/report/lookup mở rộng | TBD OQ-04 | Chưa cấp quyền triển khai; TBD-13/15/20 |
+| Callback | Gateway | Nguồn/chữ ký theo adapter, không là role JWT |
+| Refund, hủy confirmed, hủy suất/chatbot chưa chốt | Ngoài demo hoặc TBD theo catalog §10 | Không mở quyền chỉ vì có enum/bảng/route đề xuất |
+
+Một user có nhiều role phải thỏa policy của từng thao tác. Không có thứ bậc ngầm CUSTOMER < STAFF < MANAGER < ADMIN. ADMIN/MANAGER không tự có quyền đặt vé Customer hay soát vé Staff; muốn dùng luồng đó phải có role tương ứng và điều kiện tài nguyên.
+
+Manager là actor có trong mô hình nhưng ranh giới quyền còn PROPOSED/OQ-04. Chưa có quyết định thì từ chối thao tác chưa được cấp; không dùng MANAGER hoặc ADMIN như mặc định cho mọi route. Admin cũng không được mở nghiệp vụ tài chính/ngoài demo dưới tên toàn quyền.
+
+### 7.3. Ownership, projection và audit
+
+- Payment: truy ownership qua payment.booking_id → booking.user_id; ticket: ticket.booking_detail_id → booking_detail.booking_id → booking.user_id.
+- Kiểm tra quyền trước trả dữ liệu; thao tác ghi đọc lại điều kiện liên quan trong transaction. UUID, dữ liệu FE hoặc prefix manage không phải bằng chứng quyền. Customer không đọc/hủy tài nguyên khách khác dù biết mã.
+- Staff chỉ có thông tin admission: mã tra cứu, phim/suất/phòng/ghế/loại vé/trạng thái cần kiểm tra. Không trả contact/email/phone, giá, payment/payUrl hoặc QR image/URL của Customer.
+- GET ticket chung route: nhánh Customer đủ ownership trả Ticket; nhánh Staff trả AdmissionTicket. User có cả hai role chỉ được full Ticket khi nhánh Customer thỏa ownership.
+- Lookup Staff trả AdmissionBooking ngay tại backend, không trả Booking rồi ẩn ở FE. Tìm theo thông tin khách hoặc lookup tài chính rộng chờ TBD-15.
+- Audit soát vé lấy principal và giờ server. Lần quét lặp trả lỗi, không ghi đè audit. Baseline error giữ shape §3, không tự thêm metadata audit/PII chưa có schema.
+- Giá/trạng thái trong schema quản trị chỉ hợp lệ dưới policy quản trị; Admin không được bỏ qua invariant payment/booking. Không role nào được nhận password hash/secret/raw callback/fingerprint.
+
+Projection admission là đề xuất kỹ thuật để review, không mở thêm quyền nghiệp vụ. Phân quyền chi nhánh ngoài demo; không tự thêm policy phân công chi nhánh khi schema/yêu cầu chưa quy định.
+
+### 7.4. Payment Gateway
+
+Gateway không có role CUSTOMER/STAFF/MANAGER/ADMIN và không dùng bearer của họ thay chữ ký cổng. JWT Admin không đủ quyền gửi kết quả thanh toán. Callback xác minh nguồn/chữ ký, định danh, tiền/tệ và xử lý lặp theo §5.3; OQ-01/TBD-01 quyết định wire protocol/ACK. Quyền callback không cấp quyền đọc ticket/booking hoặc sửa payment tùy ý.
 
 ## 8. Decision register — TBD và khác biệt draft
 
