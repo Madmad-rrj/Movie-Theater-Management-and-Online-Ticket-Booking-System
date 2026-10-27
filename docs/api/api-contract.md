@@ -123,6 +123,8 @@ Lỗi chung 400/415/422/500/503 áp dụng khi phù hợp; 401/403 cho route bea
 | SHOWTIME_ROOM_OVERLAP | Chồng khoảng chiếm phòng, gồm dọn phòng |
 | RESOURCE_IN_USE | Xóa/sửa phá lịch sử hoặc quan hệ đang dùng |
 | SHOWTIME_LOCKED | Thay đổi cấu trúc suất bị chặn, xem TBD-13 |
+| DUPLICATE_RESOURCE | Trùng code/tên/vị trí unique của danh mục |
+| POLICY_CONFLICT | Transition/thao tác tài khoản vi phạm policy đã được duyệt; không thay cho câu trả lời TBD |
 
 Tên lỗi mới là đề xuất để FE/BE review. Ánh xạ constraint có chủ đích, không coi mọi lỗi DB là 409.
 
@@ -194,7 +196,201 @@ Nguồn: BR-PAY-001..008; UC-02/09; DB design §15, §31.3–31.4; architecture 
 
 ## 6. Request/response theo nghiệp vụ
 
-Shape hiện có tại [DTO Specification](dto-specification.md). CIN-SUB-070 bổ sung schema với kiểu/required/optional/nullable tại mục này. UUID cho PK, mã BK-/TK- và response không envelope của draft không phải quyết định wire cuối (§2, TBD-17).
+### 6.1. Cách đọc schema
+
+Mỗi hàng dưới định nghĩa một schema có tên được catalog tham chiếu. Ký hiệu `field?: T` là request được bỏ qua; `T|null` cho phép null; các trường response đều luôn có, trừ trường được ghi rõ theo policy. Mảng rỗng là `[]`, không null. `string(n)` là chuỗi tối đa n ký tự; text không có giới hạn nghiệp vụ cụ thể trong SQL (giới hạn request triển khai theo TBD-18). Chuỗi tên/mã bắt buộc trim không rỗng; password không trim hoặc thay đổi.
+
+Các ví dụ JSON đều có thể parse; ID/mã/thời gian chỉ là dữ liệu minh họa, không phải seed hoặc cấu hình gateway đã chốt. `Page<T>` là envelope §3 chứa mảng T, không phải một DTO lồng thêm data.
+
+### 6.2. Auth và hồ sơ
+
+| Schema | Trường / validation |
+|---|---|
+| `RegisterRequest` | `email: string(254)` định dạng email; `password: string` không rỗng, policy độ dài/độ mạnh TBD-02; `fullName: string(150)`; `phone?: string(20)\|null` mặc định null. Không nhận roles/status/id. Chuẩn hóa email trim/lower cho unique, không loại dấu chấm/dấu cộng. Phone là text, không ép số; định dạng điện thoại chi tiết TBD-20. |
+| `RegisteredUser` | `id: Id`, `email: string`, `fullName: string`, `phone: string\|null`, `roles: RoleCode[]` chỉ CUSTOMER khi đăng ký. Không có token hoặc createdAt (app_user không có cột này). |
+| `LoginRequest` | `email: string(254)` đúng định dạng, `password: string` không rỗng. Sai thông tin/locked/deactivated đều 401 INVALID_CREDENTIALS, không phân biệt lý do. |
+| `AuthSession` | `token: string`, `tokenType: "Bearer"`, `expiresAt: Instant` từ exp thực của token, `user: CurrentUser`. Không tự thêm refreshToken khi chưa chốt. |
+| `CurrentUser` | `id: Id`, `email: string`, `fullName: string`, `phone: string\|null`, `roles: RoleCode[]`. id/roles phản ánh principal được xác minh của phiên; profile lấy theo id đó. Vai trò hiện tại trong DB có thể khác token cũ (BR-AUTH-004), xem §7. |
+| `ProfileWrite` | `fullName?: string(150)`, `phone?: string(20)\|null`; ít nhất một trường. Đây là whitelist đề xuất cho FR-AUTH-003; thay email/password ngoài schema, chờ TBD-20. Không sửa snapshot contact của booking cũ. |
+
+```json
+{
+  "email": "customer@example.com",
+  "password": "example-only-not-a-real-password",
+  "fullName": "Nguyen Van A",
+  "phone": null
+}
+```
+
+```json
+{
+  "data": {
+    "id": "42",
+    "email": "customer@example.com",
+    "fullName": "Nguyen Van A",
+    "phone": null,
+    "roles": ["CUSTOMER"]
+  }
+}
+```
+
+Ví dụ là đăng ký/RegisteredUser; không suy ra password mẫu là policy đã duyệt. Logout/cancel/validate baseline không có body; 204 logout không bọc data.
+
+### 6.3. Phim, suất và dữ liệu tham chiếu
+
+| Schema | Trường response |
+|---|---|
+| `MovieSummary` | `id: Id`, `title: string`, `posterUrl: string\|null`, `ageRating: string\|null`, `status: MovieStatus`, `durationMinutes: integer` 1..32767. |
+| `MovieDetail` | Toàn bộ MovieSummary + `description: string\|null`, `releaseDate: Date\|null`, `trailerUrl: string\|null`, `language: string\|null`, `genres: Genre[]`. |
+| `Genre` | `id: Id`, `code: string`, `name: string`, `description: string\|null`, `isActive: boolean`. |
+| `Cinema` | `id: Id`, `code: string`, `name: string`, `address: string`, `phone: string\|null`, `status: "active"\|"inactive"`. |
+| `Room` | `id: Id`, `cinemaId: Id`, `code: string`, `name: string`, `status: PhysicalStatus`, `capacityUnits: integer >=0` suy ra sum capacityUnits của các ghế trong cấu trúc, không phải số ghế còn bán. |
+| `SeatType` | `id: Id`, `code: string`, `name: string`, `capacityUnits: 1\|2`, `surchargeAmount: Money`, `currency: "VND"`, `isActive: boolean`. |
+| `TicketType` | `id: Id`, `code: string`, `name: string`, `discountPercent: Percent`, `eligibilityNote: string\|null`, `isActive: boolean`. Ghi chú không thay kiểm tra eligibility backend. |
+| `Showtime` | `id: Id`, `movieId: Id`, `movieTitle: string`, `cinemaId: Id`, `cinemaName: string`, `cinemaRoomId: Id`, `cinemaRoomName: string`, `startsAt: Instant`, `endsAt: Instant`, `roomAvailableAt: Instant`, `bookingClosesAt: Instant\|null`, `basePrice: Money >0`, `currency: "VND"`, `status: ShowtimeStatus`, `bookingAvailable: boolean`. movieTitle/roomName từ snapshot suất; tên cinema từ danh mục, không tuyên bố là snapshot. |
+| `Seat` | `id: Id`, `cinemaRoomId: Id`, `seatTypeId: Id`, `rowLabel: string`, `seatNumber: integer` 1..32767, `status: PhysicalStatus`; dành quản trị cấu trúc, không dùng status này làm trạng thái theo suất. |
+| `SeatMap` | `showtimeId: Id`, `bookingAvailable: boolean`, `rows: SeatRow[]`. `SeatRow={rowLabel: string, seats: SeatAvailabilityItem[]}`. |
+| `SeatAvailabilityItem` | `id: Id`, `seatNumber: integer`, `seatTypeCode: string`, `capacityUnits: 1\|2`, `surchargeAmount: Money`, `currency: "VND"`, `physicalStatus: PhysicalStatus`, `status: SeatAvailability`, `selectable: boolean`. selectable chỉ true khi suất còn bán, phòng/ghế/loại ghế active và status available; backend kiểm tra lại khi POST. |
+
+Public catalog chỉ lấy mục active; movie list chỉ hai trạng thái ở §4, movie detail không lộ archived; trường hợp ended còn cần xác nhận phạm vi công khai theo TBD-20. Public showtime detail/map không lộ draft; suất đã công bố nhưng đóng bán có thể trả bookingAvailable=false. Trạng thái cancelled/đã gỡ công khai trả 404; booking đã mua vẫn đọc qua snapshot được bảo vệ. Chính sách giữ trang chi tiết sau khi kết thúc là đề xuất cần review cùng TBD-20.
+
+Sơ đồ không trả bookingId, userId, contact hay thời hạn giữ của người khác. physicalStatus tách độc lập: ghế maintenance và allocation available vẫn selectable=false. Các giá trị giá thành phần không là quote cuối (TBD-19).
+
+```json
+{
+  "data": {
+    "showtimeId": "17",
+    "bookingAvailable": true,
+    "rows": [{
+      "rowLabel": "A",
+      "seats": [{
+        "id": "101",
+        "seatNumber": 1,
+        "seatTypeCode": "STANDARD",
+        "capacityUnits": 1,
+        "surchargeAmount": 0,
+        "currency": "VND",
+        "physicalStatus": "maintenance",
+        "status": "available",
+        "selectable": false
+      }]
+    }]
+  }
+}
+```
+
+### 6.4. Booking, lịch sử và dữ liệu admission
+
+| Schema | Trường / validation |
+|---|---|
+| `BookingCreate` | `showtimeId: Id`, `requestKey: Uuid`, `items: BookingItem[]` ít nhất một. `BookingItem={seatId: Id, ticketTypeId: Id}`; không trùng seatId, không quantity/price/status/userId. ID có thật/active và ghế đúng phòng; sai quan hệ 422, ghế vừa bị giữ 409. Contact payload chưa chốt TBD-06; không tự thêm trường. |
+| `BookingSummary` | `bookingId: Id`, `bookingCode: Uuid`, `status: BookingStatus`, `showtime: BookingShowtime`, `createdAt: Instant`, `expiresAt: Instant`, `confirmedAt: Instant\|null`, `cancelledAt: Instant\|null`, `cancellationReason: string\|null`, `totalAmount: Money >0`, `currency: "VND"`, `ticketCount: integer >=0`. Lịch sử không nhúng QR/contact/payment; mở chi tiết để lấy. |
+| `BookingShowtime` | `id: Id`, `movieId: Id`, `movieTitle: string`, `cinemaId: Id`, `cinemaName: string`, `cinemaRoomId: Id`, `cinemaRoomName: string`, `startsAt: Instant`. Title/room từ snapshot suất; cinemaName từ danh mục. |
+| `Booking` | Toàn bộ BookingSummary + `contact: BookingContact`, `details: BookingDetail[]` ít nhất một, `tickets: Ticket[]`, `currentPayment: Payment\|null`. contact/tickets/payment chỉ trong projection chủ sở hữu. |
+| `BookingContact` | `email: string`, `phone: string\|null`, lấy contact_*_snapshot, không đọc profile hiện tại để thay lịch sử. Nguồn ghi snapshot khi tạo booking còn TBD-06. |
+| `BookingDetail` | `seatId: Id`, `ticketTypeId: Id`, `seatLabel: string`, `seatTypeName: string`, `ticketTypeName: string`, `capacityUnits: 1\|2`, `baseAmount: Money >0`, `surchargeAmount: Money`, `discountPercent: Percent`, `discountAmount: Money`, `unitPrice: Money`, `allocationStatus: AllocationStatus`. Tất cả tên/giá/capacity là snapshot khi đặt. |
+| `AdmissionBooking` | `bookingCode: Uuid`, `status: BookingStatus`, `showtime: BookingShowtime`, `tickets: AdmissionTicket[]`. Không contact/email/phone/giá/payment/QR; tìm chính xác mã trả mảng 0 hoặc 1. |
+
+currentPayment là đề xuất projection để refresh không làm mất paymentId: chọn attempt mở nếu có; nếu không chọn payment applied; nếu không chọn attempt mới nhất theo createdAt rồi id. Trả null nếu chưa có. GET không tự query/charge gateway. Trường này không thay lịch sử tài chính; tra cứu mọi attempt của vận hành chờ OQ-04.
+
+```json
+{
+  "showtimeId": "17",
+  "requestKey": "2bd049bc-9768-4af7-9615-f0ca9d0c7a38",
+  "items": [{ "seatId": "102", "ticketTypeId": "1" }]
+}
+```
+
+```json
+{
+  "data": {
+    "bookingId": "501",
+    "bookingCode": "f8449993-e8c3-4147-b6b9-1ea305a85763",
+    "status": "pending",
+    "showtime": {
+      "id": "17", "movieId": "5", "movieTitle": "Phim minh hoa",
+      "cinemaId": "1", "cinemaName": "Cinema Demo",
+      "cinemaRoomId": "2", "cinemaRoomName": "Room 2",
+      "startsAt": "2026-10-27T13:00:00Z"
+    },
+    "createdAt": "2026-10-27T08:30:00Z",
+    "expiresAt": "2026-10-27T08:35:00Z",
+    "confirmedAt": null, "cancelledAt": null, "cancellationReason": null,
+    "totalAmount": 90000, "currency": "VND", "ticketCount": 0,
+    "contact": { "email": "customer@example.com", "phone": null },
+    "details": [{
+      "seatId": "102", "ticketTypeId": "1", "seatLabel": "A2",
+      "seatTypeName": "Standard", "ticketTypeName": "Adult", "capacityUnits": 1,
+      "baseAmount": 90000, "surchargeAmount": 0, "discountPercent": 0,
+      "discountAmount": 0, "unitPrice": 90000, "allocationStatus": "held"
+    }],
+    "tickets": [], "currentPayment": null
+  }
+}
+```
+
+Tạo mới trả 201; replay cùng user/key/body trả 200 với booking hiện tại, kể cả đã expired. POST cancel không nhận body hoặc giá/lý do do client tự gán; server phải ghi cancelledAt/cancellationReason theo quyết định TBD-06. Booking pending chưa phát vé; confirmed có số vé đúng tổng capacity snapshots, từng vé có trạng thái riêng. Lịch sử trả BookingSummary; màn hình My Tickets mở Booking để lấy đầy đủ tickets, không cần route trùng.
+
+### 6.5. Payment
+
+| Schema | Trường / validation |
+|---|---|
+| `PaymentCreate` | `bookingId: Id`, `provider: string(30)` không rỗng và thuộc allowlist cổng đã cấu hình. Không tự chọn vnpay; cổng chưa chốt TBD-01. Không nhận amount/currency/userId/status/merchantRequestId/returnUrl. |
+| `Payment` | `paymentId: Id`, `bookingId: Id`, `provider: string`, `status: PaymentStatus`, `amount: Money >0`, `currency: "VND"`, `appliedAt: Instant\|null`, `reconciliationStatus: ReconciliationStatus`, `payUrl: string\|null`, `createdAt: Instant`. payUrl là URL HTTPS tin cậy do adapter tạo/xác minh, null khi chưa có hoặc không còn dùng được. Không expose raw payload/merchant secrets hoặc mã lỗi cổng chưa lọc. |
+| `ProviderCallback` / `ProviderAck` | **TBD-01/11:** schema, required fields, signature, event identity, raw content type, HTTP ACK/retry theo cổng. Không dùng JSON user DTO để giả định chữ ký. Chưa đủ contract để tích hợp callback thực. |
+
+Không có payUrl không đồng nghĩa failed. created/pending/unknown đều ngăn tạo attempt mới; FE đọc lại currentPayment và trạng thái đã xác minh. Chính sách khôi phục payUrl và polling interval chưa chốt, không tự quy định thời gian. Lỗi đặc thù: 409 BOOKING_EXPIRED/BOOKING_ALREADY_CONFIRMED/BOOKING_NOT_PAYABLE; xung đột provider theo TBD-09. Không tự retry POST với attempt/reference mới sau timeout.
+
+```json
+{ "bookingId": "501", "provider": "sandbox-example" }
+```
+
+`sandbox-example` chỉ là placeholder contract, phải thay bằng mã provider được nhóm chốt và cấu hình. Ví dụ payment thành công nhưng **chưa được áp dụng**:
+
+```json
+{
+  "data": {
+    "paymentId": "701", "bookingId": "501", "provider": "sandbox-example",
+    "status": "succeeded", "amount": 90000, "currency": "VND",
+    "appliedAt": null, "reconciliationStatus": "needs_review",
+    "payUrl": null, "createdAt": "2026-10-27T08:32:00Z"
+  }
+}
+```
+
+FE hiển thị cần xác nhận/đối soát và đọc Booking; không hiển thị vé thành công chỉ dựa vào succeeded. Refund DTO chưa được định nghĩa vì ngoài demo; DecimalAmount dành cho dữ liệu thực thu/hoàn khi thiết kế phần mở rộng, không trộn vào Money VND.
+
+### 6.6. Ticket và kiểm soát projection
+
+| Schema | Trường response |
+|---|---|
+| `AdmissionTicket` | `ticketCode: Uuid`, `bookingCode: Uuid`, `seatLabel: string`, `ticketTypeName: string`, `status: TicketStatus`, `showtimeId: Id`, `showtimeStartsAt: Instant`, `validatedAt: Instant\|null`. Chỉ dữ liệu phục vụ vào rạp. |
+| `Ticket` | Toàn bộ AdmissionTicket. **Chỉ khi đọc theo policy chủ sở hữu** thêm `qrCodeUrl: string\|null`; Staff projection bỏ trường này. FE phân nhánh theo policy, không giả định luôn có QR. |
+| `TicketValidation` | `ticketCode: Uuid`, `status: "used"`, `validatedAt: Instant`, `validatedByUserId: Id` từ principal Staff, không lấy từ client. |
+
+Mã vé là UUID ngẫu nhiên; QR encoding (mã hay payload ký) và cách cung cấp ảnh còn TBD-21. qrCodeUrl null cho tới khi cơ chế được chốt; không tạo URL công khai bỏ qua quyền. Không đổi ticketCode thành BK-/TK-. Admission lookup không cung cấp QR để tải hàng loạt. 409 TICKET_ALREADY_USED không ghi đè audit; 422 TICKET_NOT_VALID cho trạng thái không cho vào. Điều kiện chọn suất/cửa sổ còn TBD-14, không ngầm chấp nhận vé mọi suất.
+
+### 6.7. Request quản trị và dữ liệu tài khoản
+
+Đây là đề xuất schema cho quyền quản trị đã nêu; **không** làm policy Manager hoặc workflow trạng thái chưa chốt trở thành đã duyệt. Response dùng các schema đọc trên; các trường Id/currency/snapshot/audit/suy ra chỉ server tạo. Public booking/payment cấm giá/status, nhưng schema quản trị cho phép rõ những trường cần sửa theo nghiệp vụ.
+
+| Schema | Trường request / validation |
+|---|---|
+| `MovieWrite` | `title: string(255)`, `durationMinutes: integer` 1..32767, `status: MovieStatus`, `genreIds: Id[]` không trùng, mọi genre tồn tại; `description?: string\|null`, `releaseDate?: Date\|null`, `posterUrl?: string\|null`, `trailerUrl?: string\|null`, `language?: string(50)\|null`, `ageRating?: string(20)\|null`. URL không null phải là URL HTTP(S) hợp lệ. Các optional mặc định null khi POST/PUT; không PATCH ngầm. Status transition không được phá lịch/snapshot. |
+| `GenreWrite` | `code: string(30)`, `name: string(100)`, `isActive: boolean`, `description?: string\|null` mặc định null; unique code và tên lower(trim). |
+| `CinemaWrite` | `code: string(30)`, `name: string(150)`, `address: string` không rỗng, `status: "active"\|"inactive"`, `phone?: string(30)\|null` mặc định null; code unique. Tạo thêm chi nhánh vận hành ngoài demo, TBD-20. |
+| `RoomWrite` | `code: string(20)`, `name: string(100)`, `status: PhysicalStatus`; code/tên normalized unique trong cinema. cinemaId từ route tạo và giữ nguyên khi sửa; capacity suy ra, không nhận. |
+| `SeatWrite` | `seatTypeId: Id`, `rowLabel: string(10)`, `seatNumber: integer` 1..32767, `status: PhysicalStatus`; vị trí unique theo phòng; cinemaRoomId từ route tạo, không chuyển phòng qua PUT; schema bị khóa theo BR-ROOM-004. |
+| `SeatTypeWrite` | `code: string(30)`, `name: string(100)`, `capacityUnits: 1\|2`, `surchargeAmount: Money`, `isActive: boolean`; code/tên normalized unique. Không thay capacity làm hỏng cấu trúc đang sử dụng. |
+| `TicketTypeWrite` | `code: string(30)`, `name: string(100)`, `discountPercent: Percent`, `isActive: boolean`, `eligibilityNote?: string\|null` mặc định null; code/tên normalized unique. Không tự thay chính sách đủ điều kiện chưa chốt OQ-08. |
+| `ShowtimeWrite` | `movieId: Id`, `cinemaRoomId: Id`, `startsAt: Instant`, `basePrice: Money >0`, `bookingClosesAt?: Instant\|null` mặc định null; FK khả dụng; nếu có closesAt ≤startsAt. Backend snapshot title/room/duration và tính endsAt. Nguồn roomAvailableAt, trạng thái tạo draft/scheduled và publish còn TBD-13; không gửi status/endsAt/snapshot để bỏ qua kiểm tra. Chưa đủ policy để bật ghi suất cho tới khi chốt phần này. |
+| `UserStatusWrite` | `status: "active"\|"locked"` cho khóa/mở khóa. deactivated có trong schema đọc nhưng thao tác cần policy riêng TBD-20. Actor lấy từ principal Admin. |
+| `UserRolesWrite` | `roles: RoleCode[]` không trùng, thay toàn bộ tập; role phải tồn tại/active. Tập rỗng, tự thu ADMIN và admin cuối cùng chờ TBD-20, không mặc nhiên cho phép chỉ vì JSON hợp lệ. |
+| `ManageUser` (response) | `id: Id`, `email: string`, `fullName: string`, `phone: string\|null`, `status: UserStatus`, `roles: RoleCode[]` là tập role gán trong DB (khác roles của token hiện tại). Không password hash/token, không createdAt không có nguồn lưu. |
+
+Lỗi quản trị: sai định dạng 400; sai miền/FK/role 422 VALIDATION_ERROR; trùng code/tên/vị trí 409 DUPLICATE_RESOURCE; đang được tham chiếu hoặc cấu trúc bị khóa 409 RESOURCE_IN_USE; suất chồng 409 SHOWTIME_ROOM_OVERLAP; sửa suất bị khóa 409 SHOWTIME_LOCKED; transition/quyền tự quản trị chưa hợp lệ theo policy đã duyệt 409 POLICY_CONFLICT. Chính sách còn TBD phải chốt trước mở endpoint, không dùng POLICY_CONFLICT thay cho định nghĩa chính sách.
+
+`RevenueReport`, `ChatRequest`, `ChatReply` và thao tác tài chính quản trị **chưa có schema triển khai** (TBD-15/16). Catalog giữ mục truy vết thay vì tự đặt trường/role hoặc bỏ sót nghiệp vụ.
 
 ## 7. Authentication và authorization
 
@@ -230,6 +426,7 @@ Cần người phụ trách nghiệp vụ/FE/BE xác nhận trong review. Không
 | TBD-18 | Architecture §12a chỉ Proposed quota/anti-abuse; số ghế/pending booking/rate limit cụ thể? Không dùng số benchmark làm rule. |
 | TBD-19 | Giá trước booking cần server quote hay thành phần/ước tính có nhãn? FE không chốt giá; không tự thêm quote route chưa duyệt. |
 | TBD-20 | Sửa email/password/profile, khóa/deactivate, tự thu ADMIN/last-admin protection, vòng đời danh mục? Route quản trị mới là đề xuất, kiểm tra invariant trước khi mở. |
+| TBD-21 | QR chứa ticketCode hay payload có chữ ký; FE dựng QR hay backend cung cấp ảnh/URL được bảo vệ; thời hạn và xác thực khi lấy QR? Không tạo URL công khai hoặc coi null QR là vé vô hiệu. |
 
 ## 9. Truy vết và kiểm tra bàn giao
 
