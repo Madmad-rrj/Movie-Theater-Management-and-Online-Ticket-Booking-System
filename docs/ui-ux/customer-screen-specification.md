@@ -319,3 +319,89 @@ Schema booking bắt buộc `contact_email_snapshot`, cho phép `contact_phone_s
 - **NT-11:** Hai khách gửi cùng ghế: chỉ một booking giữ được; request chứa một ghế xung đột và một ghế trống không giữ một phần (AC-BOOK-002).
 - **NT-12:** Timeout/retry cùng key không tạo đơn thứ hai, không reset hạn; payload khác dưới key cũ được báo xung đột.
 - **NT-13:** Giá chốt chỉ lấy từ server; không gửi giá/giảm/trạng thái; thông tin liên hệ và báo giá trước đặt phải được chốt contract trước khi nghiệm thu tích hợp đầy đủ.
+
+### 3.5. KH-05 — Thanh toán
+
+#### Mục tiêu và điều kiện vào
+
+Cho chủ booking xem số tiền đã chốt, bắt đầu thanh toán khi hợp lệ và theo dõi kết quả thực tế. Truy cập bằng định danh booking, không tạo booking mới khi mở trang. Căn cứ: FR-BOOK-003, FR-PAY-001..005, BR-BOOK-004/008, BR-PAY-001..008; S02 UC-02/03/04; S05 mục 31.
+
+Khi vào trực tiếp, reload, quay lại từ cổng hoặc quay lại bằng Back/Forward, đọc lại booking từ backend. Không dùng query string “thành công”, local state hoặc đồng hồ trên thiết bị làm bằng chứng đã thanh toán.
+
+#### Nội dung hiển thị
+
+| Khối | Nội dung | Nguồn / giới hạn |
+|---|---|---|
+| Tóm tắt | Mã booking, phim, ngày/giờ, phòng, các ghế, loại ghế/vé | `GET /api/bookings/{bookingId}`; DTO hiện chưa mô tả đầy đủ ngữ cảnh phim/suất/phòng, xem DL-05. |
+| Chi tiết giá | Giá chốt mỗi đơn vị ghế và tổng tiền VND | `details[].unitPrice`, `totalAmount`, `currency`; phân rã base/phụ thu/giảm còn thiếu DTO. Không lấy bảng giá hiện tại tính lại. |
+| Hạn giữ | Countdown theo `expiresAt`, nhãn thời gian còn lại | Không khởi động lại khi reload hoặc chuyển trang. Khi bằng 0, xác minh trạng thái server trước khi hiển thị đã expired. |
+| Thanh toán | Cổng/phương thức đang được hỗ trợ, trạng thái đang xử lý | OQ-01 chưa chọn cổng; ví dụ `provider: "vnpay"` trong DTO không phải quyết định tích hợp. Không tự dựng danh sách ví/ngân hàng. |
+| Kết quả | Trạng thái booking và attempt đang theo dõi | DTO payment: `paymentId`, `bookingId`, `status`, `amount`, `currency`; `appliedAt`/`reconciliationStatus` chưa có trong response, xem DL-07. |
+| Hành động | Thanh toán, kiểm tra lại, hủy booking/đổi ghế khi hợp lệ | Điều kiện theo bảng dưới; backend chốt cuối cùng. |
+
+Một cột, tóm tắt phía trên form/thao tác theo S10. **Đề xuất UI:** tổng tiền và cảnh báo hết hạn đặt gần nút chính; trạng thái đang xác nhận nằm ngay trong nội dung trang, không chỉ là toast.
+
+#### Luồng bắt đầu thanh toán
+
+1. Tải booking, kiểm tra ownership và trạng thái. Nếu đã confirmed, mở KH-06; nếu expired/cancelled, hiện trạng thái kết thúc, không tạo attempt mới.
+2. Chỉ bắt đầu khi booking pending còn hạn theo server và không có attempt `created`/`pending`/`unknown`. Nút “Thanh toán” disabled trong lúc gửi hoặc có attempt mở.
+3. Gọi `POST /api/payments` với `bookingId`, `provider` theo cấu hình được chốt. Client không gửi `amount`, `currency`, mức giảm hoặc trạng thái để quyết định số tiền thu.
+4. Response Proposed có `paymentId`, `status`, `amount`, `currency`, `payUrl`. Lưu liên hệ giữa attempt và booking trong ngữ cảnh UI; khi cần, điều hướng đến `payUrl` do backend cung cấp. Kiểu chuyển trang và return URL còn phụ thuộc cổng, không tự chốt popup hoặc form thu dữ liệu thẻ trong website.
+5. Sau khi khách trở về hoặc khi kiểm tra kết quả: đọc `GET /api/payments/{paymentId}` và booking. Không gọi `POST /api/payments/callback` từ frontend để tự xác nhận giao dịch; webhook là tương tác của cổng với backend.
+6. Chỉ chuyển kết quả thành công KH-06 khi backend xác nhận booking `confirmed`. `payment.status = succeeded` riêng lẻ chưa chứng minh payment đã được áp dụng hoặc vé đã phát hành.
+7. Cách polling, chu kỳ, điều kiện dừng và return route chưa có contract đầy đủ. **Đề xuất UI:** có “Kiểm tra lại” gọi API đọc; không biến nó thành thao tác tạo attempt mới.
+
+Không tự bổ sung `requestKey` cho API payment: DTO hiện chưa có field này. Backend có idempotency key của attempt theo FR-PAY-001; contract khôi phục attempt sau timeout/reload cần được chốt riêng ở DL-06.
+
+#### Ma trận trạng thái và hành động
+
+| Dữ liệu backend / tình huống | Hiển thị | Thanh toán mới / retry |
+|---|---|---|
+| Pending còn hạn, xác định không có attempt mở | “Đang chờ thanh toán”, countdown còn lại | Cho tạo attempt khi backend chấp nhận. |
+| Attempt `created` | “Đang khởi tạo thanh toán” | Chặn tạo attempt song song. Không hiện nút bấm lại chỉ vì chưa có `payUrl`. |
+| Attempt `pending` | “Thanh toán đang được xử lý” | Chặn attempt mới, tiếp tục kiểm tra trạng thái. |
+| Attempt `unknown` / timeout khởi tạo | “Kết quả thanh toán đang được xác nhận” | Không tự kết luận thất bại, không tự retry thu tiền; đọc/khôi phục attempt hiện tại theo contract. |
+| Attempt `failed` / `cancelled`, booking vẫn pending còn hạn, không còn attempt mở | Thông báo thất bại/hủy của lần thử, giữ thông tin đơn | Cho thử lại khi backend xác nhận điều kiện; không reset `expiresAt`. |
+| Payment succeeded, booking chưa confirmed | “Đang kiểm tra kết quả đặt vé” hoặc thông báo cần kiểm tra khi server cung cấp bằng chứng phù hợp | Không phát QR, không báo đặt vé thành công, không mời trả tiền lần nữa chỉ vì chưa có vé. |
+| Booking confirmed | Hiển thị xác nhận, mở vé | Không thanh toán lại. |
+| Countdown = 0 nhưng booking vẫn pending | “Đã qua hạn giữ ghế; đang kiểm tra trạng thái đơn” | Chặn bắt đầu thanh toán mới; không tự đổi booking thành expired. |
+| Pending quá hạn, attempt còn mở / cần đối soát | “Kết quả thanh toán đang được xác nhận” | Không tự giải phóng ghế hoặc mở lại lượt thanh toán. |
+| Booking expired / cancelled | Hiện kết quả kết thúc của đơn; cho xem lịch/chọn lại qua booking mới | Không tái mở booking cũ, không nhận thanh toán cho đơn cũ. |
+
+Countdown là hiển thị hạn danh nghĩa; worker chỉ expired/released khi thỏa điều kiện lifecycle. Grace period có chính sách đã chốt ở OQ-07 nhưng con số 2–3 phút còn đề xuất/cấu hình, không được hiện như lời hứa “chắc chắn có kết quả sau 2 phút”. Nếu cổng chưa cho kết quả xác đáng, ghế có thể tiếp tục held dưới quy trình giám sát; UI không tự công bố ghế đã được nhả.
+
+Nguồn đang mâu thuẫn về áp dụng payment thành công trong grace period và điều kiện đủ thời gian bán sát giờ. UI đọc kết quả server; không tự quyết định confirm/expired dựa trên cách hiểu một nhánh tài liệu. Các điểm này được ghi tại CX-02/CX-03.
+
+#### Hủy booking / hủy thanh toán để đổi ghế
+
+| Điều kiện | Thao tác và kết quả mong đợi |
+|---|---|
+| Chủ booking, pending, chưa có payment áp dụng và không còn attempt mở | Hiện “Hủy booking”; xác nhận hủy, gửi `POST /api/bookings/{bookingId}/cancel`; chỉ báo thành công sau response và trạng thái cập nhật. |
+| Có attempt created/pending/unknown | Theo FR-BOOK-003 và BR-BOOK-008, có luồng yêu cầu backend kiểm tra/hủy với cổng: cổng xác nhận chưa thu thì mới hủy payment, booking và nhả ghế. Không coi đóng cửa sổ cổng là hủy thành công. |
+| Cổng báo đã thu / chưa rõ | Backend từ chối hủy; UI giữ thông tin booking/payment và hướng dẫn đợi kiểm tra, không điều hướng như đã được giải phóng ghế. |
+| Confirmed / expired / cancelled hoặc không phải chủ | Không cho thực hiện hủy theo luồng Customer này. Backend vẫn kiểm tra nếu request bị gửi trực tiếp. |
+
+**Đề xuất UI:** nhãn “Hủy thanh toán / Đổi ghế” với giải thích phải chờ hệ thống xác nhận, modal xác nhận và loading cho yêu cầu. Trong khi một request đang gửi, chặn nhấn lặp. Việc tích hợp luồng này vào endpoint `/cancel` hiện có, response chờ xử lý và mã lỗi chưa đủ contract (DL-07); không tự thêm endpoint cancel payment ở tài liệu màn hình.
+
+Khi hủy thành công, cho trở về chọn ghế/lịch và tạo booking mới. Ghế được nhả không đồng nghĩa sẽ tiếp tục khả dụng cho khách cũ; người khác có thể giữ sau đó. Không hủy một phần hoặc sửa ghế trong booking cũ.
+
+#### Lỗi và kết quả không chắc chắn
+
+- `PAYMENT_ATTEMPT_OPEN`: đọc/khôi phục attempt hiện tại khi API hỗ trợ; không lặp POST để vượt ràng buộc. Điều kiện attempt mở gồm cả `created`, dù một số ví dụ lỗi chỉ nhắc pending/unknown.
+- `BOOKING_EXPIRED`: tải lại booking, hiển thị hết hạn theo server; không tự đặt mọi payment của đơn thành failed.
+- `BOOKING_ALREADY_CONFIRMED`: đọc lại booking và vé, không tạo thanh toán khác.
+- `BOOKING_NOT_CANCELLABLE`: tải lại trạng thái; giải thích theo thông tin server đã lọc; không chuyển màn hình như hủy xong.
+- GET payment lỗi mạng: đây là lỗi đọc trạng thái, không phải kết quả tài chính failed. POST payment timeout cũng không đủ chứng minh chưa tạo attempt.
+- Payment thành công muộn trên booking expired/cancelled: không hiện vé giả, không chiếm lại ghế, không tự hứa hoàn tiền hoặc thời hạn hoàn. `refund_required` nếu sau này được API cung cấp chỉ biểu thị hồ sơ cần xử lý, không phải đã hoàn tiền.
+- Tổng/tiền tệ payment khác booking trong response: thông báo không thể tiếp tục xác nhận và yêu cầu kiểm tra lại; không tự sửa giá đơn hoặc đánh dấu payment failed. Cách trả trạng thái an toàn cần contract backend.
+
+Nếu không có `paymentId` sau reload và booking response không cho biết attempt đang mở, UI chưa thể khôi phục đầy đủ trạng thái thanh toán. Không thể kết luận “không có attempt” chỉ vì state trình duyệt trống. Đây là phụ thuộc DL-06, không phải chức năng đã hoàn thiện.
+
+#### Tiêu chí nghiệm thu
+
+- **NT-14:** Mã, ghế, giá chốt và countdown lấy từ booking server; reload/chuyển trang không gia hạn và không tạo booking mới.
+- **NT-15:** Chặn attempt song song cho cả created/pending/unknown; timeout đọc/ghi không biến thành kết luận failed hoặc tự thu lần hai.
+- **NT-16:** Chỉ booking confirmed dẫn tới xác nhận thành công; query string của cổng hoặc payment succeeded riêng lẻ không đủ.
+- **NT-17:** Countdown về 0 không tự nhả ghế hoặc hủy payment; UI phân biệt quá hạn danh nghĩa, backend expired và kết quả đang đối soát.
+- **NT-18:** Hủy/đổi ghế chỉ hoàn tất theo backend; khi cổng xác nhận chưa thu thì có thể hủy, khi đã thu/chưa rõ thì không báo đã nhả ghế (AC-BOOK-004..006).
+- **NT-19:** Payment thành công sau booking expired/cancelled không tạo vé hoặc hứa hoàn tiền tự động; retry hợp lệ giữ nguyên giá và hạn booking.
