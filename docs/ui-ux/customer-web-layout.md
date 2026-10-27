@@ -253,3 +253,115 @@ flowchart TD
 ```
 
 Sơ đồ mô tả thứ tự nhóm nội dung bên trong từng màn hình. Nó không yêu cầu poster desktop phải nằm trên thông tin thay vì bên trái; khi chia hai cột, thứ tự đọc vẫn phải có nghĩa khi trở thành một cột.
+
+### 5.4. KH-04 — Chọn ghế và loại vé
+
+#### 5.4.1. Desktop
+
+Thông tin phim/suất/phòng nằm đầu main. Bên dưới là hai cột: sơ đồ ghế bên trái chiếm phần lớn chiều rộng, tóm tắt lựa chọn bên phải. Chú thích ghế đi cùng sơ đồ, không nằm riêng ở footer.
+
+```text
+┌───────────────────────────────────────────────────┐
+│ Phim — ngày/giờ — phòng — quay lại lịch            │
+├────────────────────────────────┬──────────────────┤
+│ Hướng màn hình                 │ Ghế đang chọn    │
+│ Nhãn hàng và sơ đồ ghế         │ Loại vé từng ghế │
+│                                │ Số ghế / số chỗ  │
+│                                │ Giá có dữ liệu   │
+│ Chú thích loại / trạng thái    │ [Đặt vé]         │
+└────────────────────────────────┴──────────────────┘
+```
+
+Khối tóm tắt rộng đủ cho nhãn ghế, loại vé và tiền xuống dòng hợp lý. Không cho nó chiếm gần hết chiều rộng làm sơ đồ còn một dải hẹp. Cách cho tóm tắt bám theo cuộn trên desktop là **đề xuất bố cục**, chưa bắt buộc; nếu dùng, không làm các dòng cuối hoặc nút hủy bị khuất dưới header.
+
+#### 5.4.2. Tablet và mobile
+
+- Tablet: sơ đồ toàn chiều rộng container, tóm tắt nằm dưới; không tiếp tục ép hai cột như desktop.
+- Mobile: thứ tự là thông tin suất → sơ đồ → chú thích → chi tiết lựa chọn; thanh đáy chứa tổng tiền khi có dữ liệu và nút “Đặt vé”.
+- Thanh đáy là nơi tóm tắt hành động, không chứa toàn bộ danh sách ghế hoặc form loại vé. Những nội dung dài vẫn nằm trong luồng cuộn của trang.
+- Nếu chưa có giá từ server, vùng giá hiển thị thông báo phù hợp theo đặc tả màn hình; không tự tính tổng để lấp chỗ trống trong thanh đáy.
+- Chừa khoảng trống ở cuối nội dung bằng phần chiều cao thanh đáy thực tế và khoảng cách cần thiết; không dùng một padding cố định quá nhỏ khi nhãn nút hoặc ghi chú xuống dòng.
+- **Đề xuất bố cục:** tính cả vùng an toàn ở mép dưới thiết bị; khi bàn phím ảo mở cho input, thanh đáy không che trường nhập, lỗi hoặc nút đang focus.
+
+#### 5.4.3. Bố trí trong sơ đồ ghế
+
+| Thành phần | Quy tắc bố trí |
+|---|---|
+| Nhãn hàng / số ghế | Đọc rõ, gắn đúng vị trí; giữ thứ tự hàng và ghế theo dữ liệu bố trí được cung cấp. |
+| Standard và VIP | Cùng đơn vị ghế một chỗ; hình thức phân biệt theo component, không thu hẹp vùng bấm để vừa trang. |
+| Couple | Biểu diễn nguyên một đơn vị hai chỗ, rộng hơn ghế đơn theo thiết kế; không vẽ thành hai nút chọn nửa ghế. |
+| Chú thích | Phân biệt loại ghế và khả năng chọn; không chỉ dựa vào màu. Khi nhiều mục, cho xuống dòng trong vùng chú thích. |
+| Hướng màn hình / lối đi | Dựa trên bố trí đã được cung cấp. Nhãn hướng màn hình là đề xuất UI; không suy lối đi hoặc hàng Couple từ số ghế. |
+| Vùng cuộn ngang | Chỉ bao sơ đồ cần thiết; có dấu hiệu cho biết còn nội dung ngang. Không kéo thông tin suất và bảng tóm tắt đi theo sơ đồ. |
+
+Vùng bấm ghế trên mobile tối thiểu 44px theo đặc tả responsive; không giảm xuống chỉ để hiển thị toàn phòng cùng lúc. Khi cuộn ngang, tên hàng và ghế phải còn nhận diện được; cách giữ nhãn hàng ở mép trái là **đề xuất bố cục cần review**.
+
+Thông tin liên hệ nếu được chốt đưa vào bước này nằm cùng vùng xác nhận lựa chọn, không chen giữa các hàng ghế. Countdown chỉ dành cho booking đã được tạo; không chừa một đồng hồ “giữ ghế” đang chạy ngay khi khách mới chọn cục bộ. Khi quay lại ngữ cảnh booking đã có, vùng thời gian và thông báo đặt cạnh tóm tắt đơn.
+
+#### 5.4.4. Sơ đồ chọn bố cục ghế
+
+```mermaid
+flowchart TD
+    seatPage["Nội dung màn hình chọn ghế"] --> seatContext["Thông tin phim, suất và phòng"]
+    seatContext --> seatWidth{"Nhóm kích thước?"}
+    seatWidth -->|"Desktop"| desktopSeats["Sơ đồ trái, tóm tắt phải"]
+    desktopSeats --> desktopAction["Hành động trong vùng tóm tắt"]
+    seatWidth -->|"Tablet"| tabletSeats["Sơ đồ toàn chiều rộng"]
+    tabletSeats --> tabletSummary["Tóm tắt và hành động bên dưới"]
+    seatWidth -->|"Mobile"| mobileSeats["Sơ đồ cuộn ngang trong khối"]
+    mobileSeats --> mobileDetails["Chú thích và chi tiết lựa chọn"]
+    mobileDetails --> mobileAction["Thanh đáy tổng hợp và nút đặt"]
+    mobileAction --> reserveSpace["Chừa chỗ để không che nội dung"]
+```
+
+### 5.5. KH-05 — Thanh toán
+
+Thanh toán dùng một cột, có thể hẹp hơn container chính và căn giữa. Không bổ sung một sidebar quảng cáo hoặc một bố cục nhiều cổng để lấp phần chiều rộng còn lại.
+
+| Thứ tự | Khối nội dung | Quy tắc bố trí |
+|---|---|---|
+| 1 | Tiêu đề thanh toán và mã booking | Mã có thể xuống dòng; không đẩy tiêu đề hoặc nút ra ngoài khung. |
+| 2 | Tóm tắt phim/suất/phòng/ghế | Xếp theo nhóm dễ kiểm tra, trước thao tác xác nhận tiền. |
+| 3 | Chi tiết giá và tổng tiền | Nhãn/giá căn cùng trục; tổng nổi bật, đủ chỗ cho VND và số dài. |
+| 4 | Hạn giữ và thông báo liên quan | Nằm gần hành động; khi nội dung dài, không bị đẩy vào tooltip hoặc toast duy nhất. |
+| 5 | Cổng/phương thức đang hỗ trợ | Chỉ có thành phần thực được cung cấp; không tự dựng form nhập số thẻ hoặc danh sách ngân hàng. |
+| 6 | Hành động theo điều kiện | Thanh toán, kiểm tra lại hoặc hủy/đổi ghế theo đặc tả màn hình; phân biệt nút hủy với nút chính. |
+| 7 | Phản hồi sau thao tác | Đặt gần nút hoặc trong vùng thông báo ổn định, không làm biến mất tóm tắt đơn cần đối chiếu. |
+
+Trên mobile vẫn giữ một cột. Hàng giá hoặc thông tin ghế dài có thể xuống dòng; không biến tổng thanh toán thành một ô cuộn ngang. Không mặc định dùng thanh hành động bám đáy của trang chọn ghế cho trang thanh toán.
+
+Khi kết quả đang được xác nhận hoặc đã qua hạn danh nghĩa, vùng phản hồi có đủ diện tích cho lời giải thích và thao tác được phép. Bố cục không tự chuyển sang kiểu “thành công” chỉ vì có thông báo từ cổng; dữ liệu quyết định nội dung theo đặc tả màn hình.
+
+### 5.6. KH-06 — Xác nhận đặt vé và vé điện tử
+
+Bố cục một cột, ưu tiên khách nhận diện đơn rồi đọc từng vé: thông báo kết quả → mã booking → thông tin suất và ghế → danh sách thẻ vé → liên kết điều hướng.
+
+| Khối | Quy tắc bố trí |
+|---|---|
+| Thông báo kết quả | Nổi bật đầu vùng nội dung; không dùng banner chiếm toàn viewport khiến mã booking/vé bị đẩy quá xa. |
+| Thông tin booking | Mã, phim, ngày/giờ, phòng và tổng tiền theo dữ liệu có; nhóm riêng với mã của từng vé. |
+| Thẻ vé | Mã vé dạng chữ, nhãn ghế, QR và trạng thái trong cùng một khối; mỗi vé nhận diện độc lập. |
+| Couple | Hai thẻ vé độc lập cho cùng đơn vị ghế; **đề xuất bố cục:** gom vào một nhóm ghế, xếp dọc và đánh dấu vé 1/2, 2/2. |
+| Hành động cuối trang | “Về trang chủ”, “Booking của tôi”; không bổ sung nút in/PDF/gửi email nếu chưa có chức năng. |
+
+QR có diện tích đủ để nhìn và quét ở thiết bị kiểm tra; kích thước cụ thể cần review cùng cách sinh QR, không tự chốt một chuẩn pixel. Mã chữ vẫn đọc được khi ảnh QR lỗi. Không đặt hai QR Couple chồng nhau, ghép thành một ảnh mã chung hoặc để badge trạng thái che vùng mã.
+
+Danh sách nhiều vé tăng chiều dài trang và dùng cuộn dọc chính. Không nhốt các vé vào carousel hoặc khung cuộn nhỏ khiến khách bỏ sót vé còn lại. Thẻ vé đã sử dụng/vô hiệu hóa vẫn có tên, mã và nhãn rõ theo dữ liệu, không chỉ đổi màu nền để biểu thị.
+
+#### 5.6.1. Sơ đồ thứ tự đọc khi thanh toán và nhận vé
+
+```mermaid
+flowchart TD
+    bookingPage["Nội dung theo booking"] --> bookingScreen{"Màn hình đang xem?"}
+    bookingScreen -->|"Thanh toán"| summary["Tóm tắt đơn và ghế"]
+    summary --> amount["Chi tiết giá và tổng tiền"]
+    amount --> deadline["Hạn giữ và thông báo"]
+    deadline --> method["Phương thức được hỗ trợ"]
+    method --> paymentActions["Hành động và phản hồi"]
+    bookingScreen -->|"Xác nhận và vé"| confirmation["Kết quả và mã booking"]
+    confirmation --> showtimeInfo["Thông tin suất và ghế"]
+    showtimeInfo --> ticketCards["Danh sách từng thẻ vé"]
+    ticketCards --> navigation["Về trang chủ hoặc Booking của tôi"]
+```
+
+Đây là sơ đồ sắp xếp nội dung, không phải luồng áp dụng thanh toán. Kết quả đang chờ, lỗi tải vé hoặc không đủ quyền thay phần nội dung liên quan bằng phản hồi phù hợp; khung header/main/footer vẫn giữ nguyên.
