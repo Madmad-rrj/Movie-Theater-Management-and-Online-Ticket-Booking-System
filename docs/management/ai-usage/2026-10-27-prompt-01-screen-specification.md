@@ -6,7 +6,7 @@
 
 ## Prompt của người dùng — diễn đạt lại
 
-> Đọc giúp tui tài liệu và code trong project rồi viết lại file `customer-screen-specification.md` bằng tiếng Việt nha. Viết kỹ từng màn hình, bám sát dự án và đừng tự thêm những gì chưa có căn cứ.
+> Đọc tài liệu và mã nguồn trong dự án. Viết lại file `customer-screen-specification.md` bằng tiếng Việt, đặc tả chi tiết từng màn hình và bám sát dự án. Không bổ sung thông tin chưa có căn cứ.
 
 ## Phản hồi của AI — tóm tắt công việc và kết quả
 
