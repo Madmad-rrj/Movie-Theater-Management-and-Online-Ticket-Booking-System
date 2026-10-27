@@ -527,6 +527,37 @@ Khách chỉ được xem/sửa hồ sơ của chính mình. Các trường đư
 
 Back/Forward không tự hủy booking, không chặn lịch sử trình duyệt và không tự gửi lại form thanh toán. Rời luồng khi pending có cảnh báo về hạn giữ; đây không phải thao tác cancel server. Đăng nhập lại, reload hoặc mở nhiều tab không kéo dài `expiresAt` và không tạo quyền sở hữu ghế mới.
 
+### 4.2. Luồng tổng quan của khách hàng
+
+Sơ đồ thể hiện các điểm vào và điều hướng chính. Các nhánh tạo booking, thanh toán, hủy và xác thực được mô tả chi tiết ở các phần tiếp theo. Chuyển sang thanh toán chỉ khi tạo booking thành công; chuyển sang vé chỉ khi backend xác nhận booking.
+
+```mermaid
+flowchart TD
+    home["KH-01: Danh sách phim"] -->|"Chọn phim"| movie["KH-02: Chi tiết phim"]
+    movie -->|"Chọn suất chiếu"| showtimes["KH-03: Lịch chiếu"]
+    showtimes -->|"Chọn suất còn bán"| seats["KH-04: Chọn ghế và loại vé"]
+    seats -->|"Nhấn đặt vé"| signedIn{"Đã đăng nhập?"}
+    signedIn -->|"Chưa"| login["KH-07: Đăng nhập hoặc đăng ký"]
+    login -->|"Có phiên hợp lệ"| returnTarget{"Đích quay lại?"}
+    returnTarget -->|"Chọn ghế"| reload["Tải lại suất và sơ đồ ghế"]
+    reload --> seats
+    signedIn -->|"Rồi"| reserve["Gửi yêu cầu tạo booking"]
+    reserve -->|"Tạo thành công, chờ thanh toán"| payment["KH-05: Thanh toán"]
+    reserve -->|"Bị từ chối hoặc chưa rõ"| reserveFeedback["Báo lỗi hoặc khôi phục yêu cầu"]
+    payment -->|"Booking được xác nhận"| tickets["KH-06: Xác nhận và vé điện tử"]
+    payment -->|"Chưa xác nhận"| paymentFeedback["Hiển thị kết quả và hành động phù hợp"]
+    tickets -->|"Xem booking của tôi"| history["KH-08: Booking của tôi"]
+    home -->|"Mở menu tài khoản"| historyGuard{"Có phiên hợp lệ?"}
+    historyGuard -->|"Có"| history
+    historyGuard -->|"Chưa"| login
+    returnTarget -->|"Booking của tôi"| history
+    returnTarget -->|"Không có đích lưu"| home
+    history -->|"Chọn booking đã xác nhận"| tickets
+    history -->|"Tiếp tục booking còn hợp lệ"| payment
+```
+
+Sau đăng nhập, chỉ quay về đích đã lưu; không tự mở cả trang ghế và lịch sử. Nếu khách đổi ý hoặc chưa đăng nhập thành công, giữ họ tại luồng xác thực. Back/Forward không tạo yêu cầu đặt vé hoặc thu tiền mới.
+
 ## 5. Tiêu chí nghiệm thu tổng hợp
 
 Các tiêu chí dưới đây dùng để chuẩn bị kiểm thử màn hình; không phải báo cáo kiểm thử đã hoàn thành.
