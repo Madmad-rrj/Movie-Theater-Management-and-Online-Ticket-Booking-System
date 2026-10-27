@@ -6,7 +6,7 @@
 
 ## Prompt của người dùng — diễn đạt lại
 
-> Thêm flowchart Mermaid vào ngay file này giúp tui nha. Nội dung vẫn viết tiếng Việt, bỏ phần phân tích hiện trạng với bối cảnh từ các thư mục khác đi. Tiếp tục commit từng phần, nhưng message viết ngắn gọn bằng tiếng Anh thôi.
+> Nhúng flowchart Mermaid trực tiếp vào file Markdown. Giữ nội dung tiếng Việt. Bỏ phần phân tích hiện trạng và bối cảnh từ các thư mục khác. Commit từng phần với message ngắn gọn bằng tiếng Anh.
 
 ## Phản hồi của AI — tóm tắt công việc và kết quả
 
