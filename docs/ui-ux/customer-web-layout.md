@@ -236,7 +236,7 @@ Một item suất phải nhận diện được ngày/giờ, phòng và giá cơ
 
 **Đề xuất bố cục:** các suất có cùng thông tin có thể dùng nhịp căn chỉnh thống nhất để so sánh giờ/phòng/giá; trạng thái không thể chọn đi kèm nhãn giải thích nếu item đó đang được hiển thị. Không phải yêu cầu tải và dựng thêm suất đóng bán.
 
-### 5.3.1. Sơ đồ thứ tự đọc của các trang duyệt phim
+#### 5.3.1. Sơ đồ thứ tự đọc của các trang duyệt phim
 
 ```mermaid
 flowchart TD
@@ -454,3 +454,102 @@ Kiểm tra tối thiểu ở 320px, 768px, 1024px và 1440px. **Đề xuất b�
 - Ngày và tabs nhiều: cuộn trong vùng điều khiển hoặc chuyển kiểu đã thống nhất; không kéo giãn toàn bộ body.
 - Mã đơn/vé hoặc tên không có dấu cách: có cách ngắt dòng trong container, giữ đủ giá trị để đọc.
 - Thiết bị có bàn phím ảo: vẫn tiếp cận input, lỗi và nút gửi; không bắt khách đóng bàn phím mới thấy thông báo lỗi.
+
+## 7. Lớp phủ, thông báo và khả năng tiếp cận
+
+### 7.1. Thứ tự xếp lớp
+
+Các lớp cần có thứ tự nhất quán để không xảy ra menu nằm sau poster, toast che modal hoặc thanh đáy che nút đóng. Bảng sau là **đề xuất bố cục cần review**, mô tả quan hệ ưu tiên; không đặt các giá trị z-index cụ thể như token đã chốt.
+
+| Lớp | Vị trí và quan hệ |
+|---|---|
+| Nội dung trang | Nền của các lớp nổi, vẫn là nơi đọc và cuộn dọc chính. |
+| Header sticky / thanh đặt mobile | Cao hơn nội dung cần đi phía dưới khi cuộn; mỗi thanh chỉ chiếm vùng của mình. |
+| Menu tài khoản | Nổi phía trên header/nội dung, gắn gần nút mở; không tràn khỏi viewport. |
+| Thông báo ngắn | Thông thường góc trên bên phải dưới header; trên mobile phải vừa bề rộng an toàn, không che thao tác chính. |
+| Nền và nội dung modal/drawer | Cao hơn các điều khiển nền; không để header, thanh đặt hoặc toast của trang đè lên nội dung lớp phủ. |
+
+Modal dùng cho xác nhận hủy hoặc thông báo cần tập trung; kích thước vừa nội dung và viewport. Chỉ một modal mở tại một thời điểm. Nếu nội dung dài, cuộn trong modal và vẫn tiếp cận nút đóng/các hành động; không để toàn bộ khung vượt ra ngoài màn hình.
+
+**Đề xuất bố cục và focus:** khi mở modal/drawer, chuyển focus vào nội dung phù hợp, giữ thao tác trong lớp đang mở, chặn cuộn nền khi lớp phủ chặn tương tác nền và trả focus về nút mở sau khi đóng. Nút X/Escape đóng lớp phủ; không đồng nghĩa khách đã xác nhận hủy booking.
+
+```mermaid
+flowchart TD
+    pageAction["Thao tác trên trang"] --> needsOverlay{"Cần menu hoặc lớp phủ?"}
+    needsOverlay -->|"Không"| inlineContent["Giữ thao tác trong vùng nội dung"]
+    needsOverlay -->|"Menu tài khoản"| dropdown["Menu gắn với nút tài khoản"]
+    dropdown --> closeMenu["Đóng menu và giữ ngữ cảnh trang"]
+    needsOverlay -->|"Drawer hoặc modal"| openOverlay["Mở nội dung phía trên khung trang"]
+    openOverlay --> focusOverlay["Đưa focus vào lớp phủ"]
+    focusOverlay --> fitViewport["Nội dung vừa viewport hoặc cuộn trong lớp"]
+    fitViewport --> closeOverlay["Đóng lớp phủ bằng thao tác phù hợp"]
+    closeOverlay --> restorePage["Trả focus và khôi phục cuộn nền"]
+```
+
+Sơ đồ là đề xuất phối hợp lớp giao diện; không yêu cầu mở modal cho mọi lỗi hoặc mọi lần chuyển trang. Khi đã có vùng lỗi đọc được trong trang, không cần thêm một lớp phủ chỉ để lặp lại cùng thông báo.
+
+### 7.2. Vị trí loading, rỗng và lỗi
+
+Đây là quy tắc đặt nội dung phản hồi, không phải phân tích vòng đời booking hoặc payment. Header/footer và trục căn chỉnh chính không thay đổi chỉ vì đang tải dữ liệu.
+
+| Tình huống | Vị trí và cách giữ bố cục |
+|---|---|
+| Tải danh sách phim | Skeleton trong vùng grid, giữ số cột theo thiết bị; không thêm card phim giả. |
+| Tải lịch / đổi ngày | Phản hồi trong vùng suất; giữ tên phim và điều khiển ngày. |
+| Tải sơ đồ ghế | Phản hồi trong khối sơ đồ, không tạo các ghế có thể chọn khi chưa có dữ liệu thật. |
+| Danh sách rỗng | Thông báo và hành động phù hợp trong vùng danh sách; không phủ toàn bộ trang hoặc xóa menu chọn nhóm/ngày. |
+| Lỗi tải toàn bộ nội dung chính | Khối lỗi trong main, có thông báo và nút thử lại/quay lại theo đặc tả màn hình. |
+| Validation form | Ngay dưới input liên quan; form giãn theo lỗi, không cắt chữ hoặc phủ lên trường kế tiếp. |
+| Lỗi tạo booking / thanh toán | Gần khối tóm tắt và hành động; thông tin quan trọng không chỉ tồn tại trong toast tự đóng. |
+| QR không tải | Giữ mã vé dạng chữ và vùng thông báo trong cùng thẻ; không làm các vé còn lại mất bố cục. |
+| Thao tác đang gửi | Loading trong nút, giữ kích thước nút đủ ổn định để không xô các hành động bên cạnh. |
+
+Không dùng một khối loading toàn màn hình để che thông báo lỗi đã có. Không tạo nhãn kết quả “đặt vé thành công” chỉ để giữ cấu trúc trang xác nhận khi chưa có dữ liệu hợp lệ.
+
+### 7.3. Thứ tự đọc và thao tác hỗ trợ
+
+Các hướng dẫn sau là **đề xuất thiết kế cần review**:
+
+- Có thể đi tới nội dung chính bằng bàn phím; vùng focus không bị header sticky hoặc thanh đặt mobile che.
+- Logo, nút menu, nút đóng và nút biểu tượng có tên truy cập rõ, không chỉ có hình ảnh không nhãn.
+- Quan hệ nhãn–input–lỗi được giữ khi form đổi chiều rộng hoặc hiện thêm thông báo.
+- Ghế có thể nhận biết bằng nhãn hàng/số, loại và tình trạng có thể chọn; dùng chữ/hình thức bổ sung cho màu.
+- Trong một thẻ vé, mã chữ và QR gắn cùng nhãn ghế; không dựa vào vị trí trái/phải để phân biệt hai vé Couple.
+- Tên phim, tổng tiền và thông báo quan trọng vẫn đọc được khi chữ tăng kích thước; không dùng chiều cao cố định để cắt phần tăng thêm.
+- Drawer/modal có điểm đóng dễ tiếp cận; nếu cuộn trong lớp phủ, không làm mất đường quay lại thao tác đóng.
+
+## 8. Tiêu chí nghiệm thu bố cục
+
+Các mã `BL-*` dùng để kiểm tra tài liệu và thiết kế layout, không phải mã lỗi API. Đây là danh sách cần kiểm chứng khi có giao diện; không phải báo cáo đã chạy kiểm thử ứng dụng.
+
+| Mã | Nội dung kiểm tra | Kết quả cần đạt |
+|---|---|---|
+| BL-01 | Khung chung trên cả 8 nhóm màn hình | Header, main, footer nhất quán; không tạo header/footer riêng gây lệch trục không cần thiết. |
+| BL-02 | Nội dung ít và nhiều | Main co giãn; footer ở đáy khi trang ngắn và sau nội dung khi trang dài, không đè nội dung. |
+| BL-03 | Header desktop/tablet | Logo, menu, tài khoản không chồng nhau; tên dài không kéo trang tràn ngang. |
+| BL-04 | Menu mobile | Drawer có đầy đủ điều hướng và tài khoản cần thiết, mở/đóng được, nội dung dài vẫn tiếp cận được nút đóng. |
+| BL-05 | Container và trục căn chỉnh | Header/main/footer căn thống nhất, có padding; nội dung không vượt viewport. |
+| BL-06 | Grid phim theo thiết bị | 3/2/1 cột desktop/tablet/mobile; ít card hoặc thiếu ảnh không làm lệch hệ căn chỉnh. |
+| BL-07 | Chi tiết phim dài / thiếu trailer | Poster không méo; mô tả và nút đọc được, không có vùng video trống bắt buộc. |
+| BL-08 | Bộ chọn ngày và item suất | Ngày đang chọn rõ; giờ/phòng/giá không bị cắt mất ý; rỗng vẫn đổi ngày được. |
+| BL-09 | Trang ghế desktop/tablet | Desktop hai vùng cạnh nhau; tablet tóm tắt xuống dưới; không ép sơ đồ thành dải quá hẹp. |
+| BL-10 | Sơ đồ ghế mobile | Cuộn ngang trong khối, vùng bấm tối thiểu 44px; không cuộn ngang toàn trang. |
+| BL-11 | Couple và chú thích | Couple là nguyên một đơn vị; nhãn/chú thích rõ, không chỉ phân biệt bằng màu hoặc vị trí. |
+| BL-12 | Thanh đặt mobile | Tổng hợp/nút đọc được; không che hàng ghế cuối, lỗi, ghi chú, input hoặc footer. |
+| BL-13 | Trang thanh toán | Một cột; tóm tắt/giá/hạn giữ đặt trước hoặc gần hành động; hủy tách rõ với thanh toán. |
+| BL-14 | Vé và QR | Mỗi vé có mã/QR riêng; không cắt hoặc phủ mã; Couple hiển thị đủ hai vé, mã chữ còn đọc khi QR lỗi. |
+| BL-15 | Form xác thực | Nhãn, input, lỗi, nút theo một thứ tự đọc; form dài không bị ép vào khung cố định. |
+| BL-16 | Tài khoản và lịch sử | Booking dài/mã dài xuống dòng đúng, thao tác gắn đúng đơn; không giữ sidebar rỗng hoặc giấu cột quan trọng. |
+| BL-17 | Loading / rỗng / lỗi | Phản hồi đúng vùng, giữ khung trang; lỗi quan trọng không chỉ có trong toast. |
+| BL-18 | Modal, drawer và menu | Đúng thứ tự lớp; không bị header/thanh đặt che; đóng được và không đồng nghĩa tự xác nhận thao tác nghiệp vụ. |
+| BL-19 | Thay đổi kích thước và bàn phím | Không làm mất lựa chọn/form/booking; focus/input/nút không bị lớp cố định che. |
+| BL-20 | Nội dung khó và kích thước kiểm tra | Kiểm tra 320/768/1024/1440px với tên dài, mã dài, nhiều ghế/vé, thiếu ảnh, lỗi dài; không mất thông tin cốt lõi. |
+
+Các phần cần review thiết kế trước khi triển khai chi tiết: max-width/padding/spacing, tỉ lệ poster, tỉ lệ hai cột, kiểu phân trang, cách bố trí tablet cho chi tiết phim, vị trí thông tin liên hệ, sidebar tài khoản tùy chọn và kích thước QR. Review này chỉ chốt cách trình bày, không tự thêm chức năng hoặc thay quy tắc nghiệp vụ.
+
+## 9. Tài liệu UI phối hợp
+
+- [Đặc tả màn hình](customer-screen-specification.md): nội dung, thao tác và điều kiện của từng màn hình; layout sắp xếp những nội dung đó.
+- [Đặc tả responsive](customer-responsive-specification.md): breakpoint và thay đổi theo thiết bị; layout mô tả vùng nội dung ở từng kích thước.
+- [Đặc tả component](customer-component-specification.md): thành phần tái sử dụng; layout quyết định vị trí và quan hệ giữa các thành phần.
+- [Điều hướng Customer](customer-navigation.md): đích của logo/menu/nút; layout xác định nơi đặt các điều khiển.
