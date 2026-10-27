@@ -26,12 +26,13 @@ Movie Theater Management and Online Ticket Booking System/
 │   │
 │   ├── management/                        # Tài liệu quản lý dự án và quy trình làm việc
 │   │   ├── git-workflow.md                # Quy tắc branch, commit, pull request và merge
-│   │   └── ai-usage/                     # Log làm việc của từng AI Agent/thành viên
+│   │   └── ai-usage/                     # Log sử dụng AI theo thành viên và theo prompt
 │   │       ├── 0098.md                    # Log làm việc của agent 0098
 │   │       ├── 0235.md                    # Log làm việc của agent 0235
 │   │       ├── 0244.md                    # Log làm việc của agent 0244
 │   │       ├── 0255.md                    # Log làm việc của agent 0255
-│   │       └── 0271.md                    # Log làm việc của agent 0271
+│   │       ├── 0271.md                    # Log làm việc của agent 0271
+│   │       └── YYYY-MM-DD-prompt-NN-*.md # Nhật ký từng yêu cầu; tóm tắt prompt, phần việc AI và kết quả
 │   │
 │   ├── requirements/                      # Tài liệu yêu cầu và phân tích nghiệp vụ
 │   │   ├── business-system-analysis.md    # Phạm vi, actor, quy trình và yêu cầu hệ thống
@@ -91,7 +92,7 @@ Movie Theater Management and Online Ticket Booking System/
 | `relational-model.md`              | Mô hình quan hệ dữ liệu, khóa chính, khóa ngoại và quan hệ giữa các bảng                 | `docs/analysis and design/`       |
 | `use-cases.md`                     | Mô tả các Use Case, actor, điều kiện trước/sau và luồng chính/ngoại lệ                   | `docs/requirements/`              |
 | `git-workflow.md`                  | Quy định cách đặt tên branch, viết commit, tạo PR và merge code                          | `docs/management/`                |
-| Các file trong `AGENT_LOG/`        | Ghi lại log làm việc của từng AI Agent/thành viên theo ID                                | `docs/management/AGENT_LOG/`      |
+| Các file trong `ai-usage/`         | Ghi lại việc sử dụng AI theo thành viên hoặc từng prompt; phân biệt yêu cầu, phần AI thực hiện, kết quả và kiểm tra | `docs/management/ai-usage/` |
 | `docs/management/weekly-reports/`  | Báo cáo tuần (chưa tạo, dự kiến bổ sung theo quy trình nhóm)                             | `docs/management/`                |
 | Các file trong `pa/PA0`–`PA5`      | Lưu sản phẩm, báo cáo và tài liệu tương ứng từng bài PA                                  | `pa/`                             |
 | Các file trong `docs/test/`        | Lưu kế hoạch kiểm thử, test case, kết quả và báo cáo lỗi                                 | `docs/test/`                      |
