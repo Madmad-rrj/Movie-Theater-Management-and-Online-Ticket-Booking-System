@@ -631,6 +631,36 @@ Nếu không đọc được thông tin attempt sau reload, giữ trạng thái 
 
 Khi countdown bằng 0 nhưng booking vẫn pending, giao diện không tự giải phóng ghế. Payment thành công mà booking chưa confirmed cũng không tạo QR hoặc tự mở trang xác nhận thành công. Thời gian chờ và khả năng xác nhận sau hạn do backend quyết định theo chính sách đã được thống nhất.
 
+### 4.5. Luồng hủy booking và đổi ghế
+
+Hủy/đổi ghế là hành động có xác nhận riêng, không phát sinh từ nút Back hoặc đóng trang thanh toán. Nếu còn payment đang mở, backend phải kiểm tra với cổng; chỉ kết quả xác nhận chưa thu tiền mới cho phép hoàn tất hủy theo điều kiện nghiệp vụ.
+
+```mermaid
+flowchart TD
+    cancelAction(["Khách chọn Hủy booking hoặc Đổi ghế"]) --> confirmCancel{"Khách xác nhận hủy?"}
+    confirmCancel -->|"Không"| keepBooking["Giữ nguyên booking đang xem"]
+    confirmCancel -->|"Có"| sendCancel["Gửi yêu cầu hủy tới backend"]
+    sendCancel --> eligible{"Đơn thuộc khách và còn được hủy?"}
+    eligible -->|"Không"| refused["Báo từ chối; tải lại booking"]
+    eligible -->|"Có"| openAttempt{"Có attempt đang mở?"}
+    openAttempt -->|"Không"| completeCancel["Backend xử lý hủy toàn bộ booking"]
+    openAttempt -->|"Có"| gatewayCheck["Backend kiểm tra hoặc hủy với cổng"]
+    gatewayCheck --> moneyResult{"Kết quả đã xác minh?"}
+    moneyResult -->|"Chưa thu, cho phép hủy"| completeCancel
+    moneyResult -->|"Đã thu hoặc chưa rõ"| refused
+    completeCancel --> cancelResult{"Backend xác nhận đã hủy?"}
+    cancelResult -->|"Có"| cancelSuccess["Thông báo hủy thành công"]
+    cancelResult -->|"Từ chối hoặc đơn đã đổi"| refused
+    cancelResult -->|"Timeout hoặc chưa rõ"| checkCancel["Đọc lại đơn trước khi kết luận"]
+    sendCancel -->|"Không nhận được response"| checkCancel
+    checkCancel --> cancelResult
+    cancelSuccess --> changeSeats{"Khách muốn chọn ghế mới?"}
+    changeSeats -->|"Có"| reloadSeats["Tải lại sơ đồ và tạo booking mới"]
+    changeSeats -->|"Không"| bookingHistory["Về Booking của tôi"]
+```
+
+Chỉ thông báo giải phóng ghế sau khi server đã xác nhận kết quả. Nếu hủy bị từ chối hoặc kết quả chưa rõ, không điều hướng như đã đổi ghế thành công. Ghế vừa được giải phóng có thể bị khách khác chọn; sơ đồ mới phải được tải lại trước yêu cầu đặt mới.
+
 ## 5. Tiêu chí nghiệm thu tổng hợp
 
 Các tiêu chí dưới đây dùng để chuẩn bị kiểm thử màn hình; không phải báo cáo kiểm thử đã hoàn thành.
