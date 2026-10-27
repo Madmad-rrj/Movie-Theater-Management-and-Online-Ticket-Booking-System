@@ -593,6 +593,44 @@ Booking trả về `pending` còn phù hợp thì mở KH-05; `confirmed` thì m
 
 Một Couple gửi một item cho cả ghế đôi, không gửi hai item trùng `seatId`. Countdown chỉ bắt đầu hiển thị sau khi có booking và `expiresAt` từ server.
 
+### 4.4. Luồng thanh toán và kiểm tra kết quả
+
+Mỗi lần vào trang hoặc trở về từ cổng đều đọc lại booking. Thông báo của cổng, timeout và countdown không thay thế kết quả xác nhận của backend. Nút “Kiểm tra lại” chỉ đọc trạng thái; nút “Thử thanh toán lại” chỉ được mở khi đơn còn hợp lệ và không còn attempt đang mở.
+
+```mermaid
+flowchart TD
+    openPayment(["Mở KH-05: Thanh toán"]) --> readOrder["Đọc booking và thông tin attempt"]
+    readOrder --> orderState{"Booking hiện tại?"}
+    orderState -->|"Đã xác nhận"| viewTickets["Mở KH-06: Xem vé"]
+    orderState -->|"Đã hết hạn hoặc hủy"| closedOrder["Hiển thị kết quả kết thúc"]
+    orderState -->|"Đang chờ"| canPay{"Được bắt đầu thanh toán?"}
+    canPay -->|"Còn hạn, không attempt mở"| payButton["Cho phép nhấn Thanh toán"]
+    canPay -->|"Attempt mở hoặc chưa rõ"| waitResult["Hiển thị đang xác nhận kết quả"]
+    canPay -->|"Quá hạn danh nghĩa"| elapsed["Chặn attempt mới; kiểm tra lại đơn"]
+    payButton -->|"Khách xác nhận"| createAttempt["Yêu cầu khởi tạo thanh toán"]
+    createAttempt --> attemptResult{"Kết quả khởi tạo?"}
+    attemptResult -->|"Có liên kết thanh toán"| gateway["Chuyển tới cổng thanh toán"]
+    attemptResult -->|"Đang mở hoặc timeout"| waitResult
+    attemptResult -->|"Lỗi được xác định"| showError["Hiển thị lỗi và đọc lại điều kiện đơn"]
+    showError --> readOrder
+    gateway -->|"Khách trở về"| checkResult["Đọc lại payment và booking"]
+    waitResult -->|"Kiểm tra lại"| checkResult
+    elapsed -->|"Kiểm tra lại"| checkResult
+    checkResult --> confirmed{"Booking đã được xác nhận?"}
+    confirmed -->|"Có"| viewTickets
+    confirmed -->|"Chưa"| outcome{"Kết quả hiện tại?"}
+    outcome -->|"Đơn đã hết hạn hoặc hủy"| closedOrder
+    outcome -->|"Payment chưa rõ hoặc chờ áp dụng"| waitResult
+    outcome -->|"Thất bại hoặc hủy đã xác minh"| retryAllowed{"Đơn còn hạn và không attempt mở?"}
+    retryAllowed -->|"Có"| retryButton["Cho phép khách thử thanh toán lại"]
+    retryButton -->|"Khách chọn thử lại"| createAttempt
+    retryAllowed -->|"Không"| readOrder
+```
+
+Nếu không đọc được thông tin attempt sau reload, giữ trạng thái chưa xác định và khôi phục từ server trước khi cho phép thanh toán. Nếu API kiểm tra kết quả bị lỗi mạng, hiển thị lỗi tải trạng thái và cho đọc lại; không chuyển payment thành thất bại.
+
+Khi countdown bằng 0 nhưng booking vẫn pending, giao diện không tự giải phóng ghế. Payment thành công mà booking chưa confirmed cũng không tạo QR hoặc tự mở trang xác nhận thành công. Thời gian chờ và khả năng xác nhận sau hạn do backend quyết định theo chính sách đã được thống nhất.
+
 ## 5. Tiêu chí nghiệm thu tổng hợp
 
 Các tiêu chí dưới đây dùng để chuẩn bị kiểm thử màn hình; không phải báo cáo kiểm thử đã hoàn thành.
