@@ -119,3 +119,115 @@ Theo S10: desktop ≥ 1024px, tablet 768–1023px, mobile < 768px. Grid phim l�
 ## 3. Đặc tả từng màn hình
 
 Endpoint trong mục 3 theo S08, hiện chưa triển khai. Phân biệt dữ liệu **đã có trong DTO Proposed** với **nhu cầu thiếu contract**; không tự mở rộng request/response tại đây.
+
+### 3.1. KH-01 — Trang chủ / danh sách phim
+
+#### Mục tiêu và điều kiện vào
+
+Giúp khách tìm phim đang chiếu hoặc sắp chiếu và mở chi tiết phim. Truy cập công khai, không tạo booking hoặc payment khi tải trang. Căn cứ: FR-MOVIE-001, S08 mục Movies, S09–S10.
+
+#### Nội dung và dữ liệu
+
+| Vùng | Nội dung | Nguồn / giới hạn |
+|---|---|---|
+| Tiêu đề và phân nhóm | “Phim đang chiếu”, “Phim sắp chiếu”; nhóm hiện tại có dấu hiệu được chọn | `now_showing`, `coming_soon` từ query/response. Không tự suy từ ngày phát hành. |
+| Danh sách card | Poster, tên phim, nhãn phân loại tuổi, nhãn trạng thái | DTO danh sách: `id`, `title`, `posterUrl`, `ageRating`, `status`; có `durationMinutes` nếu thiết kế hiển thị thời lượng. |
+| Phân trang | Chuyển trang hoặc tải thêm | Dùng `pagination.page`, `pageSize`, `totalItems`, `totalPages`; chọn một cách tương tác khi review UI. |
+| Ảnh thiếu / hỏng | Khung thay thế có tên phim hoặc mô tả ảnh | **Đề xuất UI**; không lấy poster của phim khác để thay. |
+| Banner | Không bắt buộc cho luồng nghiệp vụ | Bản đặc tả cũ có nhắc banner nhưng chưa có nguồn dữ liệu banner riêng; nếu dùng chỉ lấy nội dung đã cung cấp, không tạo khuyến mãi giả. |
+
+Không dùng `title` làm định danh: schema cho phép trùng tên. Phim `archived` không xuất hiện theo FR-MOVIE-001; hai nhóm chính không tự gom `ended` vào đang chiếu. Chính sách truy cập trực tiếp phim đã ngừng hiển thị còn cần thống nhất ở CX-09.
+
+#### Thao tác và trạng thái
+
+1. Vào trang: tải `GET /api/movies?status=...&page=...&pageSize=...` theo nhóm đang xem.
+2. Đổi nhóm hoặc trang: cập nhật danh sách, hiển thị loading; không trộn kết quả của nhóm trước vào nhóm mới. **Đề xuất UI:** khi đổi nhóm, trở về trang đầu.
+3. Nhấn card / “Xem chi tiết”: mở KH-02 với đúng `id` của phim; không tạo booking.
+4. Rỗng: “Hiện chưa có phim trong danh sách này”; vẫn cho đổi nhóm.
+5. Lỗi: “Không tải được danh sách phim” và “Thử lại”; giữ nhóm đang xem.
+
+**Chờ contract:** tìm kiếm theo từ khóa/lọc thể loại xuất hiện trong kế hoạch hoặc bản màn hình cũ, nhưng DTO Movies chỉ có `status`, `page`, `pageSize`. Chưa chốt tham số tìm kiếm, lọc thể loại hoặc sắp xếp. Không trình bày tìm kiếm cục bộ trên một trang dữ liệu như tìm kiếm toàn bộ kho phim; xem DL-01.
+
+#### Tiêu chí nghiệm thu
+
+- **NT-01:** API trả danh sách hợp lệ thì card hiển thị đúng dữ liệu và mở đúng phim, kể cả hai phim trùng tên.
+- **NT-02:** Đổi nhóm/phân trang không lẫn dữ liệu; loading, rỗng, lỗi được phân biệt; không hiển thị phim archived trong danh sách Customer.
+- **NT-03:** Thiếu poster hoặc age rating không làm hỏng trang và không tạo thông tin thay thế sai; grid hoạt động ở các kích thước mục 2.5.
+
+### 3.2. KH-02 — Chi tiết phim
+
+#### Mục tiêu và điều kiện vào
+
+Cung cấp thông tin phim, giúp khách quyết định xem lịch chiếu. Truy cập công khai theo định danh phim; tải lại trực tiếp phải đọc từ API, không phụ thuộc bắt buộc vào card đã bấm trước đó. Căn cứ: FR-MOVIE-002 và DTO Movies mục 3.
+
+#### Nội dung và bố cục
+
+Desktop: poster bên trái, thông tin và hành động bên phải theo S10. Trên màn hình hẹp, **đề xuất UI** xếp poster/thông tin thành một cột, ưu tiên tên phim và nút xem lịch.
+
+| Nội dung | Trường DTO Proposed | Hành vi khi không có |
+|---|---|---|
+| Tên phim | `title` | Dữ liệu bắt buộc; báo lỗi dữ liệu nếu thiếu. |
+| Poster | `posterUrl` | Khung thay thế, giữ tên phim đọc được. |
+| Thời lượng | `durationMinutes` | Không tự lấy thời lượng phim khác hoặc mặc định một giá trị. |
+| Mô tả | `description` | “Nội dung đang được cập nhật” hoặc ẩn khối theo thiết kế. |
+| Ngôn ngữ | `language` | Không suy phụ đề/lồng tiếng hoặc ngôn ngữ suất từ ngôn ngữ gốc. |
+| Phân loại tuổi | `ageRating` | Hiển thị đúng nhãn nhận được; không đổi `PG-13` thành `T13`/`T16`. |
+| Ngày phát hành | `releaseDate` | Không tự suy thời điểm mở bán. |
+| Thể loại | `genres` | Hiển thị tên/mã được API cung cấp; mảng rỗng không phát sinh thể loại giả. |
+| Trailer | `trailerUrl` | Chỉ có thao tác xem trailer khi có URL; nhúng hay mở liên kết là đề xuất UI. |
+| Trạng thái | `status` | Ánh xạ nhãn theo đúng giá trị; không tự đổi trạng thái theo ngày. |
+
+Không bổ sung đạo diễn, diễn viên, đánh giá sao, doanh thu hay quốc gia như dữ liệu đã có: DTO/schema hiện tại không mô tả các trường đó. Nhãn tuổi là thông tin hiển thị; chưa có contract xác minh tuổi khách từ nhãn này.
+
+#### Thao tác và trạng thái
+
+- Tải `GET /api/movies/{movieId}` khi vào trang hoặc đổi phim.
+- “Chọn suất chiếu” mở KH-03 với cùng phim. KH-03 có thể trả danh sách rỗng; không giả định `now_showing` luôn có suất hoặc `coming_soon` chắc chắn chưa được bán.
+- Nếu thiết kế hiển thị suất ngay trong chi tiết phim, dùng cùng quy tắc KH-03; không tạo bộ quy tắc bán vé thứ hai. Việc gộp thành một trang chưa chốt route, xem CX-08.
+- 404: “Không tìm thấy phim”, có hành động về danh sách. Mất mạng/lỗi server có “Thử lại”, không thông báo nhầm là phim không tồn tại.
+- Chưa có endpoint lịch chiếu thành công thì không hiển thị số suất hoặc giờ chiếu tự tạo. Backend vẫn quyết định phim/suất có được bán khi tạo booking.
+
+#### Tiêu chí nghiệm thu
+
+- **NT-04:** Vào trực tiếp theo định danh vẫn tải đúng phim; trường tùy chọn thiếu không tạo dữ liệu giả; trailer chỉ xuất hiện khi có dữ liệu.
+- **NT-05:** Nút xem lịch giữ đúng phim; 404, lỗi tải và chưa có suất có thông báo khác nhau.
+
+### 3.3. KH-03 — Lịch chiếu
+
+#### Mục tiêu và điều kiện vào
+
+Cho khách xem suất theo phim/ngày và chọn suất còn bán. Công khai; nhận phim đang xem và ngày được chọn. Căn cứ: FR-SHOW-001, BR-ST-003, S08 DTO Showtimes và S09–S10.
+
+#### Nội dung và dữ liệu
+
+| Vùng | Nội dung | Nguồn / điều kiện |
+|---|---|---|
+| Ngữ cảnh phim | Tên phim, có thể kèm poster nhỏ | Chi tiết phim đã tải hợp lệ hoặc API movie. Không suy tên từ UUID. |
+| Chọn ngày | Ngày đang xem; tabs/dropdown theo thiết bị | Query `date` của API lịch. Dải ngày mở bán và ngày mặc định chưa được quy định. |
+| Suất chiếu | Giờ bắt đầu, ngày, tên phòng, giá cơ sở, tình trạng có thể đặt | DTO: `id`, `cinemaRoomId`, `cinemaRoomName`, `startsAt`, `basePrice`, `currency`, `status`, `bookingAvailable`. |
+| Thông tin rạp | Tên/địa chỉ nếu có dữ liệu phù hợp | MVP một cinema; DTO danh sách suất chưa có trường rạp, xem DL-02. |
+| Ghi chú giá | Giá cơ sở cho một người; giá cuối tùy loại ghế/loại vé | Không gọi `basePrice` là tổng thanh toán hoặc giá cuối của Couple/VIP. |
+
+Theo S10, ngày nằm trên danh sách suất; suất xếp theo giờ hoặc nhóm ngày. **Đề xuất UI:** ngày đang chọn luôn đọc được và mỗi nút suất thể hiện đủ giờ/phòng. Không tự chốt cửa sổ 7/14 ngày, nhãn “hôm nay” theo UTC hoặc số ghế còn lại khi API không trả.
+
+#### Điều kiện chọn và tải lại
+
+1. Gọi `GET /api/movies/{movieId}/showtimes?date=...` khi vào trang/đổi ngày. Ngày phải thống nhất với ngày hiển thị tại Việt Nam; ngữ nghĩa lọc ngày cần chốt ở DL-02.
+2. Chỉ cho chuyển chọn ghế khi suất `scheduled` và `bookingAvailable = true` theo dữ liệu backend. Kiểm tra này phục vụ UI; backend vẫn kiểm tra lại lúc tạo booking.
+3. `draft`, `in_progress`, `completed`, `cancelled` không phải suất nhận booking mới. Không tự áp cutoff 10/15/30 phút trước giờ chiếu.
+4. FR-SHOW-001 yêu cầu danh sách chỉ có suất còn bán. Nếu API không trả suất đóng/hủy thì không tạo ô suất giả; nếu dữ liệu đã hiển thị bị thay đổi/không còn bán, vô hiệu thao tác và làm mới. Khác biệt với tài liệu UI cũ được ghi tại CX-04.
+5. Chọn suất hợp lệ: mở KH-04 với `showtimeId`, không chỉ truyền tên phòng/giờ vì các giá trị đó có thể trùng.
+
+#### Loading, rỗng và lỗi
+
+- Đổi ngày: loading cho khối suất, vẫn giữ ngữ cảnh phim. **Đề xuất UI:** bỏ qua response cũ nếu người dùng đã đổi ngày khác.
+- Không có suất: “Chưa có suất chiếu cho ngày đã chọn”; cho đổi ngày hoặc về phim.
+- 404: xử lý phim/suất không tìm thấy theo tài nguyên được API báo, không mặc định mọi 404 là suất hủy.
+- Lỗi mạng: thử lại cùng phim/ngày; không giữ nút đặt có thể bấm dựa trên dữ liệu lỗi thời.
+- Hết ghế chỉ được kết luận nếu API có dữ liệu xác nhận; `bookingAvailable` chưa được đặc tả là số ghế tồn kho.
+
+#### Tiêu chí nghiệm thu
+
+- **NT-06:** Đổi ngày gửi đúng ngữ cảnh, hiển thị đúng ngày/giờ Việt Nam và không lẫn response của ngày trước.
+- **NT-07:** Chỉ suất được backend cho bán mới dẫn tới chọn ghế; khi suất đóng trong lúc khách đang xem, request tạo booking vẫn bị kiểm tra lại.
+- **NT-08:** Danh sách rỗng có cách đổi ngày; giá cơ sở không bị hiển thị thành giá cuối; UI không tự áp cutoff từ dữ liệu seed.
