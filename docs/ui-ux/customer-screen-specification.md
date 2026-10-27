@@ -549,3 +549,82 @@ Không loại bỏ yêu cầu này khỏi phạm vi nghiệp vụ; đồng thờ
 - **NT-27:** Empty/loading/error/phân trang đúng; chi tiết được tải lại, không mở quyền thanh toán/hủy chỉ từ bản summary cũ.
 - **NT-28:** Giá/snapshot lịch sử không đổi khi danh mục thay đổi hoặc ghế released; vé used/voided không bị hiển thị thành valid.
 - **NT-29:** Pending được xử lý theo hạn và attempt, confirmed không có hủy/refund Customer; hồ sơ cá nhân chỉ nghiệm thu tích hợp sau khi có contract DL-08.
+
+## 4. Quy tắc xuyên màn hình
+
+### 4.1. Luồng và điều kiện chuyển bước
+
+| Từ → đến | Điều kiện | Không đạt điều kiện |
+|---|---|---|
+| KH-01 → KH-02 | Phim được chọn bằng đúng định danh | Hiện lỗi không tìm thấy hoặc lỗi tải, không tự chọn phim khác. |
+| KH-02 → KH-03 | Giữ ngữ cảnh phim | KH-03 có thể rỗng; không giả có lịch. |
+| KH-03 → KH-04 | Suất được backend cho bán | Làm mới lịch, yêu cầu chọn suất khác khi không còn khả dụng. |
+| KH-04 → KH-07 → KH-04 | Chưa xác thực khi đặt | Giữ ngữ cảnh, kiểm tra lại ghế/suất sau đăng nhập, không tự giữ ghế lúc chuyển form. |
+| KH-04 → KH-05 | Tạo booking thành công hoặc replay trả booking pending phù hợp | Xung đột từ chối toàn bộ; timeout khôi phục cùng key. Booking replay đã confirmed/expired/cancelled xử lý theo trạng thái thực. |
+| KH-05 → KH-06 | Backend xác nhận booking confirmed và trả dữ liệu vé | Pending/unknown tiếp tục kiểm tra; expired/cancelled không hiển thị thành công. |
+| KH-08 → KH-05 / KH-06 | Chủ booking, trạng thái hiện tại phù hợp | Tải lại chi tiết; không dùng summary cũ để cho phép mutation. |
+| KH-05 → KH-04 khi đổi ghế | Booking cũ đã hủy hợp lệ nếu muốn thay nội dung đơn | Chưa xác nhận hủy thì giữ ngữ cảnh đơn cũ; không coi các ghế đã nhả. |
+
+Theo S09, Back/Forward không tự hủy booking, không chặn lịch sử trình duyệt và không tự gửi lại form thanh toán. Rời luồng khi pending có cảnh báo về hạn giữ; đây không phải thao tác cancel server. Đăng nhập lại, reload hoặc mở nhiều tab không kéo dài `expiresAt` và không tạo quyền sở hữu ghế mới.
+
+### 4.2. Tách biệt các nhóm trạng thái
+
+| Nhóm | Miền giá trị từ nguồn | Điều không được suy ra |
+|---|---|---|
+| Booking | `pending`, `confirmed`, `expired`, `cancelled` | Pending không luôn đồng nghĩa còn thời gian bắt đầu payment; cancelled không có nghĩa đã refund. |
+| Phân bổ detail | `held`, `sold`, `released` | Thời gian trôi qua không tự đổi held thành released; released không xóa lịch sử detail. |
+| Payment | `created`, `pending`, `unknown`, `succeeded`, `failed`, `cancelled` | Không có status payment `expired`; unknown không phải failed; succeeded chưa chắc applied. |
+| Ticket | `valid`, `used`, `voided` | Không dùng status booking để tự ghi đè ticket; một vé Couple used không làm vé còn lại used. |
+| Vật lý ghế | `active`, `maintenance`, `inactive` | Active không đồng nghĩa trống trong mọi suất. |
+| Suất | `draft`, `scheduled`, `in_progress`, `completed`, `cancelled` | Draft chưa bán; phim now_showing không làm mọi suất có thể đặt. |
+| Đối soát payment | `none`, `needs_review`, `refund_required`, `resolved` | Là dữ liệu nội bộ theo schema; chưa có DTO Customer đầy đủ. Refund_required không có nghĩa tiền đã trả. |
+
+Đường đi thông thường: tạo booking → pending/held; áp dụng payment hợp lệ → confirmed/sold và phát hành ticket; hết hạn hoặc hủy hợp lệ → expired/cancelled và released. Các cập nhật do backend thực hiện nguyên tử; UI không gửi status tùy ý.
+
+### 4.3. Giá và snapshot
+
+Công thức dưới đây được ghi ở S01 BR-BOOK-005, S05 mục 13.1 và S06 mục 3.14, để giải thích ý nghĩa dữ liệu. Đây là **công thức backend**, không phải hướng dẫn frontend tự tính báo giá:
+
+```text
+base_amount      = showtime.base_price × capacity_units_snapshot
+surcharge_amount = phụ thu loại ghế, tính một lần / detail
+discount_amount  = round(base_amount × discount_percent_snapshot / 100, 0)
+unit_price       = base_amount + surcharge_amount - discount_amount
+total_amount     = tổng unit_price của toàn bộ detail gốc
+payment.amount   = booking.total_amount
+```
+
+- Giảm chỉ trên giá cơ sở, không giảm phụ thu; VND làm tròn nguyên đồng theo nguồn. Giá cuối của một Couple là giá cả đơn vị hai chỗ, không phải giá mỗi người để UI nhân thêm lần nữa.
+- Sau tạo booking, tên/loại ghế/loại vé và giá snapshot không bị thay theo danh mục hiện tại. Retry payment dùng cùng số tiền, không báo giá lại đơn cũ.
+- OQ-06 **đã chốt Option B**: một detail được phép giá 0, tổng booking và payment phải dương; không có luồng booking tổng 0/xác nhận không thanh toán trong MVP.
+- Không có coupon, điểm thành viên, phí đặt vé, thuế bổ sung hay bảo hiểm được tài liệu nguồn chốt cho checkout này.
+
+**Ví dụ minh họa số học, không phải báo giá API hay kết quả test:** với giá cơ sở 80.000 VND, Adult giảm 0%, phụ thu VIP 15.000 VND và Couple 40.000 VND như các giá trị mẫu trong seed: một Standard = 80.000 VND, một VIP = 95.000 VND, một Couple = 200.000 VND. Một Standard + một Couple là hai detail, ba chỗ, tổng 280.000 VND và ba vé khi booking được xác nhận. Ví dụ không đặt ra giới hạn giá hoặc phụ thu cố định cho ứng dụng.
+
+### 4.4. Dữ liệu demo và giới hạn sử dụng
+
+Script seed mô tả một cinema, hai phòng, ba loại ghế Standard/VIP/Couple, ba loại vé Adult/Student/Child và sáu phim đều có status now_showing. Vòng lặp ghế mô tả 50 vị trí phòng 1, 32 vị trí phòng 2; trong đó tổng cộng 9 vị trí Couple. Suy từ vòng lặp và capacity_units: **82 vị trí, 91 chỗ/người**, không phải 82 người. Đây là phân tích script, chưa phải kết quả truy vấn database đã chạy.
+
+Lịch demo trong script dùng ngày 28/10–04/11/2026 theo Việt Nam, giá cơ sở 80.000–110.000 VND. Không hard-code dải ngày, giá, số hàng ghế, số phim hoặc tên rạp vào component nghiệp vụ. Nhóm sắp chiếu có thể rỗng với dữ liệu này; không tự bịa phim để lấp giao diện.
+
+Seed có Student giảm 15%, Child giảm 25% và ghi chú điều kiện, nhưng OQ-08 chưa chốt đầy đủ cách xác minh; không coi dữ liệu mẫu là chính sách tuổi/giấy tờ chính thức. Nhãn PG/PG-13/R của seed hiển thị nguyên bản, không tự chuyển thành hệ phân loại Việt Nam.
+
+Script không tạo user/booking demo. Không giả có tài khoản đăng nhập mẫu hoặc vé mẫu đã được phát hành. Không cam kết gửi email, hoàn tiền hoặc bán sát giờ chỉ từ việc thấy cột/bản ghi mẫu.
+
+## 5. Phụ thuộc dữ liệu và contract cần bổ sung
+
+Các hàng dưới đây là khoảng trống đối chiếu giữa nhu cầu màn hình và tài liệu hiện có. Đây là **đề nghị làm rõ contract**, không phải chấp thuận thêm endpoint, field hoặc migration. Toàn bộ endpoint/DTO Proposed vẫn cần review trước tích hợp.
+
+| Mã | Màn hình | Hiện có và phần thiếu | Nội dung cần nhóm xác nhận |
+|---|---|---|---|
+| DL-01 | KH-01 | Movies có status/page/pageSize; chưa có query từ khóa, genre hoặc sort | Có hỗ trợ tìm kiếm/lọc thể loại trong MVP không; tham số, kết quả, pagination và trạng thái rỗng. Không mặc định tìm kiếm trên một trang = toàn kho. |
+| DL-02 | KH-03/04 | Có API lịch theo date và endpoint chi tiết suất; chưa có DTO chi tiết suất, metadata dải ngày hoặc thông tin cinema trong item lịch | DTO ngữ cảnh phim/phòng/rạp, nghĩa `date` theo múi giờ nào, ngày mặc định/dải ngày, ý nghĩa `bookingAvailable` và dữ liệu trạng thái bán. |
+| DL-03 | KH-04 | Ghế DTO chỉ có available/held/sold, loại/capacity/phụ thu; schema có trạng thái vật lý riêng; không có tọa độ/lối đi/hướng màn hình | Cách trả ghế bảo trì/inactive, phân biệt held của booking đang xem nếu cần, ánh xạ sơ đồ vật lý. Không tự suy chủ giữ hoặc lối đi từ thứ tự số ghế. |
+| DL-04 | KH-04 | Có endpoint ticket-types nhưng chưa có DTO; chưa có contract báo giá lựa chọn trước tạo booking | ID/tên/mã/điều kiện loại vé, eligibility, cách trả giá từng ghế và tổng tạm tính từ server. Không tự thêm endpoint preview ở tài liệu này. |
+| DL-05 | KH-04/05/06/08 | Booking DTO thiếu liên hệ đầu vào, ngữ cảnh phim/suất/phòng, capacity/detail ID và phân rã snapshot giá; summary lịch sử chưa cụ thể | Nguồn liên hệ và thời điểm chốt; trường xem lại lịch sử, số vé theo detail, dữ liệu reason/timestamp và cách định danh booking. Không đọc DB trực tiếp từ frontend để bù thiếu. |
+| DL-06 | KH-04/05/08 | Request booking có requestKey; payment đọc theo paymentId; booking DTO chưa chỉ attempt hiện tại, chưa có API tìm booking theo requestKey | Khôi phục POST timeout, reload/tab mới, payment đang mở, paymentId/payUrl và idempotency tạo attempt. Không kết luận không có đơn/attempt từ state client trống. |
+| DL-07 | KH-05/08 | Có cancel booking và status payment đơn giản; thiếu contract hủy attempt qua cổng, kết quả bất đồng bộ, applied/reconciliation | `/cancel` xử lý yêu cầu đổi ghế thế nào; khi nào đang xử lý/từ chối/thành công; field/cờ cần thiết và mã lỗi đã chốt; dữ liệu Customer được phép xem. |
+| DL-08 | KH-07/08 | Login/register Proposed; register chưa có token, password policy/phone validation chưa rõ; FR-AUTH-003 chưa có endpoint | Phiên sau đăng ký, validation API, dữ liệu hồ sơ được sửa, email trùng/đổi email, auth state và logout. Không tự thêm refresh token hoặc nơi lưu token. |
+| DL-09 | KH-06/08 | Booking DTO có qrCodeUrl; DTO vé riêng chưa có QR; schema không lưu ảnh QR và nguồn còn nêu payload mã vé hoặc payload có chữ ký | Cách cung cấp/render QR, payload chính thức, authorization và lỗi tải ảnh; không tự chọn payload hoặc tạo endpoint ảnh công khai. |
+
+Ngoài field dữ liệu, cần thống nhất response envelope: API contract mục 3 mô tả `{ data, pagination? }`, trong khi nhiều ví dụ DTO auth/booking/payment viết trực tiếp object. Frontend không tự hỗ trợ hai cấu trúc như thể đã chốt; xem CX-12.
