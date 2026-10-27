@@ -405,3 +405,147 @@ Nếu không có `paymentId` sau reload và booking response không cho biết a
 - **NT-17:** Countdown về 0 không tự nhả ghế hoặc hủy payment; UI phân biệt quá hạn danh nghĩa, backend expired và kết quả đang đối soát.
 - **NT-18:** Hủy/đổi ghế chỉ hoàn tất theo backend; khi cổng xác nhận chưa thu thì có thể hủy, khi đã thu/chưa rõ thì không báo đã nhả ghế (AC-BOOK-004..006).
 - **NT-19:** Payment thành công sau booking expired/cancelled không tạo vé hoặc hứa hoàn tiền tự động; retry hợp lệ giữ nguyên giá và hạn booking.
+
+### 3.6. KH-06 — Xác nhận đặt vé và vé điện tử
+
+#### Mục tiêu và điều kiện hiển thị thành công
+
+Xác nhận booking của khách đã `confirmed`, hiển thị các vé được backend phát hành. Căn cứ: FR-PAY-005, FR-TICKET-001, BR-BOOK-009, BR-PAY-004/007 và S02 UC-02. Cần đăng nhập và là chủ booking; biết mã công khai không đủ quyền xem.
+
+Trang được mở sau KH-05, từ lịch sử hoặc bằng truy cập trực tiếp theo định danh hợp lệ. Mọi trường hợp phải tải `GET /api/bookings/{bookingId}`; không dựng vé từ danh sách ghế đã chọn hoặc từ kết quả redirect của cổng.
+
+#### Bố cục và dữ liệu
+
+Một cột theo S10: thông báo xác nhận → mã booking → thông tin phim/suất/phòng/ghế → các thẻ vé → điều hướng. Không tiếp tục chạy countdown giữ ghế trên booking đã confirmed.
+
+| Khối | Nội dung | Nguồn / giới hạn |
+|---|---|---|
+| Kết quả | “Đặt vé thành công” khi booking confirmed | `status`, `confirmedAt` theo DTO booking Proposed. |
+| Booking | `bookingCode`, tổng tiền, tiền tệ, thời điểm xác nhận | Không tự format lại mã thành cấu trúc `BK-ngày-số`. |
+| Suất và ghế | Phim, ngày/giờ Việt Nam, phòng, ghế, loại ghế/vé | Nội dung lịch sử do backend cung cấp; DTO booking còn thiếu ngữ cảnh đầy đủ, DL-05. |
+| Mỗi vé | Mã riêng, QR riêng, nhãn ghế, trạng thái vé | `tickets[]` hiện có `ticketCode`, `seatLabel`, `qrCodeUrl`, `status`. QR rendering/payload còn DL-09. |
+| Hướng dẫn | Xuất trình mã vé/QR khi vào rạp, mỗi người dùng vé của mình | Không tự chốt cửa sổ soát vé; OQ-03 còn OPEN. |
+
+Mỗi Standard/VIP sức chứa 1 có một vé; Couple sức chứa 2 có hai vé với mã độc lập. Hai vé Couple có thể cùng nhãn ghế nhưng phải là hai mã khác nhau. **Đề xuất UI:** gom theo ghế Couple và ghi “Vé 1/2”, “Vé 2/2” để phân biệt; không tạo hậu tố mới trong `ticketCode` hoặc tách thành hai seatId.
+
+| Ticket status | Nhãn hiển thị | Hành vi |
+|---|---|---|
+| `valid` | “Chưa sử dụng” | Hiển thị mã/QR đã phát hành; không suy vé chắc chắn được chấp nhận ở mọi thời điểm vì cửa sổ soát còn OPEN. |
+| `used` | “Đã sử dụng” | Giữ lịch sử, không hiện như vé mới chưa dùng. Thời điểm sử dụng chỉ hiện khi API cung cấp. |
+| `voided` | “Đã vô hiệu hóa” | Không hiện như vé có thể dùng; lý do chỉ khi API cung cấp. Có status không đồng nghĩa Customer được hủy vé sau thanh toán. |
+
+Đọc trạng thái vé không thay đổi vé thành used; Customer không gọi API validate dành cho nhân viên. Hai vé Couple được soát độc lập; một vé used không làm UI tự đổi vé còn lại thành used.
+
+#### Trạng thái chưa đủ điều kiện và lỗi
+
+- Booking pending: không hiển thị thông báo đặt thành công hoặc QR giả; cho trở về KH-05/kiểm tra trạng thái theo dữ liệu thực.
+- Booking expired/cancelled: hiển thị kết quả tương ứng và hành động xem lịch/booking của tôi; không biến trang thành xác nhận thành công.
+- Booking confirmed nhưng `tickets` rỗng/thiếu: báo chưa tải đủ dữ liệu vé và cho đọc lại. Theo nghiệp vụ, confirm và phát hành vé là một transaction; đây là lỗi dữ liệu/tích hợp cần kiểm tra, không phải trạng thái nghiệp vụ mới “confirmed chưa phát hành” đã được chốt.
+- Ảnh QR không tải: vẫn hiện mã vé dạng chữ và thử tải lại QR; không tự tạo QR từ bookingCode hoặc ghép chung hai vé Couple. Payload/cách sinh QR cần DL-09.
+- 401/403/404/lỗi mạng xử lý theo mục 2.4; không để lại dữ liệu vé của người khác trên màn hình khi đổi phiên.
+
+Hành động chính theo S09: “Về trang chủ”, “Booking của tôi”. Không cam kết nút tải PDF, in vé, gửi email hoặc chia sẻ liên kết công khai vì chưa có contract/phạm vi tương ứng.
+
+#### Tiêu chí nghiệm thu
+
+- **NT-20:** Chỉ booking confirmed hiển thị thành công; tải trực tiếp vẫn kiểm tra quyền và đọc dữ liệu server.
+- **NT-21:** Số vé theo tổng `capacity_units_snapshot`; Couple có hai mã/QR khác nhau, callback lặp và reload không tạo thẻ vé trùng. Dữ liệu capacity trong DTO cần DL-05.
+- **NT-22:** Hiển thị đúng valid/used/voided; đọc vé không validate; lỗi QR không làm mất mã vé chữ hoặc biến bookingCode thành mã vé.
+
+### 3.7. KH-07 — Đăng nhập / đăng ký
+
+#### Mục tiêu và phạm vi
+
+Khách tạo tài khoản Customer hoặc xác thực để tiếp tục hành trình. Đây là hai form trong một nhóm màn hình, không bắt buộc chung route. Căn cứ: FR-AUTH-001/002/004, BR-AUTH-002..004, S08 Auth và S09 navigation.
+
+#### Form đăng nhập
+
+| Trường / thành phần | Nội dung | Validation / giới hạn |
+|---|---|---|
+| Email | Nhãn, input email | Bắt buộc, định dạng email; quy tắc chuẩn hóa tài khoản do backend thực hiện thống nhất. |
+| Mật khẩu | Input password | Bắt buộc; không áp quy tắc mật khẩu mới lên mật khẩu đăng nhập, không tự trim/đổi nội dung. |
+| Nút chính | “Đăng nhập” | Loading khi gửi, chặn nhấn lặp. |
+| Chuyển form | “Chưa có tài khoản? Đăng ký” | Giữ ngữ cảnh quay lại phù hợp; không mang mật khẩu sang URL. |
+
+Gửi `POST /api/auth/login` với `email`, `password`. Response DTO Proposed có `token`, `user.id`, `user.email`, `user.fullName`. Không tự giả định có refresh token, roles, ảnh đại diện hoặc profile đầy đủ trong response. Thông tin sai/tài khoản locked/deactivated hiển thị thông báo chung, ví dụ “Không thể đăng nhập bằng thông tin đã cung cấp”; không tiết lộ tài khoản tồn tại hay mật khẩu đúng/sai riêng lẻ.
+
+#### Form đăng ký
+
+| Trường | Căn cứ | Validation / điểm còn thiếu |
+|---|---|---|
+| Họ tên | DTO `fullName`; schema `full_name` bắt buộc, tối đa 150 ký tự | Không rỗng sau trim; giới hạn API phải thống nhất với persistence. |
+| Email | DTO `email`; schema tối đa 254 ký tự, unique chuẩn hóa | Bắt buộc, định dạng email; xử lý lỗi trùng theo contract. Không gộp dấu chấm/dấu cộng theo nhà cung cấp email. |
+| Mật khẩu | DTO `password` | Bắt buộc; độ dài tối thiểu/tối đa và độ phức tạp chưa được định nghĩa, không tự ghi thành quy tắc 8 ký tự/ký tự đặc biệt. |
+| Điện thoại | DTO `phone`; schema cho NULL, tối đa 20 ký tự | Không tự bắt buộc hoặc ép định dạng chỉ số Việt Nam khi chưa chốt validation API; DL-08. |
+| Nhập lại mật khẩu | Không có trong DTO | **Đề xuất UI** nếu nhóm chọn dùng: kiểm tra khớp cục bộ, không tự thêm field request. |
+
+Gửi `POST /api/auth/register` với các field theo contract được chốt. Client không gửi role; backend chỉ cấp CUSTOMER. Response đăng ký 201 hiện chỉ có thông tin user và `createdAt`, **không có token**.
+
+**Chờ chốt:** S09 mô tả đăng ký thành công quay lại màn hình trước, nhưng DTO register chưa tạo phiên. **Đề xuất UI:** báo tạo tài khoản thành công rồi chuyển form đăng nhập, giữ đích quay lại; chỉ tiếp tục trang được bảo vệ sau khi đăng nhập thành công. Không tự coi đăng ký là đã xác thực, không tự thêm token vào response; xem CX-05.
+
+#### Điều hướng, lỗi và trạng thái
+
+1. Nếu đến từ hành động đặt vé/trang được bảo vệ, lưu đích cần quay lại theo S09; nếu vào trực tiếp, đăng nhập thành công về Home.
+2. **Đề xuất UI:** chỉ chấp nhận đích nội bộ hợp lệ; sau đăng nhập kiểm tra lại quyền, booking, suất và ghế. Không tự gửi lại thao tác thanh toán hoặc đặt vé chưa được người dùng xác nhận.
+3. Validation hiển thị cạnh field sau blur/gửi form theo S10. Backend vẫn kiểm tra mọi đầu vào; lỗi mạng khác lỗi thông tin xác thực.
+4. Login 401 `INVALID_CREDENTIALS`: lỗi chung; lỗi phiên 401 của API được bảo vệ theo `UNAUTHENTICATED` ở S08, không nhầm hai ngữ cảnh.
+5. Register 409 `EMAIL_ALREADY_EXISTS` theo DTO Proposed: thông báo phù hợp contract; không gắn thành công hoặc tiếp tục như đã đăng nhập.
+6. Khi lỗi, giữ dữ liệu không nhạy cảm để sửa; không log/persist mật khẩu. Không khẳng định tài khoản được tạo hay chưa chỉ từ timeout; kiểm tra qua luồng đăng nhập/response phù hợp, không tự cấp phiên.
+
+Quên mật khẩu, đổi mật khẩu, xác minh email, OTP, refresh token và ghi nhớ đăng nhập chưa có luồng API trong đặc tả hiện tại. Không thêm nút dẫn tới chức năng giả hoặc yêu cầu OTP như điều kiện đặt vé đã chốt. `email_verified_at` tồn tại trong schema không chứng minh đã có luồng xác minh email.
+
+#### Tiêu chí nghiệm thu
+
+- **NT-23:** Form gửi đúng field, không gửi role/giá hoặc dữ liệu không thuộc auth; đăng ký công khai không cấp role quản trị.
+- **NT-24:** Sai thông tin/locked/deactivated dùng lỗi chung; validation đúng vị trí; không lộ hoặc lưu bền vững mật khẩu.
+- **NT-25:** Đăng nhập từ trang được bảo vệ quay lại đúng ngữ cảnh và tải lại dữ liệu; đăng ký không bị hiểu là đã có phiên khi response chưa trả token.
+
+### 3.8. KH-08 — Tài khoản / booking của tôi
+
+#### Mục tiêu và truy cập
+
+Khách xem các booking và vé của chính mình, tiếp tục thanh toán/hủy booking khi còn hợp lệ. Căn cứ: FR-BOOK-003/004, FR-TICKET-001, BR-AUTH-002 và S08 Bookings/Tickets. Mọi endpoint phải kiểm tra ownership ở backend; không lọc toàn bộ booking người dùng khác tại frontend rồi coi là an toàn.
+
+#### Danh sách booking
+
+Tải `GET /api/users/me/bookings?page=...&pageSize=...` khi vào trang hoặc đổi trang. DTO hiện ghi item tóm tắt theo chi tiết booking nhưng chưa mô tả rõ toàn bộ trường summary; DL-05. Không tự đặt query lọc theo trạng thái, ngày hoặc mã booking khi chưa có contract.
+
+| Nội dung mỗi booking | Quy tắc |
+|---|---|
+| Mã booking | Mã server, dùng đúng định danh đã chốt để mở chi tiết. |
+| Phim, suất, phòng | Dữ liệu backend cung cấp cho booking lịch sử; không thay bằng phim/phòng đang chọn ở phiên hiện tại. |
+| Ghế và loại vé | Nội dung snapshot, vẫn giữ khi booking đã expired/cancelled. |
+| Tổng tiền | Giá gốc của booking; không đổi về 0 vì detail đã released. |
+| Trạng thái | Pending “Chờ thanh toán”; confirmed “Đã xác nhận”; expired “Đã hết hạn”; cancelled “Đã hủy”. Pending quá hạn danh nghĩa vẫn phản ánh đúng trạng thái server kèm giải thích nếu cần. |
+| Thời điểm tạo/xác nhận | Chỉ hiển thị khi có dữ liệu; chuyển múi giờ đúng quy ước. |
+| Hành động | Xem chi tiết; thanh toán/hủy/xem vé tùy trạng thái đã được xác minh. |
+
+**Đề xuất UI:** danh sách thẻ dễ đọc trên mobile; desktop có thể dùng bảng hoặc thẻ. Sắp xếp/phân trang phải theo kết quả API, không khẳng định đã có server-side sort tùy chọn. Danh sách rỗng: “Bạn chưa có booking nào” và “Xem phim”. Lỗi tải có thử lại; 401 chuyển đăng nhập.
+
+#### Chi tiết booking và hành động theo trạng thái
+
+Chọn booking gọi `GET /api/bookings/{bookingId}` để đọc lại trạng thái. **Đề xuất UI:** tái sử dụng khối tóm tắt của KH-05 và thẻ vé của KH-06; không tạo thêm mô hình trạng thái độc lập.
+
+| Booking | Nội dung / hành động |
+|---|---|
+| Pending còn hạn | Chi tiết đơn, giá, hạn giữ; “Tiếp tục thanh toán” mở KH-05. Nút hủy chỉ theo điều kiện backend và luồng mục 3.5. |
+| Pending quá hạn hoặc đang xác nhận payment | Cho kiểm tra trạng thái; không tạo payment mới chỉ vì danh sách ghi pending, không tự coi là expired. |
+| Confirmed | Xem vé và thông tin đã mua; không cho Customer đổi ghế, hủy sau thanh toán hoặc hoàn tiền trong demo. |
+| Expired / cancelled | Giữ lịch sử ghế/giá/lý do nếu API cung cấp; có thể xem phim để tạo booking mới, không tái mở đơn cũ. |
+
+Nếu cần đọc một vé riêng, dùng `GET /api/tickets/{ticketCode}` theo quyền. DTO vé riêng có mã, nhãn ghế, status, bookingCode, showtimeStartsAt nhưng chưa có QR/phòng đầy đủ; không giả định nó thay thế toàn bộ booking detail. Không cung cấp chức năng Customer validate vé.
+
+Không hiển thị một danh sách payment attempt đầy đủ hoặc công cụ đối soát thủ công chỉ vì database có nhiều payment. API Customer chưa có contract liệt kê attempt theo booking; xem DL-06/DL-07. Tên chủ booking, dữ liệu tài khoản và vé riêng phải được xóa khỏi UI khi đăng xuất/đổi tài khoản.
+
+#### Hồ sơ cá nhân — yêu cầu có, tích hợp chưa đủ
+
+FR-AUTH-003 yêu cầu user được xem và sửa hồ sơ của mình; bảng kế hoạch có Trang Profile. Schema hiện có `full_name`, `email`, `phone`, nhưng S08 chưa có endpoint/DTO lấy hoặc cập nhật hồ sơ, quy tắc đổi email hay xử lý email trùng sau cập nhật.
+
+Không loại bỏ yêu cầu này khỏi phạm vi nghiệp vụ; đồng thời không mô tả như chức năng đã tích hợp. **Đề xuất UI chờ contract:** vùng hồ sơ có thông tin được phép xem/sửa sau khi nhóm chốt field, quyền, validation và response. Không tự thêm ngày sinh, giới tính, địa chỉ, ảnh đại diện, đổi mật khẩu hoặc sửa email như đã được hỗ trợ.
+
+#### Tiêu chí nghiệm thu
+
+- **NT-26:** Endpoint me chỉ trả booking của phiên hiện tại; truy cập mã booking/vé người khác bị backend từ chối và UI không lộ dữ liệu (AC-SEC-002).
+- **NT-27:** Empty/loading/error/phân trang đúng; chi tiết được tải lại, không mở quyền thanh toán/hủy chỉ từ bản summary cũ.
+- **NT-28:** Giá/snapshot lịch sử không đổi khi danh mục thay đổi hoặc ghế released; vé used/voided không bị hiển thị thành valid.
+- **NT-29:** Pending được xử lý theo hạn và attempt, confirmed không có hủy/refund Customer; hồ sơ cá nhân chỉ nghiệm thu tích hợp sau khi có contract DL-08.
