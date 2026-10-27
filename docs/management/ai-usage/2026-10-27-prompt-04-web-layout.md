@@ -6,7 +6,7 @@
 
 ## Prompt của người dùng — diễn đạt lại
 
-> Làm tương tự cho file `customer-web-layout.md` giúp tui nha, vẫn theo các yêu cầu vừa rồi.
+> Áp dụng các yêu cầu trước đó cho file `customer-web-layout.md`.
 
 ## Phản hồi của AI — tóm tắt công việc và kết quả
 
