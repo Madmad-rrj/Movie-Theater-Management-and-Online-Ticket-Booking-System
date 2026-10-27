@@ -661,6 +661,68 @@ flowchart TD
 
 Chỉ thông báo giải phóng ghế sau khi server đã xác nhận kết quả. Nếu hủy bị từ chối hoặc kết quả chưa rõ, không điều hướng như đã đổi ghế thành công. Ghế vừa được giải phóng có thể bị khách khác chọn; sơ đồ mới phải được tải lại trước yêu cầu đặt mới.
 
+### 4.6. Luồng đăng nhập và đăng ký
+
+Đích quay lại được giữ khi khách đến từ một trang được bảo vệ. Sơ đồ dùng cách xử lý đề xuất: đăng ký thành công rồi đăng nhập nếu response đăng ký không tạo phiên. Không tự gửi lại hành động đặt vé hoặc thanh toán sau xác thực.
+
+```mermaid
+flowchart TD
+    openAuth(["Mở KH-07: Xác thực"]) --> hasAccount{"Đã có tài khoản?"}
+    hasAccount -->|"Chưa"| registerForm["Nhập họ tên, email, mật khẩu và điện thoại tùy chọn"]
+    registerForm --> registerValid{"Dữ liệu đăng ký hợp lệ?"}
+    registerValid -->|"Không"| registerError["Hiển thị lỗi cạnh trường"]
+    registerError --> registerForm
+    registerValid -->|"Có"| registerRequest["Gửi yêu cầu đăng ký"]
+    registerRequest --> registerResult{"Tạo tài khoản thành công?"}
+    registerResult -->|"Chưa"| registerFeedback["Báo lỗi hoặc kết quả chưa xác định"]
+    registerFeedback --> registerForm
+    registerResult -->|"Có, chưa có phiên"| registered["Báo tạo tài khoản thành công"]
+    registered --> loginForm["Nhập email và mật khẩu đăng nhập"]
+    hasAccount -->|"Rồi"| loginForm
+    loginForm --> loginRequest["Gửi yêu cầu đăng nhập"]
+    loginRequest --> sessionValid{"Đăng nhập thành công?"}
+    sessionValid -->|"Không"| loginError["Hiển thị lỗi phù hợp"]
+    loginError --> loginForm
+    sessionValid -->|"Có"| savedTarget{"Có đích nội bộ đã lưu?"}
+    savedTarget -->|"Không"| homePage["Về KH-01: Trang chủ"]
+    savedTarget -->|"Có"| refreshTarget["Tải lại dữ liệu và kiểm tra quyền"]
+    refreshTarget --> targetAccess{"Còn truy cập được?"}
+    targetAccess -->|"Có"| returnPage["Mở màn hình đang dở"]
+    targetAccess -->|"Không"| accessFeedback["Báo tài nguyên không khả dụng hoặc không có quyền"]
+```
+
+Lỗi thông tin xác thực hoặc tài khoản không được đăng nhập dùng thông báo chung; lỗi mạng được báo là lỗi kết nối. Nếu API đăng ký sau này hỗ trợ tạo phiên, nhánh tiếp tục phải dựa trên phiên thực được trả về và hợp đồng đã thống nhất.
+
+### 4.7. Luồng lịch sử booking và xem vé
+
+Danh sách thuộc tài khoản hiện tại. Trước khi cho tiếp tục thanh toán hoặc xem vé, tải lại chi tiết booking để tránh dùng trạng thái cũ trong danh sách. Đơn đã hết hạn/hủy được giữ để xem lịch sử, không tái mở để thanh toán.
+
+```mermaid
+flowchart TD
+    openHistory(["Mở KH-08: Booking của tôi"]) --> hasSession{"Có phiên hợp lệ?"}
+    hasSession -->|"Chưa"| loginHistory["Đăng nhập và lưu đích lịch sử"]
+    loginHistory -->|"Thành công"| loadHistory["Tải booking của tài khoản hiện tại"]
+    hasSession -->|"Có"| loadHistory
+    loadHistory --> listResult{"Kết quả danh sách?"}
+    listResult -->|"Lỗi"| listError["Hiển thị lỗi và cho tải lại"]
+    listError -->|"Thử lại"| loadHistory
+    listResult -->|"Rỗng"| emptyHistory["Chưa có booking; cho xem phim"]
+    listResult -->|"Có dữ liệu"| chooseBooking["Chọn booking trong danh sách"]
+    chooseBooking --> loadDetail["Tải chi tiết và kiểm tra quyền"]
+    loadDetail --> detailResult{"Kết quả chi tiết?"}
+    detailResult -->|"Không có quyền hoặc không tìm thấy"| detailError["Báo lỗi; không hiển thị dữ liệu riêng tư"]
+    detailResult -->|"Lỗi tải"| detailRetry["Cho thử tải lại chi tiết"]
+    detailRetry -->|"Thử lại"| loadDetail
+    detailResult -->|"Hợp lệ"| bookingStatus{"Booking hiện tại?"}
+    bookingStatus -->|"Đã xác nhận"| showTickets["KH-06: Xem từng vé và QR"]
+    bookingStatus -->|"Đang chờ"| showPending["Xem hạn giữ và kết quả thanh toán"]
+    showPending -->|"Tiếp tục xử lý"| showPayment["KH-05: Kiểm tra điều kiện thanh toán hoặc hủy"]
+    bookingStatus -->|"Hết hạn hoặc đã hủy"| showPast["Xem thông tin booking lịch sử"]
+    showPast -->|"Muốn đặt lại"| browseAgain["Xem phim và tạo booking mới"]
+```
+
+Mở vé chỉ đọc dữ liệu; không chuyển vé sang đã sử dụng. Với Couple, hai vé có mã và trạng thái riêng. Khi đăng xuất hoặc đổi tài khoản, xóa danh sách/chi tiết/vé riêng tư đang hiển thị; lần vào lại phải tải theo phiên mới.
+
 ## 5. Tiêu chí nghiệm thu tổng hợp
 
 Các tiêu chí dưới đây dùng để chuẩn bị kiểm thử màn hình; không phải báo cáo kiểm thử đã hoàn thành.
