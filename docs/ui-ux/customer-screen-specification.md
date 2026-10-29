@@ -164,11 +164,60 @@ Không cho chọn ghế held/sold/maintenance/inactive. Ghế được chọn ph
 
 ### 3.6. Booking Confirmation
 
-- **Mục đích:** xác nhận đặt vé thành công, hiển thị vé.
-- **Bố cục:** mã booking, thông tin suất/ghế, danh sách vé với mã QR riêng cho từng vé (ghế Couple phát hành 2 vé riêng).
-- **Dữ liệu hiển thị:** `booking_code`, giờ chiếu, phòng, ghế, mã vé/QR, trạng thái vé `valid`.
-- **Nút thao tác:** về trang chủ, xem "Booking của tôi".
-- **Tiêu chí nghiệm thu:** số vé hiển thị đúng số ghế/capacity_units; trạng thái `confirmed` chỉ xuất hiện sau khi payment được áp dụng.
+**KH-06 — CIN-SUB-057.** Phân biệt **kiểm tra đơn trước thanh toán** và **booking đã được backend xác nhận**. Hai ngữ cảnh không tạo hai loại booking hoặc quyền sửa giá. Cách tách khối kiểm tra đơn thành một bước riêng là đề xuất UI cần thống nhất với User Flow/Navigation.
+
+#### Dữ liệu xác nhận
+
+| Dữ liệu | Yêu cầu |
+|---|---|
+| Phim, rạp, suất | Đúng phim, rạp/phòng, ngày/giờ Việt Nam của đơn; trường chưa có trong DTO booking đầy đủ phải bổ sung contract, không ghép từ một phim đang xem khác. |
+| Ghế và loại vé | Nhãn ghế, loại ghế, loại vé, số chỗ mỗi đơn vị; sau tạo dùng dữ liệu đã chốt của booking. |
+| Giá | Giá mỗi detail, tổng tiền, VND từ server; không tính lại theo danh mục hiện tại. |
+| Mã và hạn | `bookingId`, `bookingCode`, `status`, `expiresAt` khi đã tạo; mã hiển thị nguyên giá trị, không tự chế tiền tố. |
+| Liên hệ | Thông tin liên hệ được phép xem; nguồn lấy/field và thời điểm xác nhận còn TBD trong contract tạo booking. |
+| Vé sau xác nhận | `tickets` theo booking, mỗi vé có mã/ghế/QR/trạng thái được server trả. Không dựng vé từ lựa chọn cục bộ. |
+
+#### Ngữ cảnh A — kiểm tra đơn trước thanh toán
+
+Đề xuất đặt vùng kiểm tra trong KH-05 sau khi KH-04/KH-09 tạo booking pending và trả snapshot giá. Hiện rõ “Đơn đang chờ thanh toán”, không hiện “Đặt vé thành công”, QR hoặc vé hợp lệ ở giai đoạn này.
+
+| Thao tác | Điều kiện | Kết quả |
+|---|---|---|
+| Xem lại thông tin | Đã có booking của mình | Đọc lại `GET /api/bookings/{bookingId}`; hiển thị giá, ghế, hạn server. |
+| Xác nhận / tiếp tục thanh toán | Booking pending đủ điều kiện hiện tại | Chuyển/tập trung vùng KH-05; không đổi status thành confirmed và không tự tạo attempt chỉ vì mở bước. |
+| Quay lại chỉnh ghế/loại vé trước tạo đơn | Chỉ có lựa chọn cục bộ | Giữ showtimeId, ghế và loại vé còn phù hợp; chưa có quyền giữ/giá chốt nếu chưa tạo booking. |
+| Đổi ghế/loại vé sau tạo đơn | Booking pending được backend chấp nhận hủy | Hủy toàn bộ hợp lệ rồi tạo đơn mới; không PATCH ghế/giá/loại vé trong booking đã có. |
+| Hủy | Chủ booking và nghiệp vụ cho phép | Yêu cầu backend; nếu payment còn mở, cần kết quả kiểm tra/hủy cổng trước khi coi là thành công. |
+
+Không tự thêm bước POST “confirm booking”. Nếu thiết kế đặt bản kiểm tra **trước** POST tạo booking, đó là tóm tắt lựa chọn cục bộ; báo giá trước đặt còn TBD, không trình bày tổng tự tính như giá cuối.
+
+#### Ngữ cảnh B — booking đã confirmed
+
+Chỉ hiển thị “Đặt vé thành công” sau khi đọc booking confirmed từ backend. Cùng vùng hiển thị mã đơn, phim/rạp/suất/phòng/ghế, giá chốt và vé được phát hành. Không còn countdown giữ ghế trên đơn đã xác nhận.
+
+- Mỗi detail có số vé đúng sức chứa snapshot: Standard/VIP một vé; Couple hai vé với hai mã/QR độc lập. Hai vé cùng nhãn ghế không được gộp thành một QR.
+- Hiển thị trạng thái từng vé hiện tại: valid, used hoặc voided; không mặc định mọi lần xem đều valid. Đọc vé không gọi thao tác validate của Staff.
+- “My Tickets” mở KH-11; “Booking History” mở KH-08; “Về trang chủ” mở KH-01.
+- Không cho Customer hủy đơn confirmed, đổi ghế hoặc yêu cầu refund trong MVP. Không thêm in/PDF/gửi email khi chức năng chưa được chốt.
+
+#### Dữ liệu không còn hợp lệ và quay lại
+
+1. Vào trực tiếp/reload/Back phải đọc booking theo quyền. Không có quyền/không tìm thấy hiển thị lỗi tương ứng, không dùng cache của người khác.
+2. Suất đóng, ghế vừa bị chiếm hoặc loại vé không còn hợp lệ trước tạo đơn: từ chối toàn bộ yêu cầu và trở về lựa chọn với phản hồi cụ thể; không tạo vé giả.
+3. Sau tạo, quá expiresAt chỉ là quá hạn danh nghĩa. Đọc trạng thái thực; pending có attempt chưa rõ vẫn hiển thị đang kiểm tra, không tự nhả ghế.
+4. Booking expired/cancelled không tái mở; vẫn xem được nội dung lịch sử được phép, muốn đặt lại phải tạo booking mới.
+5. Back không tự hủy hoặc reset hạn. Lựa chọn trước tạo giữ theo phiên rồi đối chiếu sơ đồ mới; sau tạo dùng booking snapshot, không coi state cục bộ là sửa đơn đã lưu.
+6. Payment succeeded nhưng booking chưa confirmed: chuyển KH-10/kiểm tra kết quả, không hiện thành công hoặc tự hứa hoàn tiền.
+7. Confirmed nhưng thiếu vé/dữ liệu bắt buộc: báo chưa tải đủ dữ liệu và đọc lại; đây là lỗi dữ liệu/tích hợp cần kiểm tra, không chốt một trạng thái nghiệp vụ mới.
+
+#### Nghiệm thu Booking Confirmation
+
+- **BC-01:** Đủ phim/rạp/suất/ghế/loại vé/tổng tiền từ đúng ngữ cảnh; dữ liệu thiếu được ghi TBD hoặc báo lỗi.
+- **BC-02:** Xác nhận trước thanh toán không tự chuyển confirmed, giữ ghế hoặc thu tiền lần hai.
+- **BC-03:** Back giữ dữ liệu phù hợp trước/sau tạo đơn, không đổi snapshot/hạn; sửa đơn đã tạo qua hủy hợp lệ.
+- **BC-04:** Expired/cancelled/unknown và không có quyền không bị hiển thị thành đặt thành công.
+- **BC-05:** Sau confirmed đủ vé đúng capacity; Couple hai mã riêng, trạng thái vé không bị ghi đè trên UI.
+- **BC-06:** Điều hướng tới Payment, Payment Result, My Tickets và Booking History giữ đúng booking/ownership.
 
 ### 3.7. Đăng nhập / Đăng ký
 
