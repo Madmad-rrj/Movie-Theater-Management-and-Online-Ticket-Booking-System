@@ -334,3 +334,38 @@ Loading danh mục: khóa tiếp tục; danh mục rỗng: nêu chưa có loại
 - **TT-03:** Không tiếp tục khi thiếu danh mục/loại vé; backend kiểm tra lại điều kiện, không tin giá từ client.
 - **TT-04:** Quay lại không tạo booking và giữ lựa chọn còn hợp lệ; booking đã có dùng snapshot.
 - **TT-05:** Không tự đặt giới hạn vé/giảm giá/eligibility chưa chốt; thiếu báo giá được ghi TBD, không tạo tổng giả.
+
+### 3.10. KH-10 — Payment Result — CIN-SUB-059
+
+**Mục đích:** thông báo kết quả lần thanh toán và kết quả xác nhận booking như hai dữ liệu độc lập. Chủ booking đã đăng nhập mới xem được; biết paymentId/bookingCode không thay quyền sở hữu.
+
+#### Dữ liệu và thời điểm đọc
+
+- Nhận bookingId và paymentId khi đã biết; khi vào trực tiếp/reload phải xác thực, đọc payment và booking từ server.
+- Hiển thị mã booking, ngữ cảnh phim/suất/phòng/ghế khi API cung cấp, số tiền/currency của attempt, payment status và booking status.
+- Không coi query string hoặc thông báo trên trang cổng là nguồn kết quả chính thức. Nếu mất paymentId, contract tìm attempt hiện tại còn TBD; không dùng một attempt ngẫu nhiên hoặc tạo mới để thay thế.
+- Field `appliedAt`, `reconciliationStatus`, nguyên nhân lỗi đã lọc và ngữ cảnh đầy đủ chưa được mô tả trong DTO Customer: ghi TBD, không tự lộ dữ liệu đối soát nội bộ.
+
+#### Kết quả, thông báo và hành động
+
+| Payment / booking được server xác nhận | Nội dung hiển thị | Hành động được phép |
+|---|---|---|
+| Succeeded + booking confirmed | Thanh toán và đặt vé đã được xác nhận; mã đơn, thông tin mua | Xem xác nhận KH-06, My Tickets KH-11 hoặc Booking History KH-08. |
+| Created/pending | Thanh toán đang xử lý | Kiểm tra lại attempt; xem lịch sử. Không mở attempt khác. |
+| Unknown | Kết quả đang được xác nhận | Đợi/đọc lại theo cơ chế được chốt; không báo failed hay tự retry thu tiền. |
+| Failed/cancelled, booking pending còn hạn, không attempt mở | Lần thử thất bại/hủy đã xác minh; đơn vẫn chờ | Về KH-05 để kiểm tra điều kiện retry, không reset hạn. |
+| Succeeded nhưng booking chưa confirmed | Kết quả tài chính và đơn chưa trùng nhau; chưa thể coi có vé | Kiểm tra lại hoặc xem lịch sử; không báo đặt thành công, không thanh toán lần nữa chỉ vì chưa có vé. |
+| Booking expired/cancelled, kể cả payment thành công muộn | Đơn không được xác nhận; nêu đúng kết quả payment khi có | Xem lịch sử/đặt đơn mới; không reclaim ghế, không phát vé, không hứa hoàn tiền tự động. |
+| Lỗi mạng / thiếu dữ liệu đọc | Không thể tải kết quả hiện tại | Thử GET lại, không gán trạng thái tài chính từ lỗi tải. |
+
+Loading, lỗi đọc và kết quả đang xử lý phải phân biệt. Empty payment chưa tìm thấy không có nghĩa chưa thu tiền; báo chưa đủ dữ liệu/không tìm thấy theo response. 401 cần đăng nhập; 403 không có quyền; 404 không tự tạo giao dịch khác.
+
+“Xem My Tickets” chỉ tới danh sách của phiên hiện tại; “Booking History” giữ đúng ngữ cảnh đơn nếu có. Khi chưa confirmed, không gắn một QR giả vào thông báo đang xử lý. Vé đã used/voided giữ trạng thái thật khi mở lại.
+
+#### Nghiệm thu Payment Result
+
+- **RS-01:** Cùng một payment succeeded nhưng booking pending hoặc expired không bị báo thành công đặt vé.
+- **RS-02:** Unknown/created/pending không có nút tạo attempt luôn bật; retry về Payment và kiểm tra lại.
+- **RS-03:** Đủ thông tin kết quả được phép xem, điều hướng đúng đơn/tài khoản; dữ liệu thiếu được ghi TBD.
+- **RS-04:** Mạng lỗi/redirect/callback lặp không tự đảo trạng thái hoặc tạo thêm vé.
+- **RS-05:** My Tickets và Booking History khác mục đích; late success không đưa ra cam kết refund chưa có.
