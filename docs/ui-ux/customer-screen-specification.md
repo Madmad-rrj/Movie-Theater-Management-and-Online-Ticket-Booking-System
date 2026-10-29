@@ -439,3 +439,45 @@ Rỗng chỉ sau khi nguồn danh sách được đọc thành công và xác nh
 - **TK-03:** Couple hai vé/QR riêng, trạng thái từng vé đúng; xem vé không soát vé.
 - **TK-04:** Loading/rỗng/lỗi/ảnh lỗi rõ; danh sách một phần không được báo là toàn bộ.
 - **TK-05:** API danh sách, phân trang/lọc và QR còn thiếu được ghi TBD, không tự tạo contract hoặc dữ liệu.
+
+### 3.12. KH-12 — Profile — CIN-SUB-062
+
+#### Mục đích, quyền và phạm vi dữ liệu
+
+Customer đã đăng nhập được xem/cập nhật hồ sơ của chính mình theo FR-AUTH-003. Các trường persistence tồn tại không tự trở thành field API được phép sửa. **Contract lấy/lưu hồ sơ còn TBD**; không tự xác lập GET/PATCH/PUT endpoint hoặc giả có dữ liệu profile đầy đủ từ login.
+
+| Nhóm dữ liệu | Hiển thị | Chỉnh sửa / validation |
+|---|---|---|
+| Họ tên | `fullName` khi API cung cấp | Đề xuất field được sửa cần chốt API; không rỗng sau trim, giới hạn dữ liệu hiện tại 150 ký tự. |
+| Email | `email` của tài khoản nếu được trả | Đề xuất chỉ đọc cho đến khi có quy trình đổi email. Không tự thêm xác minh/đổi email hoặc gửi field không được phép. |
+| Điện thoại | `phone` khi có; rỗng nếu không cung cấp | Đề xuất field được sửa, tùy chọn theo miền dữ liệu hiện tại, tối đa 20 ký tự; không ép mẫu chỉ số Việt Nam khi chưa chốt validation. |
+| Trạng thái / vai trò | Chỉ khi response cho Customer xem | Không có control tự đổi role, active/locked/deactivated. |
+| Mật khẩu / nội bộ | Không hiển thị password/hash/token/secret | Không bổ sung đổi mật khẩu hoặc sửa trường persistence từ form. |
+
+Ngày sinh, giới tính, địa chỉ, ảnh đại diện, loyalty và xác minh email không được tự thêm như chức năng đã chốt. Giới hạn dữ liệu nêu trên phải thống nhất với API trước tích hợp; không dùng DTO đăng ký làm DTO cập nhật profile.
+
+#### Tải, nhập, lưu và điều hướng
+
+1. Vào trang kiểm tra phiên và đọc hồ sơ theo contract sau khi chốt. Nếu hiện chỉ có user trong phiên, chỉ hiện đúng thông tin đã biết; không giả đã tải đầy đủ hồ sơ từ server.
+2. Loading: chưa cho lưu dữ liệu trống để ghi đè. Lỗi tải: thông báo/thử đọc lại, không coi như user không có tài khoản.
+3. Cho nhập chỉ field đã được cho phép. Validation lỗi dưới trường; giữ dữ liệu chưa lưu để sửa, không tự sửa email/mật khẩu.
+4. Lưu khi contract đã có, dữ liệu hợp lệ và không đang gửi. Payload chỉ field được phép; backend kiểm tra phiên/ownership/validation. Contract chưa chốt thì thao tác lưu là **TBD tích hợp**, không có thông báo lưu giả.
+5. Thành công chỉ sau response xác nhận; hiển thị dữ liệu chính thức server trả và cập nhật phần tên tài khoản liên quan nếu hợp đồng cho phép.
+6. Validation backend, xung đột dữ liệu hoặc lỗi server: giữ form chưa lưu và thông báo phù hợp; không tự coi mọi lỗi là email trùng hoặc tạo mã lỗi mới.
+7. Timeout lưu: kết quả chưa rõ, đọc lại hồ sơ để kiểm tra khi API hỗ trợ; không tuyên bố thất bại chắc chắn hoặc tự gửi lặp vô hạn.
+8. Quay lại KH-08/Home không tự lưu. **Đề xuất UI:** nếu có thay đổi chưa lưu, hỏi giữ lại/chấp nhận bỏ bản nháp; việc bỏ nháp không hủy booking hoặc làm mất hồ sơ đã lưu.
+9. 401 đăng nhập lại rồi tải dữ liệu; 403 không có quyền, không lộ hồ sơ khác. Đổi phiên xóa bản nháp/dữ liệu riêng tư của tài khoản trước.
+
+#### Nội dung TBD để phối hợp
+
+- Endpoint và response hồ sơ; tập field được đọc/sửa, xác thực lại khi thay dữ liệu nếu có.
+- Validation API, chuẩn hóa phone, xử lý xung đột/lost update và dữ liệu trả sau lưu.
+- Quy trình đổi email/mật khẩu nếu nhóm mở phạm vi sau này; hiện không có trong đặc tả tích hợp này.
+
+#### Nghiệm thu Profile
+
+- **PF-01:** Chỉ đọc/sửa hồ sơ chính mình; không sửa role/status hoặc hiển thị thông tin xác thực nội bộ.
+- **PF-02:** Trường đọc/sửa và constraint được phân biệt đã biết/đề xuất/TBD; không tự thêm chức năng.
+- **PF-03:** Lỗi đọc không gửi form trống; lỗi lưu giữ dữ liệu để sửa, timeout không báo kết quả chắc chắn.
+- **PF-04:** Chỉ báo lưu thành công sau backend; Back không tự submit, bản nháp không lẫn giữa các user.
+- **PF-05:** Endpoint/DTO thiếu được ghi rõ để bàn giao; nghiệm thu UI tích hợp chờ contract, không tuyên bố đã triển khai.
