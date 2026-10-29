@@ -6,27 +6,212 @@
 
 ## 2. Danh sách màn hình
 
-1. Home (Danh sách phim)
-2. Movie Detail
-3. Showtime (Lịch chiếu)
-4. Seat Selection (Sơ đồ ghế)
-5. Payment
-6. Booking Confirmation
-7. Đăng nhập / Đăng ký
-8. Tài khoản (Booking của tôi)
+1. Home
+2. Movie List (Danh sách phim)
+3. Movie Detail
+4. Showtime (Lịch chiếu)
+5. Seat Selection (Sơ đồ ghế)
+6. Payment
+7. Booking Confirmation
+8. Đăng nhập / Đăng ký
+9. Tài khoản (Booking của tôi)
 
 ## 3. Đặc tả từng màn hình
 
 ### 3.1. Home
 
-- **Mục đích:** giới thiệu phim đang chiếu / sắp chiếu, điểm vào luồng đặt vé.
-- **Bố cục:** header, khu vực banner/danh sách phim dạng card, footer.
-- **Dữ liệu hiển thị:** poster, tên phim, nhãn phân loại tuổi, trạng thái (`now_showing`/`coming_soon`).
-- **Nút thao tác:** xem chi tiết phim (click card), tìm kiếm/lọc.
-- **Validation:** không có.
-- **Tiêu chí nghiệm thu:** danh sách phim tải từ API, hiển thị loading/empty state đúng.
+#### 3.1.1. Mục đích và phạm vi
 
-### 3.2. Movie Detail
+- Là điểm vào chính của website Customer.
+- Giới thiệu nhanh hai nhóm phim `now_showing` và `coming_soon`.
+- Cho phép mở Movie Detail hoặc chuyển sang Movie List đã lọc theo nhóm tương ứng.
+- Home không thay thế Movie List: không cung cấp toàn bộ phân trang/bộ lọc và không tự xếp hạng phim khi nghiệp vụ chưa quy định.
+
+**Route và quyền truy cập:** `/`, Public.
+
+**Yêu cầu liên quan:** FR-MOVIE-001; `customer-user-flow.md` mục 3.1; `customer-navigation.md` mục 3 và 5.1.
+
+#### 3.1.2. Nguồn dữ liệu
+
+Khi vào Home, frontend tải độc lập hai nhóm:
+
+- `GET /api/movies?status=now_showing&page=1&pageSize=...`
+- `GET /api/movies?status=coming_soon&page=1&pageSize=...`
+
+`pageSize` dùng theo cấu hình bố cục; tài liệu không chốt một số lượng card cố định. Mỗi nhóm giữ đúng thứ tự backend trả về, không tự suy diễn phim nổi bật hoặc độ phổ biến.
+
+Movie card chỉ sử dụng dữ liệu hiện có trong `MovieSummary`:
+
+| Trường | Hiển thị | Quy tắc |
+|---|---|---|
+| `id` | Không hiển thị trực tiếp | Dùng tạo route Movie Detail |
+| `posterUrl` | Poster phim | Thiếu/ảnh lỗi dùng placeholder, không làm mất card |
+| `title` | Tên phim | Bắt buộc, là tiêu đề card |
+| `ageRating` | Nhãn phân loại tuổi | Nếu NULL thì ẩn nhãn; không tự suy ra độ tuổi |
+| `durationMinutes` | Thời lượng theo phút | Hiển thị định dạng giờ/phút hoặc số phút nhất quán |
+| `status` | Nhãn "Đang chiếu"/"Sắp chiếu" | Chỉ nhận `now_showing` hoặc `coming_soon` ở hai khu vực này |
+
+Home không hiển thị mô tả, trailer, ngôn ngữ hoặc thể loại nếu API danh sách chưa trả các trường đó.
+
+#### 3.1.3. Cấu trúc màn hình
+
+1. **Header toàn cục** — theo `customer-navigation.md`.
+2. **Giới thiệu trang** — tiêu đề/ngữ cảnh ngắn; không yêu cầu banner dữ liệu riêng vì mô hình hiện tại chưa có trường banner/featured.
+3. **Phim đang chiếu**
+   - Heading "Phim đang chiếu".
+   - Danh sách movie card lấy từ `now_showing`.
+   - Link "Xem tất cả" tới Movie List với `status=now_showing`.
+4. **Phim sắp chiếu**
+   - Heading "Phim sắp chiếu".
+   - Danh sách movie card lấy từ `coming_soon`.
+   - Link "Xem tất cả" tới Movie List với `status=coming_soon`.
+5. **Footer toàn cục** — theo `customer-navigation.md`.
+
+Hai khu vực phim là độc lập: một khu vực lỗi/rỗng không được che khu vực còn lại đang có dữ liệu.
+
+#### 3.1.4. Movie card và thao tác
+
+Toàn bộ card hoặc nút/link "Xem chi tiết" là một hành động điều hướng tới `/movies/:movieId`.
+
+| Thao tác | Điều kiện | Kết quả |
+|---|---|---|
+| Chọn movie card | Movie còn tồn tại trong response | Mở Movie Detail với `movieId` |
+| Chọn "Xem tất cả" ở phim đang chiếu | Luôn khả dụng | Mở Movie List `status=now_showing` |
+| Chọn "Xem tất cả" ở phim sắp chiếu | Luôn khả dụng | Mở Movie List `status=coming_soon` |
+| Back từ Movie Detail/Movie List | Có lịch sử Home | Khôi phục vị trí cuộn và trạng thái tải trong UI session khi có thể |
+
+Home không tạo booking, không giữ ghế và không điều hướng thẳng đến Seat Selection khi chưa chọn phim/suất.
+
+#### 3.1.5. Trạng thái giao diện
+
+| Trạng thái | Hiển thị | Hành động |
+|---|---|---|
+| Loading ban đầu | Skeleton card riêng cho từng khu vực; giữ cấu trúc heading | Không chặn Header/Footer |
+| Success | Render các card hợp lệ | Cho phép mở chi tiết/xem tất cả |
+| Empty `now_showing` | "Hiện chưa có phim đang chiếu" | Cho phép xem phim sắp chiếu |
+| Empty `coming_soon` | "Hiện chưa có phim sắp chiếu" | Cho phép xem phim đang chiếu |
+| Một request lỗi | Error state trong đúng khu vực | Nút "Thử lại" chỉ gọi lại request bị lỗi |
+| Cả hai request lỗi | Hai error state hoặc một lỗi cấp trang trong main | Cho phép thử lại; Header/Footer vẫn hoạt động |
+| Poster lỗi/NULL | Placeholder có tỷ lệ như poster | Card vẫn điều hướng được |
+
+Không hiển thị stack trace, endpoint hoặc chi tiết kỹ thuật cho Customer.
+
+#### 3.1.6. Khả dụng và accessibility
+
+- Movie card có tên truy cập chứa tên phim; không chỉ dựa vào ảnh.
+- Poster có `alt` phù hợp hoặc alt rỗng nếu tiêu đề cạnh ảnh đã cung cấp cùng thông tin.
+- Link/nút dùng được bằng bàn phím và có focus state rõ ràng.
+- Heading theo thứ bậc: tiêu đề trang → tiêu đề từng khu vực → tiêu đề card.
+- Nhãn trạng thái/phân loại tuổi không chỉ phân biệt bằng màu.
+
+#### 3.1.7. Tiêu chí nghiệm thu
+
+- AC-HOME-01: Home gọi đúng hai truy vấn trạng thái và không trộn phim giữa hai khu vực.
+- AC-HOME-02: Card hiển thị poster/fallback, tên, thời lượng, phân loại tuổi khi có và nhãn trạng thái.
+- AC-HOME-03: Chọn card mở đúng Movie Detail theo `movieId`.
+- AC-HOME-04: Hai link "Xem tất cả" mở Movie List với đúng `status`.
+- AC-HOME-05: Loading, empty, error và retry hoạt động độc lập cho từng khu vực.
+- AC-HOME-06: Thiếu poster/age rating không làm màn hình lỗi và UI không tự tạo dữ liệu thay thế mang ý nghĩa nghiệp vụ.
+- AC-HOME-07: Home truy cập được khi chưa đăng nhập và navigation toàn cục hoạt động đúng.
+
+### 3.2. Movie List
+
+#### 3.2.1. Mục đích và phạm vi
+
+- Cung cấp danh sách phim đầy đủ theo từng trạng thái được phép hiển thị cho Customer.
+- Cho phép Customer duyệt danh sách, chuyển trang và mở Movie Detail của một phim.
+- Chỉ hiển thị phim `now_showing` hoặc `coming_soon`; không đưa `ended`/`archived` vào danh sách Customer theo UC-06 và FR-MOVIE-001.
+- Không tạo booking, giữ ghế hoặc xác nhận phim còn suất chiếu từ dữ liệu danh sách.
+
+**Route và quyền truy cập:** `/movies`, Public.
+
+**Yêu cầu liên quan:** FR-MOVIE-001, FR-MOVIE-002; UC-06; `customer-user-flow.md` mục 3.1–3.2; `customer-screen-api-mapping.md` mục 3.1.
+
+#### 3.2.2. Nguồn dữ liệu và query
+
+Movie List gọi `GET /api/movies` với các query đã có trong DTO:
+
+| Query | Giá trị/phạm vi | Hành vi |
+|---|---|---|
+| `status` | `now_showing` hoặc `coming_soon` | Xác định nhóm phim đang xem |
+| `page` | Trang hiện tại | Được đồng bộ với URL để Back/Forward khôi phục đúng trang |
+| `pageSize` | Theo cấu hình giao diện/API | Không cho Customer nhập tùy ý |
+
+Response gồm mảng `MovieSummary` và metadata `pagination`. Mỗi movie card sử dụng:
+
+| Trường | Hiển thị | Quy tắc |
+|---|---|---|
+| `id` | Không hiển thị trực tiếp | Dùng tạo route Movie Detail |
+| `posterUrl` | Poster | NULL/ảnh lỗi dùng placeholder, card vẫn hoạt động |
+| `title` | Tên phim | Tiêu đề chính của card |
+| `ageRating` | Phân loại tuổi | NULL thì ẩn nhãn, không tự suy diễn |
+| `status` | "Đang chiếu"/"Sắp chiếu" | Phải phù hợp bộ lọc hiện tại |
+| `durationMinutes` | Thời lượng | Định dạng nhất quán, không tự ước lượng khi thiếu |
+
+Không hiển thị thể loại trên card khi `MovieSummary` hiện chưa trả `genres`.
+
+#### 3.2.3. Tìm kiếm, lọc và sắp xếp
+
+- **Lọc trạng thái:** cung cấp hai lựa chọn "Phim đang chiếu" và "Phim sắp chiếu"; đổi trạng thái đưa `page` về trang đầu và tải lại từ backend.
+- **Phân trang:** dùng metadata từ API; chuyển trang gọi lại API và đưa vùng đầu danh sách vào tầm nhìn/focus phù hợp.
+- **Tìm kiếm:** UC-06 yêu cầu khả năng tìm kiếm nhưng DTO hiện chưa định nghĩa query tìm kiếm. Không hiển thị ô tìm kiếm hoạt động giả hoặc lọc cục bộ trên một trang dữ liệu; chỉ bổ sung khi hợp đồng API chốt tên query, phạm vi và quy tắc đối sánh.
+- **Sắp xếp:** API chưa định nghĩa trường/thứ tự sắp xếp. Giao diện giữ nguyên thứ tự backend trả về và không tự gắn nhãn "mới nhất", "phổ biến" hoặc "đánh giá cao".
+- **Bộ lọc khác:** thể loại, độ tuổi và ngôn ngữ chưa thuộc query hiện có; không tự thêm cho đến khi yêu cầu/API được chốt.
+
+Các giới hạn trên giữ nguyên câu hỏi mở tại UC-06, không được xem là quyết định loại bỏ tìm kiếm/lọc/sắp xếp khỏi các phiên bản sau.
+
+#### 3.2.4. Cấu trúc và thao tác
+
+1. Header toàn cục theo `customer-navigation.md`.
+2. Tiêu đề "Danh sách phim" và lựa chọn trạng thái hiện tại.
+3. Vùng thông báo loading/error/empty gắn với truy vấn hiện tại.
+4. Grid movie card theo `customer-web-layout.md` và `customer-responsive-specification.md`.
+5. Điều khiển phân trang khi metadata cho biết có nhiều trang.
+6. Footer toàn cục.
+
+| Thao tác | Điều kiện | Kết quả |
+|---|---|---|
+| Chọn "Phim đang chiếu" | Luôn khả dụng | Cập nhật `status=now_showing`, về trang đầu và tải lại |
+| Chọn "Phim sắp chiếu" | Luôn khả dụng | Cập nhật `status=coming_soon`, về trang đầu và tải lại |
+| Chọn trang | Trang tồn tại theo metadata | Cập nhật `page` trên URL và tải trang tương ứng |
+| Chọn movie card | Phim có `id` hợp lệ trong response | Mở `/movies/:movieId` |
+| Back từ Movie Detail | Có lịch sử Movie List | Khôi phục query, trang và vị trí cuộn trong UI session khi có thể |
+
+Chọn phim chỉ chuyển ngữ cảnh `movieId`; khả năng xem/đặt suất phải được truy vấn lại ở bước sau.
+
+#### 3.2.5. Trạng thái giao diện
+
+| Trạng thái | Hiển thị | Hành động |
+|---|---|---|
+| Loading ban đầu/đổi query | Skeleton movie card, giữ tiêu đề và bộ lọc hiện tại | Chặn thao tác phân trang lặp trong request |
+| Success | Grid card và phân trang theo response | Cho phép mở Movie Detail |
+| Empty theo trạng thái | "Hiện chưa có phim đang chiếu/sắp chiếu" | Cho phép chuyển sang trạng thái còn lại |
+| Không có kết quả tìm kiếm | Chỉ áp dụng sau khi API tìm kiếm được chốt | Cho sửa/xóa từ khóa, không coi là lỗi hệ thống |
+| Lỗi API/timeout | Error state thân thiện | "Thử lại" với đúng query hiện tại |
+| Poster/age rating thiếu | Placeholder hoặc ẩn nhãn | Không loại bỏ card |
+| Movie Detail trả 404 sau khi chọn | Thông báo phim không còn khả dụng | Cho quay lại và tải lại Movie List |
+
+Không hiển thị stack trace, endpoint hoặc thông tin nội bộ cho Customer.
+
+#### 3.2.6. Khả dụng và accessibility
+
+- Bộ lọc trạng thái thể hiện trạng thái đang chọn bằng cả ngữ nghĩa và hình ảnh, không chỉ bằng màu.
+- Mỗi movie card có accessible name chứa tên phim và dùng được bằng bàn phím.
+- Poster có `alt` phù hợp hoặc alt rỗng nếu tên phim cạnh ảnh đã cung cấp cùng thông tin.
+- Loading được thông báo phù hợp cho công nghệ hỗ trợ mà không liên tục giành focus.
+- Sau khi đổi trang, focus/vị trí cuộn được quản lý nhất quán để Customer nhận biết nội dung mới.
+
+#### 3.2.7. Tiêu chí nghiệm thu
+
+- AC-MOVIE-LIST-01: Chỉ các phim `now_showing`/`coming_soon` phù hợp query được hiển thị.
+- AC-MOVIE-LIST-02: Card chỉ dùng dữ liệu có trong `MovieSummary` và xử lý trường tùy chọn bị thiếu.
+- AC-MOVIE-LIST-03: Đổi trạng thái hoặc trang gọi lại API với query đúng và đồng bộ URL.
+- AC-MOVIE-LIST-04: Chọn card mở đúng Movie Detail theo `movieId`.
+- AC-MOVIE-LIST-05: Loading, empty, error và retry được phân biệt rõ; danh sách rỗng không bị coi là lỗi.
+- AC-MOVIE-LIST-06: Giao diện không cung cấp tìm kiếm/sắp xếp giả khi API chưa hỗ trợ và không tự suy diễn thứ tự nghiệp vụ.
+- AC-MOVIE-LIST-07: Movie List truy cập được khi chưa đăng nhập và không tạo booking/giữ ghế/payment.
+
+### 3.3. Movie Detail
 
 - **Mục đích:** cung cấp thông tin chi tiết phim và điểm chuyển sang chọn suất chiếu.
 - **Bố cục:** poster + thông tin phim, nút "Chọn suất chiếu".
@@ -35,7 +220,7 @@
 - **Validation:** phim không tồn tại → error state.
 - **Tiêu chí nghiệm thu:** đủ dữ liệu từ API movie; điều hướng sang Showtime đúng phim.
 
-### 3.3. Showtime
+### 3.4. Showtime
 
 - **Mục đích:** hiển thị lịch chiếu của phim để khách chọn suất.
 - **Bố cục:** nhóm theo ngày → danh sách suất (giờ bắt đầu, phòng, giá cơ sở).
@@ -44,7 +229,7 @@
 - **Validation:** suất đã đóng bán hoặc đã hủy không thể chọn (disabled).
 - **Tiêu chí nghiệm thu:** suất bị vô hiệu có trạng thái disabled; chọn suất chuyển đúng phòng/suất.
 
-### 3.4. Seat Selection
+### 3.5. Seat Selection
 
 - **Mục đích:** cho khách chọn ghế và loại vé, khởi tạo booking giữ ghế 5 phút.
 - **Bố cục:** sơ đồ ghế theo hàng (row_label + seat_number), chú thích loại ghế (Standard/VIP/Couple), tổng tiền tạm tính, đồng hồ đếm ngược giữ ghế.
@@ -53,7 +238,7 @@
 - **Validation:** ghế Couple chọn theo đơn vị ghế đôi; ghế đã bị người khác giữ/bán → thông báo và cập nhật sơ đồ.
 - **Tiêu chí nghiệm thu:** giữ ghế thành công tạo booking; hết 5 phút → thông báo hết hạn, ghế được giải phóng.
 
-### 3.5. Payment
+### 3.6. Payment
 
 - **Mục đích:** thực hiện thanh toán booking trong thời gian giữ ghế.
 - **Bố cục:** tóm tắt booking (mã, suất, ghế, tổng tiền), chọn phương thức thanh toán, nút thanh toán.
@@ -62,7 +247,7 @@
 - **Validation:** tổng tiền không được sửa; hết thời gian giữ ghế → chặn thanh toán, hiển thị expired.
 - **Tiêu chí nghiệm thu:** thanh toán thành công chuyển sang Booking Confirmation; thất bại giữ booking `pending` cho phép retry theo chính sách.
 
-### 3.6. Booking Confirmation
+### 3.7. Booking Confirmation
 
 - **Mục đích:** xác nhận đặt vé thành công, hiển thị vé.
 - **Bố cục:** mã booking, thông tin suất/ghế, danh sách vé với mã QR riêng cho từng vé (ghế Couple phát hành 2 vé riêng).
@@ -70,14 +255,14 @@
 - **Nút thao tác:** về trang chủ, xem "Booking của tôi".
 - **Tiêu chí nghiệm thu:** số vé hiển thị đúng số ghế/capacity_units; trạng thái `confirmed` chỉ xuất hiện sau khi payment được áp dụng.
 
-### 3.7. Đăng nhập / Đăng ký
+### 3.8. Đăng nhập / Đăng ký
 
 - **Mục đích:** xác thực người dùng trước khi đặt vé.
 - **Dữ liệu hiển thị:** form email, mật khẩu; đăng ký chỉ cấp role `CUSTOMER`.
 - **Validation:** định dạng email, mật khẩu bắt buộc; lỗi xác thực hiển thị thông báo chung.
 - **Tiêu chí nghiệm thu:** đăng nhập thành công quay lại màn hình trước khi bị chuyển hướng.
 
-### 3.8. Tài khoản (Booking của tôi)
+### 3.9. Tài khoản (Booking của tôi)
 
 - **Mục đích:** xem lịch sử booking và vé của user.
 - **Dữ liệu hiển thị:** danh sách booking với trạng thái (`pending`, `confirmed`, `expired`, `cancelled`), vé theo booking.
