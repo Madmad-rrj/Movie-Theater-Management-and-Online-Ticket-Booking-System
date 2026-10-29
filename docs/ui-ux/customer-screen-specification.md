@@ -155,12 +155,62 @@ Không cho chọn ghế held/sold/maintenance/inactive. Ghế được chọn ph
 
 ### 3.5. Payment
 
-- **Mục đích:** thực hiện thanh toán booking trong thời gian giữ ghế.
-- **Bố cục:** tóm tắt booking (mã, suất, ghế, tổng tiền), chọn phương thức thanh toán, nút thanh toán.
-- **Dữ liệu hiển thị:** `booking.total_amount` (VND), thời gian còn lại, chi tiết từng detail (giá đã snapshot).
-- **Nút thao tác:** "Thanh toán", hủy booking.
-- **Validation:** tổng tiền không được sửa; hết thời gian giữ ghế → chặn thanh toán, hiển thị expired.
-- **Tiêu chí nghiệm thu:** thanh toán thành công chuyển sang Booking Confirmation; thất bại giữ booking `pending` cho phép retry theo chính sách.
+**KH-05 — CIN-SUB-058.** Chủ booking đã đăng nhập thực hiện thanh toán cho đơn pending còn hợp lệ. Trang không tạo booking mới và không thu tiền chỉ vì được mở/reload.
+
+#### Nội dung và dữ liệu
+
+| Khối | Nội dung | Giới hạn |
+|---|---|---|
+| Kiểm tra đơn | Mã, phim/rạp/suất/phòng, ghế, loại vé, số chỗ | Vùng kiểm tra KH-06; các trường ngữ cảnh thiếu trong DTO phải được chốt, không lấy từ đơn khác. |
+| Giá chốt | Giá từng detail, tổng tiền, currency VND | `totalAmount`, `details[].unitPrice` từ booking; không sửa, không thêm phí hoặc tính lại theo giá mới. |
+| Hạn giữ | `expiresAt`, countdown thời gian còn lại | Không reset khi retry/chuyển trang; 0:00 không tự đổi booking thành expired. |
+| Phương thức | Cổng/phương thức đang thực sự hỗ trợ | **Nhà cung cấp TBD**; ví dụ provider trong DTO không phải quyết định chọn VNPay hoặc cổng khác. |
+| Attempt | Định danh, trạng thái và số tiền được phép xem | API payment Proposed; khôi phục attempt mở sau reload nếu thiếu paymentId/field còn TBD. |
+| Thông báo / hành động | Thanh toán, kiểm tra lại, quay lại hoặc yêu cầu hủy hợp lệ | Theo trạng thái được xác minh, không luôn bật nút thử lại. |
+
+#### Bắt đầu và quay lại từ cổng
+
+1. Đọc `GET /api/bookings/{bookingId}` theo ownership. Confirmed thì xem kết quả/vé; expired/cancelled thì không bắt đầu payment.
+2. Chỉ mở thanh toán khi pending còn hạn và không còn attempt created/pending/unknown. Nút loading khi gửi; client chặn nhấn lặp, backend vẫn bảo vệ điều kiện/idempotency.
+3. Gửi `POST /api/payments` với bookingId và provider đã được cấu hình/chốt. Client không gửi giá/status/snapshot để quyết định số tiền thu. Idempotency attempt do backend thực hiện; field request bổ sung còn cần contract.
+4. Response dự kiến có paymentId, status, amount, currency, payUrl. Chỉ điều hướng bằng dữ liệu backend hợp lệ; popup, return URL và chi tiết cổng còn TBD.
+5. Đóng trang cổng, bấm Back hoặc nhận query “success” không phải bằng chứng đã hủy/thu tiền. Khi trở về, đọc payment và booking từ server rồi mở KH-10.
+6. “Kiểm tra lại” chỉ gọi request đọc trạng thái, không POST tạo attempt mới. Chu kỳ polling, điều kiện dừng và nút tiếp tục payUrl cũ phải được chốt theo contract, không hard-code thời gian chờ.
+7. Không gọi webhook `/api/payments/callback` từ frontend để tự áp dụng kết quả. Cổng và backend chịu trách nhiệm xác minh.
+
+#### Trạng thái và chống gửi lặp
+
+| Booking / payment | Phản hồi UI | Hành động tiếp theo |
+|---|---|---|
+| Pending còn hạn, không attempt mở | Sẵn sàng thanh toán | Cho bắt đầu khi backend chấp nhận. |
+| Attempt created | Đang khởi tạo | Chặn attempt song song, không bấm lại chỉ vì chưa có payUrl. |
+| Attempt pending | Đang xử lý | Theo dõi attempt hiện tại, không tạo mới. |
+| Attempt unknown / timeout chưa rõ | Đang xác nhận kết quả | Không báo failed hoặc tự retry thu tiền; khôi phục/đọc lại kết quả. |
+| Failed/cancelled đã xác minh | Hiển thị kết quả của lần thử | Chỉ cho retry khi booking vẫn pending còn hạn và không có attempt mở. |
+| Succeeded, booking chưa confirmed | Tiền/kết quả đặt vé cần tiếp tục kiểm tra theo dữ liệu server | Không phát vé, không mời thanh toán lần nữa chỉ vì chưa thấy vé. |
+| Booking confirmed | Đã xác nhận đơn | KH-10/KH-06/My Tickets, không thanh toán lại. |
+| Quá hạn danh nghĩa nhưng còn pending | Đã qua hạn giữ, đang kiểm tra trạng thái | Chặn bắt đầu attempt mới, không tự expired/released. |
+| Booking expired/cancelled | Đơn không còn thanh toán được | Lịch sử hoặc đặt đơn mới. |
+
+Tải lại trang khi state client trống không chứng minh không có attempt. Nếu API chưa cho khôi phục attempt hiện tại, ghi hạn chế TBD và giữ trạng thái chưa xác định; không giải quyết bằng POST mới. Callback lặp hoặc đến sai thứ tự không được làm UI tự phát thêm vé/hạ kết quả đã xác nhận.
+
+#### Quay lại, hủy và lỗi
+
+- Back không tự cancel server hoặc gia hạn. Trở lại KH-06 đọc snapshot hiện tại; quay về chọn ghế không cho sửa trực tiếp đơn cũ.
+- Hủy khi chủ booking pending chưa có payment áp dụng và không có attempt mở theo backend. Nếu attempt còn mở, backend phải kiểm tra/hủy với cổng; chỉ xác nhận chưa thu mới hoàn tất hủy. Đã thu/chưa rõ thì từ chối, giữ phân bổ.
+- `PAYMENT_ATTEMPT_OPEN`: đọc/khôi phục attempt cũ; `BOOKING_ALREADY_CONFIRMED`: đọc vé; `BOOKING_EXPIRED`: đọc lại đơn và chặn thanh toán mới.
+- Lỗi GET trạng thái là lỗi đọc dữ liệu, không phải payment failed. Timeout POST không đủ chứng minh request chưa tạo attempt.
+- 401 chuyển đăng nhập rồi đọc lại trạng thái; 403 không lộ đơn người khác; 404 không tự khởi tạo đơn/payment thay thế.
+- Sai tổng tiền/currency trong response cần kiểm tra dữ liệu; không sửa giá booking hoặc tự chốt failed. Payment thành công muộn trên đơn expired/cancelled không tự reclaim ghế, phát vé hoặc hứa hoàn tiền.
+
+#### Nghiệm thu Payment
+
+- **PA-01:** Dùng đúng booking và số tiền/hạn server, reload không tạo đơn/attempt hoặc reset hạn.
+- **PA-02:** Created/pending/unknown chặn attempt mới; retry chỉ khi lần cũ đã có kết quả chắc chắn và booking còn hợp lệ.
+- **PA-03:** Kết quả redirect/đóng cổng không xác nhận thanh toán hoặc hủy; đọc server trước điều hướng.
+- **PA-04:** Countdown về 0 và lỗi mạng không tự đổi booking/payment/ghế.
+- **PA-05:** Hủy/đổi ghế chỉ hoàn tất sau backend; không hủy confirmed hoặc một phần.
+- **PA-06:** Nhà cung cấp, polling/return và khôi phục attempt được ghi TBD khi chưa có contract; không tự chọn cổng.
 
 ### 3.6. Booking Confirmation
 
