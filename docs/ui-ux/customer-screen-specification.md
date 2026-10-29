@@ -4,16 +4,69 @@
 
 Đặc tả chức năng và nội dung của từng màn hình Customer. Tài liệu trả lời câu hỏi: mỗi màn hình có gì?
 
-## 2. Danh sách màn hình
+## 2. Danh sách màn hình Customer — CIN-SUB-048
 
-1. Home (Danh sách phim)
-2. Movie Detail
-3. Showtime (Lịch chiếu)
-4. Seat Selection (Sơ đồ ghế)
-5. Payment
-6. Booking Confirmation
-7. Đăng nhập / Đăng ký
-8. Tài khoản (Booking của tôi)
+### 2.1. Phạm vi và cách định danh
+
+Màn hình dưới đây là đơn vị chức năng để thiết kế và kiểm thử; không tự xác định URL hoặc bắt buộc tạo một route cho mỗi mục. Ticket Type có thể là bước/vùng trong chọn ghế; Payment Result có thể là chế độ xem của trang thanh toán. Cách gộp trang là **đề xuất UI**, không làm thay đổi quyền truy cập và nghiệp vụ.
+
+API/DTO được nêu trong bộ tài liệu hiện còn ở mức Proposed. Đặc tả màn hình không đồng nghĩa chức năng đã triển khai. Những dữ liệu hoặc thao tác chưa có hợp đồng được ghi **TBD**, không tự thêm endpoint.
+
+### 2.2. Nhóm màn hình và mục đích
+
+| Nhóm | Mã | Màn hình | Mục đích | Quyền truy cập | Màn hình liên quan |
+|---|---|---|---|---|---|
+| Khám phá phim | KH-01 | Home / danh sách phim | Duyệt đang chiếu, sắp chiếu; chọn phim | Công khai | KH-02, KH-07, KH-08 |
+| Khám phá phim | KH-02 | Movie Detail | Xem thông tin và mở lịch của đúng phim | Công khai | KH-01, KH-03 |
+| Khám phá phim | KH-03 | Showtime | Chọn ngày và suất còn được bán | Công khai | KH-02, KH-04 |
+| Đặt vé | KH-04 | Seat Selection | Chọn đơn vị ghế cho một suất | Xem sơ đồ công khai theo endpoint dự kiến; tạo booking cần đăng nhập | KH-03, KH-09, KH-07, KH-05 |
+| Đặt vé | KH-09 | Ticket Type | Gán một loại vé hợp lệ cho mỗi đơn vị ghế | Theo ngữ cảnh KH-04; gửi đặt cần đăng nhập | KH-04, vùng kiểm tra đơn, KH-05 |
+| Đặt vé | KH-06 | Booking Confirmation | Kiểm tra thông tin đơn và phân biệt đơn chờ với kết quả đã xác nhận | Chủ booking đã đăng nhập khi đã có đơn | KH-04, KH-09, KH-05, KH-10, KH-11 |
+| Thanh toán | KH-05 | Payment | Bắt đầu thanh toán đúng đơn và số tiền chốt | Chủ booking đã đăng nhập | KH-06, KH-10, KH-08 |
+| Thanh toán | KH-10 | Payment Result | Xem kết quả payment và việc booking đã được xác nhận hay chưa | Chủ booking đã đăng nhập | KH-05, KH-06, KH-11, KH-08 |
+| Xác thực | KH-07 | Đăng nhập / đăng ký | Tạo tài khoản Customer hoặc phiên xác thực | Công khai; đích quay lại theo ngữ cảnh | Các trang được bảo vệ, KH-01 |
+| Tài khoản | KH-08 | Booking History / chi tiết booking | Tra cứu mọi đơn của chính mình, kể cả pending/expired/cancelled | Customer đã đăng nhập, kiểm tra ownership | KH-05, KH-06, KH-10, KH-11, KH-12 |
+| Tài khoản | KH-11 | My Tickets / chi tiết vé | Tra cứu vé đã được phát hành của chính mình | Chủ booking đã đăng nhập | KH-06, KH-08, KH-10 |
+| Tài khoản | KH-12 | Profile | Xem và cập nhật hồ sơ trong phạm vi được cho phép | User đã đăng nhập, chỉ hồ sơ của mình | KH-07, KH-08 |
+
+### 2.3. Ranh giới giữa các màn hình
+
+- Home dùng danh sách phim và phân nhóm; không tạo thêm màn Movie List trùng chức năng nếu không có nhu cầu giao diện riêng.
+- Seat Selection chọn ghế; Ticket Type gán loại vé cho từng ghế. Cả hai dùng chung lựa chọn trong phiên, không tạo hai booking hoặc hai đồng hồ giữ ghế.
+- **Booking Confirmation có hai ngữ cảnh cần gọi tên rõ:** vùng kiểm tra đơn trước thanh toán và phần xác nhận sau khi backend trả booking `confirmed`. Vùng kiểm tra trước thanh toán có thể nằm trong KH-05; đây là đề xuất tổ chức UI, không phải thao tác tự đổi booking sang confirmed.
+- User Flow hiện mô tả Booking Confirmation sau payment. Khi thiết kế vùng kiểm tra trước thanh toán theo phân công, giữ nguyên điều kiện xác nhận nghiệp vụ; cần thống nhất vị trí bước với người phụ trách User Flow/Navigation, không tự sửa luồng đã chốt.
+- Payment thao tác tạo/theo dõi attempt; Payment Result hiển thị kết quả. Payment `succeeded` không tự chứng minh booking `confirmed` hoặc vé đã phát hành.
+- Booking History liệt kê đơn ở mọi trạng thái; My Tickets chỉ trình bày vé đã phát hành, không biến đơn pending thành vé. Không tự thêm API danh sách vé chưa được chốt.
+- Profile là chức năng hồ sơ, không gộp với lịch sử đơn; endpoint, trường được sửa và validation hồ sơ còn TBD. Không mặc định có đổi email/mật khẩu.
+- Đăng nhập và đăng ký là hai form trong cùng nhóm KH-07. Response register chưa có token; chỉ tiếp tục trang được bảo vệ khi đã có phiên hợp lệ.
+
+### 2.4. Quy tắc truy cập và điều hướng chung
+
+1. Public: Home, Movie Detail, Showtime; sơ đồ ghế có API đọc công khai. Không yêu cầu đăng nhập chỉ để xem phim/lịch.
+2. Tạo booking, thanh toán và đọc đơn/vé/hồ sơ cá nhân cần phiên hợp lệ. Chưa đăng nhập thì lưu đích nội bộ và chuyển KH-07; quay lại phải tải lại dữ liệu.
+3. Backend kiểm tra role và ownership trên mọi tài nguyên riêng tư. Biết UUID, mã booking hoặc ticketCode không tạo quyền xem.
+4. Back/Forward và đổi màn hình không tự gửi lại POST, hủy đơn, giải phóng ghế hoặc gia hạn `expiresAt`.
+5. Chỉ chạy countdown sau khi backend tạo booking thành công; chọn ghế trong phiên chưa giữ ghế. Countdown về 0 chỉ yêu cầu kiểm tra trạng thái, không tự xác nhận expired/released.
+6. Chỉ một attempt `created`/`pending`/`unknown` được mở trên mỗi booking. Không tạo attempt mới vì chưa có kết quả từ cổng hoặc vì chuyển trang kết quả.
+7. Header có logo, nhóm phim và tài khoản theo phiên. Menu mới cho My Tickets/Profile là đề xuất điều hướng cần phối hợp; quyền truy cập vẫn áp dụng dù mở trực tiếp.
+
+### 2.5. Đối chiếu phạm vi đặc tả
+
+| Nhu cầu | Màn hình chịu trách nhiệm | Căn cứ / sub-task |
+|---|---|---|
+| Duyệt phim, xem lịch và sơ đồ | KH-01..04 | FR-MOVIE-001/002, FR-SHOW-001/002 |
+| Giữ ghế, loại vé và kiểm tra đơn | KH-04, KH-09, KH-06 | FR-BOOK-001/002; CIN-SUB-055/056/057 |
+| Thanh toán và kết quả độc lập với booking | KH-05, KH-10 | FR-PAY-001..005; CIN-SUB-058/059 |
+| Vé của tôi | KH-11, KH-06 | FR-TICKET-001; CIN-SUB-060 |
+| Lịch sử và chi tiết đơn | KH-08 | FR-BOOK-004; CIN-SUB-061 |
+| Xác thực và hồ sơ | KH-07, KH-12 | FR-AUTH-001..004; CIN-SUB-062 |
+
+### 2.6. Tiêu chí nghiệm thu danh mục
+
+- Đủ 12 mã chức năng không trùng; mỗi mục có mục đích, quyền và màn hình liên quan.
+- Phân biệt rõ Ticket Type, Payment Result, My Tickets, Booking History và Profile; không cần endpoint/route mới chỉ để tách mục thiết kế.
+- Có điểm kiểm tra đơn trước thanh toán nhưng không báo đã thanh toán/confirmed trước kết quả backend.
+- Các giới hạn nghiệp vụ/API còn thiếu được giữ TBD; danh mục là cơ sở cho đặc tả chi tiết, không phải báo cáo kiểm thử runtime.
 
 ## 3. Đặc tả từng màn hình
 
