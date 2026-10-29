@@ -99,12 +99,59 @@ API/DTO được nêu trong bộ tài liệu hiện còn ở mức Proposed. Đ�
 
 ### 3.4. Seat Selection
 
-- **Mục đích:** cho khách chọn ghế và loại vé, khởi tạo booking giữ ghế 5 phút.
-- **Bố cục:** sơ đồ ghế theo hàng (row_label + seat_number), chú thích loại ghế (Standard/VIP/Couple), tổng tiền tạm tính, đồng hồ đếm ngược giữ ghế.
-- **Dữ liệu hiển thị:** trạng thái ghế (trống / đã bán / đang chọn), loại ghế, phụ thu, giá từng ghế.
-- **Nút thao tác:** chọn/bỏ chọn ghế, chọn loại vé cho từng ghế, "Đặt vé".
-- **Validation:** ghế Couple chọn theo đơn vị ghế đôi; ghế đã bị người khác giữ/bán → thông báo và cập nhật sơ đồ.
-- **Tiêu chí nghiệm thu:** giữ ghế thành công tạo booking; hết 5 phút → thông báo hết hạn, ghế được giải phóng.
+**KH-04 — CIN-SUB-055.** Chọn đơn vị ghế cho một suất; chọn cục bộ chưa giữ ghế. Xem sơ đồ theo API public dự kiến; tạo booking cần Customer đã đăng nhập.
+
+#### Dữ liệu và vị trí ghế
+
+| Khối | Dữ liệu cần hiển thị | Nguồn / giới hạn |
+|---|---|---|
+| Ngữ cảnh suất | Phim, ngày/giờ, phòng, khả năng bán | Endpoint chi tiết suất được đề xuất nhưng DTO ngữ cảnh đầy đủ còn TBD. Không suy rạp từ tên phòng. |
+| Sơ đồ | `rows[].rowLabel`, `seats[].id`, `seatNumber`, `seatTypeCode`, `capacityUnits` | `GET /api/showtimes/{showtimeId}/seats` theo tài liệu API Proposed. |
+| Phân bổ | `available`, `held`, `sold` | Dữ liệu theo từng suất, không thay bằng trạng thái ghế vật lý. |
+| Tình trạng vật lý | Hoạt động, bảo trì, ngừng hoạt động | Cần API biểu diễn độc lập; DTO hiện chưa có field đầy đủ — TBD phối hợp API. |
+| Loại vé / giá | Loại vé cho từng đơn vị ghế, phụ thu, giá server nếu có | Chuyển vùng KH-09; chưa có contract báo giá tổng trước booking. |
+
+Hiển thị nhãn hàng và số ghế theo dữ liệu; không hard-code số hàng, lối đi hoặc vị trí Couple từ seed. Nhãn hướng màn hình và bố trí lối đi cần dữ liệu/thiết kế đã thống nhất. Couple là một đơn vị hai chỗ, không có hai nút cho hai nửa ghế.
+
+#### Thao tác và giới hạn lựa chọn
+
+| Thao tác | Điều kiện | Kết quả / phản hồi |
+|---|---|---|
+| Chọn ghế | Suất còn bán; ghế hoạt động và available | Đánh dấu selected trong phiên, thêm một đơn vị ghế vào tóm tắt. Không POST giữ riêng từng ghế. |
+| Bỏ chọn | Ghế đang selected, chưa tạo booking | Bỏ lựa chọn và loại vé gắn với ghế đó. Không tự hủy booking đã có. |
+| Chọn Couple | Cả đơn vị available | Một seatId, hai chỗ, dự kiến hai vé khi booking được xác nhận; không gửi hai item trùng seatId. |
+| Chọn loại vé | Đã chọn ghế | Mở/tập trung KH-09, giữ cùng showtimeId và lựa chọn trong phiên. |
+| Đặt vé | Phiên hợp lệ, ít nhất một ghế, mỗi ghế có loại vé hợp lệ | Gửi một yêu cầu booking với requestKey; loading và chặn nhấn lặp. Backend kiểm tra lại toàn bộ. |
+| Quay lại / đổi suất | Không có mutation đang gửi | Giữ ngữ cảnh cần thiết; khi đổi suất phải xác nhận/chọn lại ghế của suất mới, không mang seatId cũ sang phòng khác. |
+
+Không cho chọn ghế held/sold/maintenance/inactive. Ghế được chọn phải khác nhau, thuộc phòng của cùng suất. Chưa có giới hạn tối đa ghế/booking đã chốt; không tự áp 6/8/10 vé, quy tắc ghế lẻ hoặc ép ngồi liền nhau. Số đơn vị ghế khác số chỗ: một Standard và một Couple là hai ghế, ba chỗ.
+
+#### Tạo booking và chuyển bước
+
+1. Chưa đăng nhập thì chuyển KH-07 và giữ đích quay lại; sau đăng nhập tải lại suất/ghế, không tự gửi POST đặt vé.
+2. Gửi `POST /api/bookings` với `showtimeId`, `requestKey`, `items` gồm `seatId`, `ticketTypeId`. Không gửi giá, mức giảm, status hoặc snapshot.
+3. Tạo mới thành công nhận booking pending, details, giá chốt và `expiresAt`; chuyển vùng kiểm tra đơn/KH-05. Countdown bắt đầu từ hạn server, không từ lúc mở sơ đồ.
+4. Retry cùng ý định dùng cùng key và nội dung. Replay trả booking cũ ở trạng thái hiện tại; confirmed thì xem kết quả/vé, expired/cancelled không tái mở.
+5. Timeout POST chưa chứng minh không có đơn. Giữ thông tin yêu cầu để khôi phục cùng key; cách khôi phục sau reload khi mất key còn cần contract, không tạo key mới mù.
+6. Sau khi đã tạo booking, ghế/loại vé/giá đã chốt không sửa trực tiếp. Đổi ghế phải qua hủy hợp lệ rồi tạo đơn mới.
+
+#### Loading, rỗng, lỗi và xung đột
+
+- Loading sơ đồ: không dựng ghế chọn được từ dữ liệu chưa tải; giữ ngữ cảnh suất.
+- Sơ đồ rỗng hoặc không có ghế khả dụng: thông báo phù hợp, cho về lịch; không đồng nhất lỗi tải với hết ghế.
+- `SEAT_ALREADY_TAKEN`: yêu cầu bị từ chối toàn bộ, làm mới sơ đồ và nêu ghế xung đột nếu API cung cấp; không báo các ghế còn lại đã held.
+- `SHOWTIME_CLOSED`: khóa đặt và cho chọn suất khác; `REQUEST_KEY_CONFLICT`: báo nội dung yêu cầu không khớp, không đổi payload dưới key cũ.
+- Lỗi mạng/401/403/404: phân biệt lỗi tải, cần xác thực, không có quyền và không tìm thấy; không tự báo suất hủy chỉ từ 404.
+- Countdown bằng 0 không tự nhả ghế; UI đọc trạng thái server. Hết hạn thực tế do backend xử lý theo điều kiện booking/payment.
+
+#### Nghiệm thu Seat Selection
+
+- **SS-01:** Đúng hàng/ghế/loại; ghế không khả dụng không chọn được; trường vật lý chưa có được ghi TBD.
+- **SS-02:** Selected chưa held; Couple nguyên đơn vị; số ghế và số chỗ tách rõ.
+- **SS-03:** Hai khách cùng ghế chỉ một request giữ được; lựa chọn có ghế xung đột không giữ một phần.
+- **SS-04:** Retry cùng key không tạo đơn/hạn mới; timeout không tự phát sinh booking khác.
+- **SS-05:** Thành công dùng giá/hạn server, không gửi giá hoặc tự sửa booking cũ.
+- **SS-06:** Back/Forward và countdown không tự hủy, giải phóng hoặc gia hạn; responsive theo layout.
 
 ### 3.5. Payment
 
