@@ -369,3 +369,40 @@ Loading, lỗi đọc và kết quả đang xử lý phải phân biệt. Empty 
 - **RS-03:** Đủ thông tin kết quả được phép xem, điều hướng đúng đơn/tài khoản; dữ liệu thiếu được ghi TBD.
 - **RS-04:** Mạng lỗi/redirect/callback lặp không tự đảo trạng thái hoặc tạo thêm vé.
 - **RS-05:** My Tickets và Booking History khác mục đích; late success không đưa ra cam kết refund chưa có.
+
+### 3.11. KH-11 — My Tickets — CIN-SUB-060
+
+#### Mục đích và quyền
+
+Danh sách vé đã phát hành thuộc các booking của Customer hiện tại, khác KH-08 liệt kê tất cả đơn. Đăng nhập bắt buộc; backend kiểm tra ownership cả khi đọc danh sách lẫn mở ticketCode trực tiếp. Không lộ danh tính hoặc vé của user khác.
+
+#### Danh sách và chi tiết vé
+
+| Dữ liệu trên thẻ / chi tiết | Cách dùng |
+|---|---|
+| `ticketCode` | Mã nguyên server trả, dùng phân biệt từng vé; không tạo mã từ bookingCode. |
+| Booking và suất | Mã đơn, phim, ngày/giờ Việt Nam, phòng/rạp khi có dữ liệu; giữ thông tin lịch sử. |
+| Ghế | Nhãn ghế và thông tin đủ nhận diện; Couple có hai mã độc lập có thể cùng nhãn ghế. |
+| QR | QR của chính vé, giữ mã chữ khi ảnh không tải; payload/cấp ảnh cần contract thống nhất. |
+| Trạng thái | valid “Chưa sử dụng”, used “Đã sử dụng”, voided “Đã vô hiệu hóa”; không dùng màu làm dấu hiệu duy nhất. |
+| Mốc thời gian | Phát hành/đã dùng/lý do void chỉ hiển thị khi API cho phép và có dữ liệu, không tự thêm ngày hiệu lực. |
+
+**Nguồn dữ liệu còn thiếu:** có GET chi tiết booking kèm tickets và GET vé theo ticketCode Proposed, nhưng chưa có contract danh sách vé của user, pagination/filter/sort và metadata từng vé đầy đủ. Có thể dùng dữ liệu vé theo booking đã tải trong phạm vi hiển thị được chốt; không coi một trang booking là toàn bộ vé. Không tự thêm `/api/users/me/tickets` như endpoint đã có.
+
+#### Thao tác và phản hồi
+
+1. Vào trang: loading danh sách, chỉ lấy dữ liệu của phiên hiện tại; nếu nguồn danh sách chưa chốt, nêu TBD tích hợp và không tạo vé mẫu để lấp giao diện.
+2. Chọn vé: mở đúng mã và đọc lại chi tiết theo quyền, có thể dùng `GET /api/tickets/{ticketCode}`; dữ liệu QR/ngữ cảnh thiếu phải được thống nhất, không coi response vé riêng đã đủ toàn bộ thẻ.
+3. Xem booking: mở KH-08/KH-06 của chính vé. Quay lại danh sách giữ ngữ cảnh đọc nếu còn hợp lệ, làm mới trạng thái khi cần.
+4. Đọc/hiện QR không gọi validate và không chuyển valid thành used; thao tác soát vé thuộc Staff. Một vé Couple used không làm vé còn lại used.
+5. Sau đăng xuất/đổi tài khoản: xóa dữ liệu riêng tư trên UI. Không dùng cache của user trước để hiện nhanh.
+
+Rỗng chỉ sau khi nguồn danh sách được đọc thành công và xác nhận không có vé trong phạm vi truy vấn: “Bạn chưa có vé”, hành động xem phim/lịch sử. Khi dữ liệu còn một phần, không báo không có vé toàn bộ. Lỗi tải có thử lại; ảnh QR lỗi giữ mã chữ; 401/403/404 được phân biệt. Không hứa in/PDF/email, không hiện nút hủy/refund Customer khi chưa có nghiệp vụ.
+
+#### Nghiệm thu My Tickets
+
+- **TK-01:** Không biến booking pending/expired/cancelled chưa có vé thành vé mua thành công.
+- **TK-02:** Chỉ vé của chính user; mở mã của người khác bị từ chối, không lộ dữ liệu cũ khi đổi phiên.
+- **TK-03:** Couple hai vé/QR riêng, trạng thái từng vé đúng; xem vé không soát vé.
+- **TK-04:** Loading/rỗng/lỗi/ảnh lỗi rõ; danh sách một phần không được báo là toàn bộ.
+- **TK-05:** API danh sách, phân trang/lọc và QR còn thiếu được ghi TBD, không tự tạo contract hoặc dữ liệu.
