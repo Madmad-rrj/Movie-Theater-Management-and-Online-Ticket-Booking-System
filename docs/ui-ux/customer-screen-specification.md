@@ -182,3 +182,56 @@ Không cho chọn ghế held/sold/maintenance/inactive. Ghế được chọn ph
 - **Mục đích:** xem lịch sử booking và vé của user.
 - **Dữ liệu hiển thị:** danh sách booking với trạng thái (`pending`, `confirmed`, `expired`, `cancelled`), vé theo booking.
 - **Tiêu chí nghiệm thu:** chỉ hiển thị booking của user hiện tại (authorization ở backend).
+
+### 3.9. KH-09 — Ticket Type — CIN-SUB-056
+
+#### Mục đích và quyền truy cập
+
+Gán loại vé cho từng đơn vị ghế đã chọn của cùng suất. Đây có thể là vùng trong KH-04 hoặc bước liền sau; chưa chốt route riêng. Tạo booking vẫn yêu cầu đăng nhập; không có một quyền thanh toán khác cho bước chọn loại vé.
+
+#### Nội dung và số lượng
+
+| Nội dung | Quy tắc hiển thị / validation |
+|---|---|
+| Ghế đã chọn | Nhãn ghế, loại ghế, số chỗ; không cho thêm seatId không thuộc lựa chọn hiện tại. |
+| Loại vé | ID, tên/mã, điều kiện áp dụng và còn hiệu lực từ server; endpoint `/api/ticket-types` mới ở mức Proposed, DTO chi tiết TBD. |
+| Adult / Student / Child | Là các mã danh mục được mô tả; điều kiện tuổi/giấy tờ/quyền lợi cụ thể chưa đủ chốt. Không coi ghi chú seed là quy trình xác minh hoàn chỉnh. |
+| Couple | Một đơn vị hai chỗ, bản đầu dùng Adult; không chọn Student cho một người và Adult cho người kia trong cùng detail. |
+| Số lượng | Số detail bằng số đơn vị ghế, không có quantity tùy ý. Số vé sau xác nhận theo sức chứa đã snapshot, không theo số lần tăng một bộ đếm. |
+| Giá và tổng | Dùng báo giá/snapshot từ server; không gửi discountPercent, unitPrice hoặc totalAmount để quyết định giá. |
+
+Một booking được dùng nhiều loại vé cho các ghế khác nhau, mỗi ghế chỉ một loại vé. Không tách thanh toán từng detail. Loại vé ngừng hoạt động hoặc không đủ điều kiện phải bị backend từ chối dù client còn giữ lựa chọn cũ.
+
+#### Giá theo nghiệp vụ đã xác định
+
+Công thức sau giải thích giá do **backend** tính khi tạo booking; không yêu cầu frontend tự tính tổng để thay báo giá:
+
+```text
+base_amount = giá cơ sở suất × sức chứa của đơn vị ghế
+surcharge_amount = phụ thu loại ghế, một lần cho mỗi detail
+discount_amount = round(base_amount × tỷ lệ giảm / 100, 0)
+unit_price = base_amount + surcharge_amount - discount_amount
+booking.total_amount = tổng unit_price của các detail
+```
+
+Giảm chỉ trên base_amount, không giảm phụ thu. Couple nhân hai phần giá cơ sở, phụ thu chỉ cộng một lần; unitPrice là giá cả đơn vị hai chỗ, không nhân thêm lần nữa trên UI. VND nguyên đồng. OQ-06 đã chọn Option B: detail có thể giá 0 nhưng tổng booking/payment phải dương; không có luồng xác nhận booking 0 đồng trong MVP.
+
+Chưa có contract báo giá tổng trước tạo booking: đánh dấu **TBD phối hợp API**, hiện các thành phần tham khảo có dữ liệu và ghi rõ giá chốt được trả khi tạo đơn. Không tự thêm API preview, phí đặt vé, coupon hoặc mức giảm mặc định.
+
+#### Thao tác, tiếp tục và quay lại
+
+1. Chỉ nhận danh sách ghế của KH-04, không tạo booking khi vừa mở bước.
+2. Đổi loại vé cập nhật lựa chọn cục bộ của đúng ghế; giữ ghi chú điều kiện và làm mới báo giá nếu contract sau này hỗ trợ.
+3. Tiếp tục khi có ít nhất một ghế và mỗi ghế có loại vé hợp lệ. Gửi cùng luồng tạo booking của KH-04, không tạo đơn lần hai ở Ticket Type.
+4. Quay lại KH-04 giữ loại vé của ghế vẫn được chọn; ghế bị bỏ chọn không còn được tính. Khi thay suất, xác nhận lại toàn bộ ghế/loại vé cho suất mới.
+5. Đã có booking thì đọc giá/loại vé snapshot; không sửa loại vé trực tiếp. Muốn đổi phải hủy hợp lệ và tạo booking khác.
+
+Loading danh mục: khóa tiếp tục; danh mục rỗng: nêu chưa có loại vé được cung cấp; lỗi mạng: thử đọc lại, không tự gán ID Adult. Lỗi eligibility/loại vé hết hiệu lực hiện cạnh hàng ghế; xung đột ghế hoặc suất đóng bán quay về xử lý KH-04. Không yêu cầu tải giấy tờ cá nhân khi chưa có quyết định nghiệp vụ.
+
+#### Nghiệm thu Ticket Type
+
+- **TT-01:** Mỗi đơn vị ghế đúng một loại vé; số detail, số chỗ và số vé không bị gộp lẫn.
+- **TT-02:** Couple không bị tách loại vé hoặc nhân đôi phụ thu/giá cuối trên UI.
+- **TT-03:** Không tiếp tục khi thiếu danh mục/loại vé; backend kiểm tra lại điều kiện, không tin giá từ client.
+- **TT-04:** Quay lại không tạo booking và giữ lựa chọn còn hợp lệ; booking đã có dùng snapshot.
+- **TT-05:** Không tự đặt giới hạn vé/giảm giá/eligibility chưa chốt; thiếu báo giá được ghi TBD, không tạo tổng giả.
