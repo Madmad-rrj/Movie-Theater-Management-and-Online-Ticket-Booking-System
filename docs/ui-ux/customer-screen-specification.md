@@ -213,12 +213,98 @@ Không hiển thị stack trace, endpoint hoặc thông tin nội bộ cho Custo
 
 ### 3.3. Movie Detail
 
-- **Mục đích:** cung cấp thông tin chi tiết phim và điểm chuyển sang chọn suất chiếu.
-- **Bố cục:** poster + thông tin phim, nút "Chọn suất chiếu".
-- **Dữ liệu hiển thị:** poster, tên phim, thời lượng, mô tả, ngôn ngữ, phân loại tuổi, trạng thái.
-- **Nút thao tác:** "Chọn suất chiếu", quay lại.
-- **Validation:** phim không tồn tại → error state.
-- **Tiêu chí nghiệm thu:** đủ dữ liệu từ API movie; điều hướng sang Showtime đúng phim.
+#### 3.3.1. Mục đích và phạm vi
+
+- Cung cấp thông tin đầy đủ của một phim để Customer quyết định có xem lịch chiếu hay không.
+- Là điểm chuyển từ Home/Movie List sang Showtime, giữ đúng `movieId` đang xem.
+- Chỉ hiển thị dữ liệu phim do backend trả về; không suy diễn lịch chiếu, khả năng còn ghế hoặc khả năng đặt vé.
+- Không tạo booking, giữ ghế hoặc yêu cầu đăng nhập.
+
+**Route và quyền truy cập:** `/movies/:movieId`, Public.
+
+**Yêu cầu liên quan:** FR-MOVIE-002; UC-06; `customer-user-flow.md` mục 3.2; `customer-navigation.md` mục 4 và 5.1; `customer-screen-api-mapping.md` mục 3.2.
+
+#### 3.3.2. Dữ liệu đầu vào và tải màn hình
+
+- Đọc `movieId` từ route và gọi `GET /api/movies/{movieId}` khi vào màn hình hoặc mở deep link.
+- Response `MovieDetail` là nguồn dữ liệu authoritative của màn hình; dữ liệu card đã giữ từ Home/Movie List chỉ có thể dùng làm placeholder trong lúc tải, không thay thế response chi tiết.
+- Khi Customer chọn xem lịch chiếu, chỉ chuyển `movieId`; Showtime phải tải lịch hiện tại từ backend.
+- Backend quyết định phim có tồn tại và được phép công khai. Frontend không tự cho phép phim dựa trên dữ liệu cache cũ.
+
+#### 3.3.3. Thông tin hiển thị
+
+| Trường `MovieDetail` | Cách hiển thị | Khi thiếu/không hợp lệ |
+|---|---|---|
+| `id` | Không hiển thị trực tiếp; dùng cho route | Không render màn hình chi tiết nếu response không xác định được phim |
+| `title` | Tiêu đề chính của trang | Không tự đặt tên thay thế mang ý nghĩa nghiệp vụ |
+| `posterUrl` | Poster phim | Dùng placeholder cùng tỷ lệ khi NULL hoặc ảnh lỗi |
+| `description` | Nội dung giới thiệu phim | Hiển thị trạng thái chưa có mô tả hoặc ẩn khối theo quy ước UI |
+| `durationMinutes` | Thời lượng, định dạng giờ/phút nhất quán | Không tự ước lượng |
+| `genres` | Danh sách tên thể loại; `code` dùng làm định danh khi cần | Mảng rỗng thì ẩn danh sách, không tự gán thể loại |
+| `ageRating` | Nhãn phân loại tuổi | NULL thì hiển thị chưa có thông tin/ẩn nhãn; không suy ra quyền mua |
+| `releaseDate` | Ngày phát hành theo định dạng giao diện | NULL thì ẩn trường; không tạo ngày thay thế |
+| `language` | Ngôn ngữ phim | NULL thì ẩn trường; không suy đoán từ nội dung |
+| `trailerUrl` | Link/nút xem trailer khi có URL sử dụng được | NULL/không dùng được thì ẩn hành động trailer |
+| `status` | Nhãn "Đang chiếu" hoặc "Sắp chiếu" theo giá trị backend | Không đổi trạng thái dựa trên ngày phía client |
+
+Phạm vi Customer hiện xác nhận danh sách công khai cho `now_showing` và `coming_soon`. Việc phim `ended` có được mở bằng deep link hay không vẫn là câu hỏi mở của UC-06; màn hình không hard-code quyết định này và tuân theo kết quả API.
+
+#### 3.3.4. Cấu trúc màn hình
+
+1. **Header toàn cục** theo `customer-navigation.md`.
+2. **Ngữ cảnh quay lại** — Back của trình duyệt hoặc liên kết điều hướng phù hợp; khi quay lại danh sách, khôi phục query/vị trí trong UI session nếu còn.
+3. **Khối thông tin chính**
+   - Desktop: poster ở cột trái; tên phim, trạng thái, metadata và hành động ở cột phải.
+   - Mobile: poster và nội dung xếp dọc theo đặc tả responsive.
+4. **Metadata phim** — thời lượng, thể loại, phân loại tuổi, ngày phát hành và ngôn ngữ khi có.
+5. **Mô tả phim** — chỉ render nội dung backend cung cấp.
+6. **Trailer** — hành động tùy chọn khi có `trailerUrl` hợp lệ.
+7. **Hành động chính "Xem lịch chiếu"**.
+8. **Footer toàn cục**.
+
+#### 3.3.5. Thao tác và điều hướng
+
+| Thao tác | Điều kiện | Kết quả |
+|---|---|---|
+| Chọn "Xem lịch chiếu" | Movie Detail tải thành công và có `movieId` | Mở `/movies/:movieId/showtimes`, giữ đúng `movieId` |
+| Chọn "Xem trailer" | Có `trailerUrl` sử dụng được | Mở/phát trailer theo component được phê duyệt; không thay đổi route đặt vé |
+| Back | Có lịch sử Home/Movie List | Quay lại và khôi phục filter, trang, vị trí cuộn trong UI session khi có thể |
+| Mở deep link | `movieId` hợp lệ | Tải trực tiếp chi tiết từ API, không phụ thuộc màn hình trước |
+
+Không vô hiệu "Xem lịch chiếu" chỉ vì chưa biết có suất. Trường hợp chưa có suất được xác định sau khi Showtime gọi API và hiển thị empty state. Dữ liệu phim hiện tại không được dùng để xác nhận suất còn bán.
+
+#### 3.3.6. Trạng thái giao diện và lỗi
+
+| Trạng thái | Hiển thị | Hành động |
+|---|---|---|
+| Loading | Skeleton cho poster, tiêu đề và metadata | Không cho kích hoạt hành động cần `movieId`/dữ liệu hoàn chỉnh |
+| Success | Render các trường có dữ liệu và hành động xem lịch chiếu | Cho phép điều hướng Showtime |
+| 404 `MOVIE_NOT_FOUND`/không còn công khai | Error/Not Found thân thiện, không lộ dữ liệu nội bộ | Cho về Home hoặc Movie List |
+| Lỗi API/timeout | Error state trong main content | "Thử lại" cùng `movieId`; Header/Footer vẫn hoạt động |
+| Trường tùy chọn thiếu | Placeholder poster hoặc ẩn/ghi chưa có thông tin theo bảng trên | Không làm toàn trang lỗi |
+| Dữ liệu thay đổi trước khi xem lịch | Không dùng cache để xác nhận lịch | Showtime truy vấn lại dữ liệu hiện hành |
+
+Không hiển thị stack trace, endpoint, ID nội bộ không cần thiết hoặc chi tiết kỹ thuật cho Customer.
+
+#### 3.3.7. Khả dụng và accessibility
+
+- Tiêu đề phim là heading chính; các khối metadata, mô tả và trailer có thứ bậc heading phù hợp.
+- Poster có alt mô tả phù hợp hoặc alt rỗng nếu thông tin cạnh ảnh đã truyền đạt cùng nội dung.
+- Nhãn trạng thái và phân loại tuổi không chỉ dựa vào màu.
+- Các hành động Back, xem trailer và xem lịch chiếu dùng được bằng bàn phím, có focus state rõ ràng.
+- Link trailer phải có accessible name chứa ngữ cảnh tên phim; nội dung media không tự phát có âm thanh.
+- Error state và kết quả tải lại được thông báo phù hợp cho công nghệ hỗ trợ.
+
+#### 3.3.8. Tiêu chí nghiệm thu
+
+- AC-MOVIE-DETAIL-01: Route sử dụng đúng `movieId` và gọi `GET /api/movies/{movieId}` khi tải trực tiếp hoặc điều hướng từ danh sách.
+- AC-MOVIE-DETAIL-02: Màn hình hiển thị đúng các trường hiện có trong `MovieDetail`, gồm poster, tên, mô tả, thời lượng, thể loại, phân loại tuổi và các thông tin liên quan khi có.
+- AC-MOVIE-DETAIL-03: Trường nullable/ảnh lỗi không làm toàn trang lỗi và UI không tự tạo dữ liệu nghiệp vụ thay thế.
+- AC-MOVIE-DETAIL-04: Chọn "Xem lịch chiếu" mở đúng Showtime và giữ nguyên `movieId`.
+- AC-MOVIE-DETAIL-05: 404, lỗi API và retry có trạng thái riêng, không tiết lộ dữ liệu nội bộ.
+- AC-MOVIE-DETAIL-06: Back/Forward/deep link hoạt động theo navigation và dữ liệu chi tiết được tải lại khi cần.
+- AC-MOVIE-DETAIL-07: Màn hình không khẳng định có suất/ghế, không tạo booking và truy cập được khi chưa đăng nhập.
+- AC-MOVIE-DETAIL-08: Quyền xem phim `ended` không được frontend tự chốt khi UC-06 vẫn để mở.
 
 ### 3.4. Showtime
 
