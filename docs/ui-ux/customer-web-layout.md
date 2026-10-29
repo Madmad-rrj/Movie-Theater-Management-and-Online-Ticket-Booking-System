@@ -332,41 +332,39 @@ Trên mobile vẫn giữ một cột. Hàng giá hoặc thông tin ghế dài c�
 
 Khi kết quả đang được xác nhận hoặc đã qua hạn danh nghĩa, vùng phản hồi có đủ diện tích cho lời giải thích và thao tác được phép. Bố cục không tự chuyển sang kiểu “thành công” chỉ vì có thông báo từ cổng; dữ liệu quyết định nội dung theo đặc tả màn hình.
 
-### 5.6. KH-06 — Xác nhận đặt vé và vé điện tử
+### 5.6. KH-06 — Rà soát và xác nhận tạo đơn
 
-Vùng kiểm tra đơn trước thanh toán là đề xuất bố cục nằm cạnh KH-05: trình bày phim/rạp/suất/ghế/loại vé/tổng tiền và hành động tiếp tục hoặc yêu cầu hủy hợp lệ. Nhãn vùng này phải nói rõ đơn đang chờ, không dùng thông báo đã xác nhận. Cách tách thành bước riêng cần thống nhất với User Flow/Navigation.
-
-Với kết quả booking đã confirmed, bố cục một cột, ưu tiên khách nhận diện đơn rồi đọc từng vé: thông báo kết quả → mã booking → thông tin suất và ghế → danh sách thẻ vé → liên kết điều hướng.
+Theo Customer User Flow mới trên master, KH-06 đứng sau Ticket Type và trước Payment. Bố cục một cột: tiêu đề rà soát → phim/rạp/phòng/ngày giờ → ghế và loại vé → tiền dự kiến có nguồn → liên hệ nếu contract được chốt → xác nhận tạo đơn và quay lại chỉnh sửa. Có thể dùng chung container với Payment nhưng phải là hai bước rõ ràng.
 
 | Khối | Quy tắc bố trí |
 |---|---|
-| Thông báo kết quả | Nổi bật đầu vùng nội dung; không dùng banner chiếm toàn viewport khiến mã booking/vé bị đẩy quá xa. |
-| Thông tin booking | Mã, phim, ngày/giờ, phòng và tổng tiền theo dữ liệu có; nhóm riêng với mã của từng vé. |
-| Thẻ vé | Mã vé dạng chữ, nhãn ghế, QR và trạng thái trong cùng một khối; mỗi vé nhận diện độc lập. |
-| Couple | Hai thẻ vé độc lập cho cùng đơn vị ghế; **đề xuất bố cục:** gom vào một nhóm ghế, xếp dọc và đánh dấu vé 1/2, 2/2. |
-| Hành động cuối trang | “Về trang chủ”, “Booking của tôi”; không bổ sung nút in/PDF/gửi email nếu chưa có chức năng. |
+| Thông tin lựa chọn | Nhóm theo phim/suất và từng ghế; thông tin dài xuống dòng. Chưa có mã booking, countdown hoặc QR trước tạo đơn. |
+| Giá trước tạo | Nhãn dự kiến nếu có nguồn server; thiếu contract báo giá thì có lời giải thích, không dựng giá chốt để lấp layout. |
+| Liên hệ | Nằm trong vùng rà soát nếu được chốt; lỗi cạnh field, không thêm field chưa được API cho phép. |
+| Hành động | “Xác nhận tạo đơn” và “Quay lại chỉnh sửa” rõ ràng; submitting khóa nhấn lặp nhưng vẫn giữ nội dung đang xác nhận. |
+| Kết quả tạo | Thành công chuyển KH-05 với snapshot server và hạn giữ; lỗi ghế/validation hiển thị gần ngữ cảnh, timeout là chưa rõ kết quả. |
+| Quay lại khi đã có đơn | Hiện tham chiếu đơn và hướng tới Payment/chi tiết; không mở draft cũ thành form sửa snapshot hoặc tạo đơn lần hai. |
 
-QR có diện tích đủ để nhìn và quét ở thiết bị kiểm tra; kích thước cụ thể cần review cùng cách sinh QR, không tự chốt một chuẩn pixel. Mã chữ vẫn đọc được khi ảnh QR lỗi. Không đặt hai QR Couple chồng nhau, ghép thành một ảnh mã chung hoặc để badge trạng thái che vùng mã.
+Kết quả thanh toán thuộc KH-10; đơn đã confirmed và vé thuộc KH-08/KH-11. Không dùng tiêu đề Booking Confirmation cho cả bước rà soát lẫn trang vé thành công. Bảng điều hướng cũ cần người phụ trách Navigation đồng bộ theo thứ tự này.
 
-Danh sách nhiều vé tăng chiều dài trang và dùng cuộn dọc chính. Không nhốt các vé vào carousel hoặc khung cuộn nhỏ khiến khách bỏ sót vé còn lại. Thẻ vé đã sử dụng/vô hiệu hóa vẫn có tên, mã và nhãn rõ theo dữ liệu, không chỉ đổi màu nền để biểu thị.
-
-#### 5.6.1. Sơ đồ thứ tự đọc khi thanh toán và nhận vé
+#### 5.6.1. Sơ đồ thứ tự nội dung theo bước
 
 ```mermaid
 flowchart TD
-    bookingPage["Nội dung theo booking"] --> bookingScreen{"Màn hình đang xem?"}
-    bookingScreen -->|"Thanh toán"| summary["Tóm tắt đơn và ghế"]
-    summary --> amount["Chi tiết giá và tổng tiền"]
-    amount --> deadline["Hạn giữ và thông báo"]
-    deadline --> method["Phương thức được hỗ trợ"]
+    screenChoice{"Bước đang xem?"}
+    screenChoice -->|"Rà soát KH-06"| draft["Phim suất ghế và loại vé"]
+    draft --> estimate["Giá dự kiến có nguồn"]
+    estimate --> confirmAction["Xác nhận tạo đơn hoặc quay lại"]
+    screenChoice -->|"Payment KH-05"| summary["Tóm tắt booking đã tạo"]
+    summary --> amount["Giá chốt và hạn giữ"]
+    amount --> method["Phương thức được hỗ trợ"]
     method --> paymentActions["Hành động và phản hồi"]
-    bookingScreen -->|"Xác nhận và vé"| confirmation["Kết quả và mã booking"]
-    confirmation --> showtimeInfo["Thông tin suất và ghế"]
-    showtimeInfo --> ticketCards["Danh sách từng thẻ vé"]
-    ticketCards --> navigation["Về trang chủ hoặc Booking của tôi"]
+    screenChoice -->|"Vé KH-11"| bookingInfo["Thông tin đơn và suất"]
+    bookingInfo --> ticketCards["Từng mã vé và QR"]
+    ticketCards --> navigation["Điều hướng tiếp theo"]
 ```
 
-Đây là sơ đồ sắp xếp nội dung, không phải luồng áp dụng thanh toán. Kết quả đang chờ, lỗi tải vé hoặc không đủ quyền thay phần nội dung liên quan bằng phản hồi phù hợp; khung header/main/footer vẫn giữ nguyên.
+Sơ đồ chỉ thể hiện thứ tự đọc nội dung, không phải quy trình áp dụng payment. Với từng bước, lỗi/đang chờ/không đủ quyền thay phần nội dung liên quan bằng phản hồi phù hợp; khung header/main/footer vẫn giữ nguyên.
 
 ### 5.7. KH-07 — Đăng nhập / đăng ký
 
@@ -431,6 +429,10 @@ Một danh sách vé thuộc tài khoản hiện tại, ưu tiên nhóm theo boo
 - Mobile xếp dọc, giữ vùng mã/QR không bị cắt; lỗi ảnh vẫn có mã chữ.
 - Tải lần đầu, rỗng và lỗi nằm trong vùng danh sách. Chưa có API danh sách vé đầy đủ thì thể hiện giới hạn dữ liệu, không bố trí bộ lọc hoặc tổng số vé chưa được trả.
 
+Thẻ vé đặt mã chữ, nhãn ghế, QR và trạng thái trong cùng khối; thông tin booking nhóm riêng với mã từng vé. **Đề xuất bố cục:** hai vé Couple được nhóm cùng ghế, xếp dọc và có số thứ tự 1/2, 2/2 nếu nguồn dữ liệu hỗ trợ.
+
+QR có diện tích đủ để nhìn và quét ở thiết bị kiểm tra; kích thước cụ thể cần review cùng cách sinh QR, không tự chốt chuẩn pixel. Không đặt hai mã chồng nhau, ghép thành QR chung hoặc để badge che vùng mã. Danh sách dài dùng cuộn dọc chính; không nhốt vé trong carousel/khung nhỏ. Used/voided vẫn có mã và nhãn chữ theo dữ liệu, không chỉ đổi màu. Không bổ sung in/PDF/gửi email nếu chức năng chưa được chốt.
+
 ### 5.12. KH-12 — Profile
 
 Vùng hẹp trong main hoặc vùng nội dung tài khoản, tách khỏi lịch sử đơn. Thông tin được phép xem và form được phép sửa cần thống nhất với API; phần chưa có contract ghi TBD.
@@ -462,7 +464,7 @@ Chiều rộng được tính theo viewport, không theo tên dòng điện tho�
 | Lịch chiếu | Bộ chọn ngày trên danh sách suất | Giữ nhóm ngày đọc được | Dropdown hoặc cuộn ngày trong khối; suất xuống dòng khi cần. |
 | Chọn ghế | Sơ đồ trái, tóm tắt phải | Sơ đồ trên, tóm tắt dưới | Sơ đồ cuộn ngang cục bộ; chi tiết dưới, thanh đặt ở đáy. |
 | Thanh toán | Một cột gọn, căn giữa | Một cột | Một cột vừa container, không tự thêm bottom bar. |
-| Xác nhận / vé | Một cột; các thẻ vé theo luồng dọc | Một cột | Một cột; mã và QR không bị cắt. |
+| Rà soát KH-06 | Một cột, thông tin draft trước nút xác nhận | Một cột | Một cột; không có countdown/QR trước tạo đơn. |
 | Đăng nhập / đăng ký | Form một cột, vùng hẹp là đề xuất | Form trong vùng hẹp vừa viewport | Form toàn bề rộng container, có padding. |
 | Booking của tôi | Bảng hoặc thẻ là đề xuất | Thẻ/bảng theo bề rộng thực | Thẻ xếp dọc là đề xuất ưu tiên. |
 | Ticket Type | Vùng chọn theo ghế trong tóm tắt | Đặt dưới sơ đồ | Các hàng/thẻ dọc, bottom bar chỉ tổng hợp. |

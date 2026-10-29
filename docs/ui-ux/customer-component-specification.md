@@ -19,8 +19,8 @@ Component hiển thị dữ liệu và phát sự kiện thao tác; trang/servic
 | CP-07 | Seat Map | Nhóm rows/seats, chú thích, lựa chọn, onToggleSeat, loadState | Loading, rỗng, có dữ liệu, lỗi, cập nhật sau xung đột | KH-04 |
 | CP-08 | Ticket Type Row | Loại vé cho một đơn vị ghế; seat, options, ticketTypeId, eligibilityNote, onSelect | Chưa chọn, chọn, lỗi điều kiện, disabled | KH-09, vùng KH-04 |
 | CP-09 | Booking Summary | Mã, phim/suất/phòng/ghế/loại vé, giá chốt, currency, mode | Loading, đủ dữ liệu, thiếu/lỗi, chỉ đọc | KH-05, KH-06, KH-08, KH-10 |
-| CP-10 | Countdown | Hạn giữ; expiresAt và thông tin thời gian đáng tin cậy nếu có | Chưa có booking, còn thời gian, 0:00 | KH-04 khi có đơn, KH-05/06 pending |
-| CP-11 | QR Ticket Card | ticketCode, seatLabel, QR được cung cấp, status, ngữ cảnh vé | Loading, valid, used, voided, QR lỗi | KH-06, KH-11, chi tiết KH-08 |
+| CP-10 | Countdown | Hạn giữ; expiresAt và thông tin thời gian đáng tin cậy nếu có | Chưa có booking, còn thời gian, 0:00 | KH-05, chi tiết KH-08 pending; KH-06 trước tạo chưa chạy |
+| CP-11 | QR Ticket Card | ticketCode, seatLabel, QR được cung cấp, status, ngữ cảnh vé | Loading, valid, used, voided, QR lỗi | KH-11, chi tiết KH-08 |
 | CP-12 | Booking Table / List | Danh sách đơn; rows, pagination, onOpen, actions theo điều kiện | Loading, rỗng, lỗi, có dữ liệu | KH-08 |
 | CP-13 | Pagination | page/pageSize/totalItems/totalPages, onChange | Trang đầu/giữa/cuối, loading, disabled | KH-01, KH-08; KH-11 nếu có contract |
 | CP-14 | Modal | Xác nhận hoặc thông báo tập trung; title, content, actions, open, onClose | Đóng, mở, đang xử lý, lỗi | Hủy/đổi ghế, lỗi chặn, bản nháp |
