@@ -278,9 +278,42 @@ Chỉ hiển thị “Đặt vé thành công” sau khi đọc booking confirme
 
 ### 3.8. Tài khoản (Booking của tôi)
 
-- **Mục đích:** xem lịch sử booking và vé của user.
-- **Dữ liệu hiển thị:** danh sách booking với trạng thái (`pending`, `confirmed`, `expired`, `cancelled`), vé theo booking.
-- **Tiêu chí nghiệm thu:** chỉ hiển thị booking của user hiện tại (authorization ở backend).
+**KH-08 — CIN-SUB-061: Booking History / chi tiết booking.** Liệt kê đơn của Customer hiện tại ở mọi trạng thái, kể cả chưa có vé; My Tickets KH-11 chỉ trình bày vé đã phát hành. Đăng nhập và ownership được backend kiểm tra.
+
+#### Dữ liệu danh sách và chi tiết
+
+| Dữ liệu | Cách sử dụng |
+|---|---|
+| bookingId / bookingCode | Định danh/mã hiển thị theo API; mở đúng đơn, không tra theo tên phim hoặc suy cấu trúc mã. |
+| Phim/rạp/suất/phòng | Ngữ cảnh lịch sử do backend cung cấp; DTO summary/chi tiết còn cần chốt đầy đủ trường. |
+| Ghế và loại vé | Các detail và snapshot đã chốt; vẫn xem được lịch sử sau khi released. |
+| totalAmount / currency | Tổng nguyên đồng VND của đơn gốc, không đổi về 0 do đơn bị hủy/hết hạn. |
+| Status và mốc | pending/confirmed/expired/cancelled, createdAt/confirmedAt/cancelledAt và lý do khi có dữ liệu được phép xem. |
+| Vé | Xem theo đơn confirmed và quyền; không dựng vé từ đơn pending. |
+
+Đọc `GET /api/users/me/bookings?page=...&pageSize=...` theo API Proposed. Pagination theo contract: page bắt đầu 1, pageSize mặc định 20/tối đa 100; đây là tham chiếu contract, không phải logic phân trang đã triển khai.
+
+**Lọc/sắp xếp:** chưa có query lọc trạng thái/ngày/mã hoặc sort cho lịch sử trong DTO hiện tại. Ghi TBD phối hợp API. Không lọc một trang rồi ghi là toàn bộ lịch sử; không tự tạo tham số. Thứ tự server trả là nguồn danh sách, không khẳng định đã có sort tùy chọn.
+
+#### Thao tác và trạng thái đơn
+
+1. Vào trang/đổi trang gọi dữ liệu theo phiên; loading giữ ngữ cảnh trang. Rỗng thành công hiện “Bạn chưa có booking”, cho xem phim.
+2. Chọn một đơn đọc lại `GET /api/bookings/{bookingId}`; không quyết định quyền hủy/thanh toán từ summary cũ.
+3. Pending còn hợp lệ: “Tiếp tục thanh toán” mở KH-05; hủy theo điều kiện backend. Có attempt mở/quá hạn danh nghĩa thì kiểm tra kết quả, không luôn bật retry.
+4. Confirmed: “Xem vé” mở KH-06/KH-11; không hủy/refund/đổi ghế theo luồng Customer MVP.
+5. Expired/cancelled: giữ thông tin lịch sử, có thể mở phim/lịch để đặt mới; không tái mở cùng booking hoặc gia hạn.
+6. Xem Payment Result khi có ngữ cảnh attempt hợp lệ. Chưa có API liệt kê attempt theo booking thì không dựng một lịch sử thanh toán đầy đủ hoặc cho đối soát thủ công.
+7. Back từ chi tiết giữ trang danh sách nếu còn hợp lệ, làm mới khi cần; đăng xuất/đổi tài khoản xóa dữ liệu riêng tư của phiên trước.
+
+Lỗi tải có thử lại, khác danh sách rỗng. 401 cần đăng nhập; 403 không có quyền kể cả biết mã; 404 không tự kết luận booking bị hủy. Lý do lỗi/khóa nội bộ chỉ hiển thị nếu backend cho phép và đã lọc.
+
+#### Nghiệm thu Booking History
+
+- **BH-01:** Chỉ dữ liệu của user hiện tại, gồm đủ các trạng thái đơn; backend từ chối truy cập đơn người khác.
+- **BH-02:** Phân trang dùng metadata server; lọc/sort chưa có không được mô tả là chức năng đã hỗ trợ.
+- **BH-03:** Chi tiết tải lại đúng đơn; snapshot giá/ghế không đổi theo danh mục hoặc released.
+- **BH-04:** Điều hướng thanh toán/hủy/vé đúng trạng thái hiện tại, không dùng summary cũ để tạo mutation.
+- **BH-05:** Rỗng/loading/lỗi/đổi tài khoản được xử lý rõ; không trùng mục đích với My Tickets.
 
 ### 3.9. KH-09 — Ticket Type — CIN-SUB-056
 
