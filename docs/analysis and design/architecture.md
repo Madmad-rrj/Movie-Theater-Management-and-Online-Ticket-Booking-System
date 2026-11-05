@@ -385,3 +385,52 @@ Cột "Trạng thái": **CONFIRMED** (quyết định đã chốt) / **PROPOSED*
 | TP-5b | Commit thành công + response mất, retry | ACK idempotent; không tạo vé thứ hai | UC-05 A7, UC-02 A2 |
 | TP-6 | Load: 100 user tranh cùng ghế / 100 user ghế khác nhau / 10 suất song song | Thu thập throughput, p95/p99, lock waits, deadlocks — thiết lập baseline trước khi tối ưu | OQ-09 |
 | TP-7 | Đo thời gian giữ khóa khi gọi cổng treo (nếu vi phạm "không gọi trong transaction") | Phát hiện vi phạm ràng buộc mục 13 | UC-01 AC-08 |
+
+## 18. Trạng thái triển khai (Implementation Status)
+
+> Cập nhật: 2026-10-23. Mục này phân biệt rõ **kiến trúc đã thiết kế** (các mục 1–17)
+> với **trạng thái triển khai thực tế hiện tại** của repository.
+
+### 18.1 Tổng quan trạng thái
+
+| Thành phần | Trạng thái | Ghi chú |
+|---|---|---|
+| **Database schema** (`database-schema.sql`) | ✅ Hoàn thiện | 18 relations, constraints, indexes đã có; áp dụng được lên Supabase |
+| **Seed data** (`seed-data.sql`) | ✅ Hoàn thiện | 6 phim, 1 cinema, 2 phòng, 82 ghế, 48 suất chiếu |
+| **Database documents** | ✅ Hoàn thiện | `database-design.md`, `database-schema.md`, `seed-README.md` |
+| **Architecture document** | ✅ Đang cập nhật | File này |
+| **Backend source** (`src/backend/CinemaTicketBooking.Api/`) | ⏳ Chưa triển khai | `Program.cs`, `.csproj`, `appsettings.Development.json`, `ApplicationDbContext.cs` đang trống (placeholder) |
+| **Frontend source** (`src/frontend/cinema-ticket-booking-ui/`) | ⏳ Chưa triển khai | `package.json`, `vite.config.ts`, `App.tsx`, `main.tsx` đang trống |
+| **EF Core Migrations** | ⏳ Chưa tạo | Chờ backend có code; hiện dùng SQL script trực tiếp |
+| **Dockerfile backend** | ⏳ Chưa tạo | Xem §5 và §10 của `local-development-setup.md` |
+| **Dockerfile frontend** | ⏳ Chưa tạo | Xem §6 và §10 của `local-development-setup.md` |
+| **`docker-compose.yml`** | ⏳ Trống | Placeholder; cấu trúc dự kiến mô tả trong `local-development-setup.md` §7 |
+| **Controllers / Services / Entities** | ⏳ Chưa tạo | Thư mục dự kiến: `Controllers/`, `Services/`, `Entities/`, `Middleware/`, `Validators/` |
+| **Payment Gateway Adapter** | ⏳ Chưa tạo | Interface `IPaymentGatewayAdapter` chưa có code; cổng chưa chốt (OQ-01) |
+| **Expiry Worker** | ⏳ Chưa tạo | `BackgroundService` chưa triển khai |
+| **JWT Authentication** | ⏳ Chưa tạo | Chờ backend code |
+| **API Tests** | ⏳ Chưa tạo | Verification Plan (mục 17) chờ implementation |
+
+### 18.2 Mối quan hệ giữa kiến trúc thiết kế và hiện trạng
+
+```text
+Thiết kế (architecture.md §1-17)      Hiện trạng (2026-10-23)
+─────────────────────────────────────  ──────────────────────────────────────
+Frontend SPA (React + Vite + TS)   →  Khung dự án (files trống)
+Backend API (ASP.NET Core)         →  Khung dự án (files trống)
+EF Core / Migrations               →  Chưa có (dùng database-schema.sql)
+PostgreSQL (18 relations)          →  Schema SQL hoàn thiện ✅
+Seed data                          →  seed-data.sql hoàn thiện ✅
+docker-compose.yml                 →  Trống (placeholder)
+Payment Gateway Adapter            →  Interface chưa định nghĩa
+Expiry Worker                      →  Chưa triển khai
+JWT Auth                           →  Chưa triển khai
+```
+
+### 18.3 Hướng dẫn developer
+
+- **Thiết lập môi trường local:** xem `docs/development/local-development-setup.md`
+- **Schema database:** `database/database-schema.sql` — áp dụng lên PostgreSQL trước khi chạy backend
+- **Seed data:** `database/seed-data.sql` + `database/seed-README.md`
+- **Khi bắt đầu implement backend:** tham chiếu mục 5 (Backend Architecture), mục 13 (Concurrency), mục 14 (ExpiryWorker) và `database/database-design.md` §31 để nắm protocol khóa
+- **Khi bắt đầu implement frontend:** tham chiếu mục 4 (Frontend Architecture) và `docs/api/` cho contract API
