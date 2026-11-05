@@ -1,8 +1,8 @@
-# Customer Screen Specification
+# Customer/Guest Screen Specification
 
 ## 1. Mục đích
 
-Đặc tả chức năng và nội dung của từng màn hình Customer. Tài liệu trả lời câu hỏi: mỗi màn hình có gì?
+Đặc tả chức năng và nội dung của từng màn hình Guest/Customer. Tài liệu trả lời câu hỏi: mỗi màn hình có gì?
 
 ## 2. Danh sách màn hình
 
@@ -22,7 +22,7 @@
 
 #### 3.1.1. Mục đích và phạm vi
 
-- Là điểm vào chính của website Customer.
+- Là điểm vào chính của website Guest/Customer.
 - Giới thiệu nhanh hai nhóm phim `now_showing` và `coming_soon`.
 - Cho phép mở Movie Detail hoặc chuyển sang Movie List đã lọc theo nhóm tương ứng.
 - Home không thay thế Movie List: không cung cấp toàn bộ phân trang/bộ lọc và không tự xếp hạng phim khi nghiệp vụ chưa quy định.
@@ -118,9 +118,9 @@ Không hiển thị stack trace, endpoint hoặc chi tiết kỹ thuật cho Cus
 
 #### 3.2.1. Mục đích và phạm vi
 
-- Cung cấp danh sách phim đầy đủ theo từng trạng thái được phép hiển thị cho Customer.
-- Cho phép Customer duyệt danh sách, chuyển trang và mở Movie Detail của một phim.
-- Chỉ hiển thị phim `now_showing` hoặc `coming_soon`; không đưa `ended`/`archived` vào danh sách Customer theo UC-06 và FR-MOVIE-001.
+- Cung cấp danh sách phim đầy đủ theo từng trạng thái được phép hiển thị cho Guest/Customer.
+- Cho phép Guest/Customer duyệt danh sách, chuyển trang và mở Movie Detail của một phim.
+- Chỉ hiển thị phim `now_showing` hoặc `coming_soon`; không đưa `ended`/`archived` vào danh sách theo UC-06A và FR-MOVIE-001.
 - Không tạo booking, giữ ghế hoặc xác nhận phim còn suất chiếu từ dữ liệu danh sách.
 
 **Route và quyền truy cập:** `/movies`, Public.
@@ -215,7 +215,7 @@ Không hiển thị stack trace, endpoint hoặc thông tin nội bộ cho Custo
 
 #### 3.3.1. Mục đích và phạm vi
 
-- Cung cấp thông tin đầy đủ của một phim để Customer quyết định có xem lịch chiếu hay không.
+- Cung cấp thông tin đầy đủ của một phim để Guest hoặc Customer quyết định có xem lịch chiếu hay không.
 - Là điểm chuyển từ Home/Movie List sang Showtime, giữ đúng `movieId` đang xem.
 - Chỉ hiển thị dữ liệu phim do backend trả về; không suy diễn lịch chiếu, khả năng còn ghế hoặc khả năng đặt vé.
 - Không tạo booking, giữ ghế hoặc yêu cầu đăng nhập.
@@ -228,7 +228,7 @@ Không hiển thị stack trace, endpoint hoặc thông tin nội bộ cho Custo
 
 - Đọc `movieId` từ route và gọi `GET /api/movies/{movieId}` khi vào màn hình hoặc mở deep link.
 - Response `MovieDetail` là nguồn dữ liệu authoritative của màn hình; dữ liệu card đã giữ từ Home/Movie List chỉ có thể dùng làm placeholder trong lúc tải, không thay thế response chi tiết.
-- Khi Customer chọn xem lịch chiếu, chỉ chuyển `movieId`; Showtime phải tải lịch hiện tại từ backend.
+- Khi Guest/Customer chọn xem lịch chiếu, chỉ chuyển `movieId`; Showtime phải tải lịch hiện tại từ backend.
 - Backend quyết định phim có tồn tại và được phép công khai. Frontend không tự cho phép phim dựa trên dữ liệu cache cũ.
 
 #### 3.3.3. Thông tin hiển thị
@@ -247,7 +247,7 @@ Không hiển thị stack trace, endpoint hoặc thông tin nội bộ cho Custo
 | `trailerUrl` | Link/nút xem trailer khi có URL sử dụng được | NULL/không dùng được thì ẩn hành động trailer |
 | `status` | Nhãn "Đang chiếu" hoặc "Sắp chiếu" theo giá trị backend | Không đổi trạng thái dựa trên ngày phía client |
 
-Phạm vi Customer hiện xác nhận danh sách công khai cho `now_showing` và `coming_soon`. Việc phim `ended` có được mở bằng deep link hay không vẫn là câu hỏi mở của UC-06; màn hình không hard-code quyết định này và tuân theo kết quả API.
+Phạm vi Guest/Customer hiện xác nhận danh sách công khai cho `now_showing` và `coming_soon`. Phim `ended`/`archived` không thuộc discovery hiện hành; deep link phải tuân theo kết quả authoritative của API.
 
 #### 3.3.4. Cấu trúc màn hình
 
@@ -310,7 +310,7 @@ Không hiển thị stack trace, endpoint, ID nội bộ không cần thiết ho
 
 #### 3.4.1. Mục đích và phạm vi
 
-- Cho phép Customer xem lịch chiếu của một phim theo ngày và chọn một suất còn bán để tiếp tục sang Seat Selection.
+- Cho phép Guest hoặc Customer xem lịch chiếu của một phim theo ngày và chọn một suất còn bán để tiếp tục sang Seat Selection.
 - Hiển thị thông tin suất từ backend; không suy diễn khả năng còn ghế từ việc suất xuất hiện trong danh sách.
 - Chỉ các suất `scheduled` còn bán theo BR-ST-003 mới được phép tiếp tục; trạng thái cuối cùng phải được kiểm tra lại khi Customer chọn suất.
 - Không giữ ghế, tạo booking, khởi tạo payment hoặc yêu cầu đăng nhập ở màn hình này.
@@ -464,39 +464,39 @@ Không hiển thị stack trace, endpoint hoặc chi tiết kỹ thuật cho Cus
 
 ### 3.5. Seat Selection
 
-- **Mục đích:** cho khách chọn ghế và loại vé, khởi tạo booking giữ ghế 5 phút.
-- **Bố cục:** sơ đồ ghế theo hàng (row_label + seat_number), chú thích loại ghế (Standard/VIP/Couple), tổng tiền tạm tính, đồng hồ đếm ngược giữ ghế.
-- **Dữ liệu hiển thị:** trạng thái ghế (trống / đã bán / đang chọn), loại ghế, phụ thu, giá từng ghế.
-- **Nút thao tác:** chọn/bỏ chọn ghế, chọn loại vé cho từng ghế, "Đặt vé".
-- **Validation:** ghế Couple chọn theo đơn vị ghế đôi; ghế đã bị người khác giữ/bán → thông báo và cập nhật sơ đồ.
-- **Tiêu chí nghiệm thu:** giữ ghế thành công tạo booking; hết 5 phút → thông báo hết hạn, ghế được giải phóng.
+- **Mục đích:** cho Guest/Customer chọn ghế đơn trong selection session; không tạo booking hoặc hold khi click.
+- **Bố cục:** sơ đồ ghế theo hàng, trạng thái available/held/sold, summary ghế và quantity.
+- **Dữ liệu hiển thị:** trạng thái ghế, nhãn ghế và loại ghế theo backend; không suy Couple/multi-person scope.
+- **Nút thao tác:** chọn/bỏ chọn ghế, tiếp tục Ticket Type/Checkout Information.
+- **Validation:** ghế held/sold/inactive không chọn được; selection session bắt đầu ở ghế đầu tiên và mặc định 5 phút.
+- **Tiêu chí nghiệm thu:** selection session hết hạn thì yêu cầu chọn lại; không tự báo booking expired hoặc ghế đã available.
 
 ### 3.6. Payment
 
-- **Mục đích:** thực hiện thanh toán booking trong thời gian giữ ghế.
+- **Mục đích:** thực hiện thanh toán booking sau Checkout Information trong payment window riêng.
 - **Bố cục:** tóm tắt booking (mã, suất, ghế, tổng tiền), chọn phương thức thanh toán, nút thanh toán.
-- **Dữ liệu hiển thị:** `booking.total_amount` (VND), thời gian còn lại, chi tiết từng detail (giá đã snapshot).
+- **Dữ liệu hiển thị:** `booking.total_amount` (VND), payment window 10 phút, chi tiết snapshot.
 - **Nút thao tác:** "Thanh toán", hủy booking.
-- **Validation:** tổng tiền không được sửa; hết thời gian giữ ghế → chặn thanh toán, hiển thị expired.
-- **Tiêu chí nghiệm thu:** thanh toán thành công chuyển sang Booking Confirmation; thất bại giữ booking `pending` cho phép retry theo chính sách.
+- **Validation:** tổng tiền không được sửa; hết payment window không tự kết luận payment failed khi attempt còn unknown/pending.
+- **Tiêu chí nghiệm thu:** payment applied và booking confirmed mới chuyển kết quả thành công; thất bại/pending giữ trạng thái authoritative để retry hoặc đối soát.
 
-### 3.7. Booking Confirmation
+### 3.7. Payment Result
 
-- **Mục đích:** xác nhận đặt vé thành công, hiển thị vé.
-- **Bố cục:** mã booking, thông tin suất/ghế, danh sách vé với mã QR riêng cho từng vé (ghế Couple phát hành 2 vé riêng).
-- **Dữ liệu hiển thị:** `booking_code`, giờ chiếu, phòng, ghế, mã vé/QR, trạng thái vé `valid`.
-- **Nút thao tác:** về trang chủ, xem "Booking của tôi".
-- **Tiêu chí nghiệm thu:** số vé hiển thị đúng số ghế/capacity_units; trạng thái `confirmed` chỉ xuất hiện sau khi payment được áp dụng.
+- **Mục đích:** hiển thị độc lập payment status và booking status.
+- **Bố cục:** mã booking, thông tin suất/ghế, trạng thái payment, trạng thái booking và entitlement vé khi đã phát hành.
+- **Dữ liệu hiển thị:** dữ liệu server; không dựng QR cho payment succeeded nhưng chưa applied/confirmed.
+- **Nút thao tác:** đọc lại trạng thái, về Payment khi được phép, mở My Tickets/Booking History.
+- **Tiêu chí nghiệm thu:** chỉ payment applied + booking confirmed + entitlement issued mới hiển thị thành công đầy đủ.
 
 ### 3.8. Đăng nhập / Đăng ký
 
-- **Mục đích:** xác thực người dùng trước khi đặt vé.
+- **Mục đích:** cung cấp xác thực tùy chọn cho Customer; Guest Checkout không bị chặn bởi màn hình này.
 - **Dữ liệu hiển thị:** form email, mật khẩu; đăng ký chỉ cấp role `CUSTOMER`.
 - **Validation:** định dạng email, mật khẩu bắt buộc; lỗi xác thực hiển thị thông báo chung.
 - **Tiêu chí nghiệm thu:** đăng nhập thành công quay lại màn hình trước khi bị chuyển hướng.
 
 ### 3.9. Tài khoản (Booking của tôi)
 
-- **Mục đích:** xem lịch sử booking và vé của user.
+- **Mục đích:** Customer đã đăng nhập xem lịch sử booking và vé của chính mình; Guest chỉ đọc booking/vé qua guest-safe verification theo booking.
 - **Dữ liệu hiển thị:** danh sách booking với trạng thái (`pending`, `confirmed`, `expired`, `cancelled`), vé theo booking.
 - **Tiêu chí nghiệm thu:** chỉ hiển thị booking của user hiện tại (authorization ở backend).
