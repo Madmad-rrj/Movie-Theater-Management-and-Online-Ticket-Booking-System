@@ -1,4 +1,4 @@
-# Customer Screen Specification
+# Customer/Guest Screen Specification
 
 ## 1. Mục đích
 
@@ -12,10 +12,9 @@
 4. Showtime (Lịch chiếu)
 5. Seat Selection (Sơ đồ ghế)
 6. Payment
-7. Checkout Information
-8. Payment Result
-9. My Tickets / Booking History
-10. Đăng nhập / Đăng ký
+7. Booking Confirmation
+8. Đăng nhập / Đăng ký
+9. Tài khoản (Booking của tôi)
 
 ## 3. Đặc tả từng màn hình
 
@@ -23,7 +22,7 @@
 
 #### 3.1.1. Mục đích và phạm vi
 
-- Là điểm vào chính của website cho Guest và Customer.
+- Là điểm vào chính của website Guest/Customer.
 - Giới thiệu nhanh hai nhóm phim `now_showing` và `coming_soon`.
 - Cho phép mở Movie Detail hoặc chuyển sang Movie List đã lọc theo nhóm tương ứng.
 - Home không thay thế Movie List: không cung cấp toàn bộ phân trang/bộ lọc và không tự xếp hạng phim khi nghiệp vụ chưa quy định.
@@ -119,14 +118,14 @@ Không hiển thị stack trace, endpoint hoặc chi tiết kỹ thuật cho Cus
 
 #### 3.2.1. Mục đích và phạm vi
 
-- Cung cấp danh sách phim đầy đủ theo từng trạng thái được phép hiển thị cho Guest và Customer.
-- Cho phép Guest hoặc Customer duyệt danh sách, chuyển trang và mở Movie Detail của một phim.
+- Cung cấp danh sách phim đầy đủ theo từng trạng thái được phép hiển thị cho Guest/Customer.
+- Cho phép Guest/Customer duyệt danh sách, chuyển trang và mở Movie Detail của một phim.
 - Chỉ hiển thị phim `now_showing` hoặc `coming_soon`; không đưa `ended`/`archived` vào danh sách theo UC-06A và FR-MOVIE-001.
 - Không tạo booking, giữ ghế hoặc xác nhận phim còn suất chiếu từ dữ liệu danh sách.
 
 **Route và quyền truy cập:** `/movies`, Public.
 
-**Yêu cầu liên quan:** FR-MOVIE-001, FR-MOVIE-002; UC-06A, UC-06B; `customer-user-flow.md` mục 3.1–3.2; `customer-screen-api-mapping.md` mục 3.1.
+**Yêu cầu liên quan:** FR-MOVIE-001, FR-MOVIE-002; UC-06; `customer-user-flow.md` mục 3.1–3.2; `customer-screen-api-mapping.md` mục 3.1.
 
 #### 3.2.2. Nguồn dữ liệu và query
 
@@ -214,83 +213,290 @@ Không hiển thị stack trace, endpoint hoặc thông tin nội bộ cho Custo
 
 ### 3.3. Movie Detail
 
-- **Mục đích:** cung cấp thông tin chi tiết phim và điểm chuyển sang chọn suất chiếu.
-- **Bố cục:** poster + thông tin phim, nút "Chọn suất chiếu".
-- **Dữ liệu hiển thị:** poster, tên phim, thời lượng, mô tả, ngôn ngữ, phân loại tuổi, trạng thái.
-- **Nút thao tác:** "Chọn suất chiếu", quay lại.
-- **Validation:** phim không tồn tại → error state.
-- **Tiêu chí nghiệm thu:** đủ dữ liệu từ API movie; điều hướng sang Showtime đúng phim.
+#### 3.3.1. Mục đích và phạm vi
+
+- Cung cấp thông tin đầy đủ của một phim để Guest hoặc Customer quyết định có xem lịch chiếu hay không.
+- Là điểm chuyển từ Home/Movie List sang Showtime, giữ đúng `movieId` đang xem.
+- Chỉ hiển thị dữ liệu phim do backend trả về; không suy diễn lịch chiếu, khả năng còn ghế hoặc khả năng đặt vé.
+- Không tạo booking, giữ ghế hoặc yêu cầu đăng nhập.
+
+**Route và quyền truy cập:** `/movies/:movieId`, Public.
+
+**Yêu cầu liên quan:** FR-MOVIE-002; UC-06; `customer-user-flow.md` mục 3.2; `customer-navigation.md` mục 4 và 5.1; `customer-screen-api-mapping.md` mục 3.2.
+
+#### 3.3.2. Dữ liệu đầu vào và tải màn hình
+
+- Đọc `movieId` từ route và gọi `GET /api/movies/{movieId}` khi vào màn hình hoặc mở deep link.
+- Response `MovieDetail` là nguồn dữ liệu authoritative của màn hình; dữ liệu card đã giữ từ Home/Movie List chỉ có thể dùng làm placeholder trong lúc tải, không thay thế response chi tiết.
+- Khi Guest/Customer chọn xem lịch chiếu, chỉ chuyển `movieId`; Showtime phải tải lịch hiện tại từ backend.
+- Backend quyết định phim có tồn tại và được phép công khai. Frontend không tự cho phép phim dựa trên dữ liệu cache cũ.
+
+#### 3.3.3. Thông tin hiển thị
+
+| Trường `MovieDetail` | Cách hiển thị | Khi thiếu/không hợp lệ |
+|---|---|---|
+| `id` | Không hiển thị trực tiếp; dùng cho route | Không render màn hình chi tiết nếu response không xác định được phim |
+| `title` | Tiêu đề chính của trang | Không tự đặt tên thay thế mang ý nghĩa nghiệp vụ |
+| `posterUrl` | Poster phim | Dùng placeholder cùng tỷ lệ khi NULL hoặc ảnh lỗi |
+| `description` | Nội dung giới thiệu phim | Hiển thị trạng thái chưa có mô tả hoặc ẩn khối theo quy ước UI |
+| `durationMinutes` | Thời lượng, định dạng giờ/phút nhất quán | Không tự ước lượng |
+| `genres` | Danh sách tên thể loại; `code` dùng làm định danh khi cần | Mảng rỗng thì ẩn danh sách, không tự gán thể loại |
+| `ageRating` | Nhãn phân loại tuổi | NULL thì hiển thị chưa có thông tin/ẩn nhãn; không suy ra quyền mua |
+| `releaseDate` | Ngày phát hành theo định dạng giao diện | NULL thì ẩn trường; không tạo ngày thay thế |
+| `language` | Ngôn ngữ phim | NULL thì ẩn trường; không suy đoán từ nội dung |
+| `trailerUrl` | Link/nút xem trailer khi có URL sử dụng được | NULL/không dùng được thì ẩn hành động trailer |
+| `status` | Nhãn "Đang chiếu" hoặc "Sắp chiếu" theo giá trị backend | Không đổi trạng thái dựa trên ngày phía client |
+
+Phạm vi Guest/Customer hiện xác nhận danh sách công khai cho `now_showing` và `coming_soon`. Phim `ended`/`archived` không thuộc discovery hiện hành; deep link phải tuân theo kết quả authoritative của API.
+
+#### 3.3.4. Cấu trúc màn hình
+
+1. **Header toàn cục** theo `customer-navigation.md`.
+2. **Ngữ cảnh quay lại** — Back của trình duyệt hoặc liên kết điều hướng phù hợp; khi quay lại danh sách, khôi phục query/vị trí trong UI session nếu còn.
+3. **Khối thông tin chính**
+   - Desktop: poster ở cột trái; tên phim, trạng thái, metadata và hành động ở cột phải.
+   - Mobile: poster và nội dung xếp dọc theo đặc tả responsive.
+4. **Metadata phim** — thời lượng, thể loại, phân loại tuổi, ngày phát hành và ngôn ngữ khi có.
+5. **Mô tả phim** — chỉ render nội dung backend cung cấp.
+6. **Trailer** — hành động tùy chọn khi có `trailerUrl` hợp lệ.
+7. **Hành động chính "Xem lịch chiếu"**.
+8. **Footer toàn cục**.
+
+#### 3.3.5. Thao tác và điều hướng
+
+| Thao tác | Điều kiện | Kết quả |
+|---|---|---|
+| Chọn "Xem lịch chiếu" | Movie Detail tải thành công và có `movieId` | Mở `/movies/:movieId/showtimes`, giữ đúng `movieId` |
+| Chọn "Xem trailer" | Có `trailerUrl` sử dụng được | Mở/phát trailer theo component được phê duyệt; không thay đổi route đặt vé |
+| Back | Có lịch sử Home/Movie List | Quay lại và khôi phục filter, trang, vị trí cuộn trong UI session khi có thể |
+| Mở deep link | `movieId` hợp lệ | Tải trực tiếp chi tiết từ API, không phụ thuộc màn hình trước |
+
+Không vô hiệu "Xem lịch chiếu" chỉ vì chưa biết có suất. Trường hợp chưa có suất được xác định sau khi Showtime gọi API và hiển thị empty state. Dữ liệu phim hiện tại không được dùng để xác nhận suất còn bán.
+
+#### 3.3.6. Trạng thái giao diện và lỗi
+
+| Trạng thái | Hiển thị | Hành động |
+|---|---|---|
+| Loading | Skeleton cho poster, tiêu đề và metadata | Không cho kích hoạt hành động cần `movieId`/dữ liệu hoàn chỉnh |
+| Success | Render các trường có dữ liệu và hành động xem lịch chiếu | Cho phép điều hướng Showtime |
+| 404 `MOVIE_NOT_FOUND`/không còn công khai | Error/Not Found thân thiện, không lộ dữ liệu nội bộ | Cho về Home hoặc Movie List |
+| Lỗi API/timeout | Error state trong main content | "Thử lại" cùng `movieId`; Header/Footer vẫn hoạt động |
+| Trường tùy chọn thiếu | Placeholder poster hoặc ẩn/ghi chưa có thông tin theo bảng trên | Không làm toàn trang lỗi |
+| Dữ liệu thay đổi trước khi xem lịch | Không dùng cache để xác nhận lịch | Showtime truy vấn lại dữ liệu hiện hành |
+
+Không hiển thị stack trace, endpoint, ID nội bộ không cần thiết hoặc chi tiết kỹ thuật cho Customer.
+
+#### 3.3.7. Khả dụng và accessibility
+
+- Tiêu đề phim là heading chính; các khối metadata, mô tả và trailer có thứ bậc heading phù hợp.
+- Poster có alt mô tả phù hợp hoặc alt rỗng nếu thông tin cạnh ảnh đã truyền đạt cùng nội dung.
+- Nhãn trạng thái và phân loại tuổi không chỉ dựa vào màu.
+- Các hành động Back, xem trailer và xem lịch chiếu dùng được bằng bàn phím, có focus state rõ ràng.
+- Link trailer phải có accessible name chứa ngữ cảnh tên phim; nội dung media không tự phát có âm thanh.
+- Error state và kết quả tải lại được thông báo phù hợp cho công nghệ hỗ trợ.
+
+#### 3.3.8. Tiêu chí nghiệm thu
+
+- AC-MOVIE-DETAIL-01: Route sử dụng đúng `movieId` và gọi `GET /api/movies/{movieId}` khi tải trực tiếp hoặc điều hướng từ danh sách.
+- AC-MOVIE-DETAIL-02: Màn hình hiển thị đúng các trường hiện có trong `MovieDetail`, gồm poster, tên, mô tả, thời lượng, thể loại, phân loại tuổi và các thông tin liên quan khi có.
+- AC-MOVIE-DETAIL-03: Trường nullable/ảnh lỗi không làm toàn trang lỗi và UI không tự tạo dữ liệu nghiệp vụ thay thế.
+- AC-MOVIE-DETAIL-04: Chọn "Xem lịch chiếu" mở đúng Showtime và giữ nguyên `movieId`.
+- AC-MOVIE-DETAIL-05: 404, lỗi API và retry có trạng thái riêng, không tiết lộ dữ liệu nội bộ.
+- AC-MOVIE-DETAIL-06: Back/Forward/deep link hoạt động theo navigation và dữ liệu chi tiết được tải lại khi cần.
+- AC-MOVIE-DETAIL-07: Màn hình không khẳng định có suất/ghế, không tạo booking và truy cập được khi chưa đăng nhập.
+- AC-MOVIE-DETAIL-08: Quyền xem phim `ended` không được frontend tự chốt khi UC-06 vẫn để mở.
 
 ### 3.4. Showtime
 
-- **Mục đích:** hiển thị lịch chiếu của phim để khách chọn suất.
-- **Bố cục:** nhóm theo ngày → danh sách suất (giờ bắt đầu, phòng, giá cơ sở).
-- **Dữ liệu hiển thị:** `starts_at`, tên phòng, giá cơ sở, trạng thái còn/đóng bán.
-- **Nút thao tác:** chọn suất → Seat Selection.
-- **Validation:** suất đã đóng bán hoặc đã hủy không thể chọn (disabled).
-- **Tiêu chí nghiệm thu:** suất bị vô hiệu có trạng thái disabled; chọn suất chuyển đúng phòng/suất.
+#### 3.4.1. Mục đích và phạm vi
+
+- Cho phép Guest hoặc Customer xem lịch chiếu của một phim theo ngày và chọn một suất còn bán để tiếp tục sang Seat Selection.
+- Hiển thị thông tin suất từ backend; không suy diễn khả năng còn ghế từ việc suất xuất hiện trong danh sách.
+- Chỉ các suất `scheduled` còn bán theo BR-ST-003 mới được phép tiếp tục; trạng thái cuối cùng phải được kiểm tra lại khi Customer chọn suất.
+- Không giữ ghế, tạo booking, khởi tạo payment hoặc yêu cầu đăng nhập ở màn hình này.
+
+**Route và quyền truy cập:** `/movies/:movieId/showtimes?date={date}`, Public.
+
+**Yêu cầu liên quan:** FR-SHOW-001; UC-07; `customer-user-flow.md` mục 3.3; `customer-navigation.md` mục 4, 5.1 và 9; `customer-screen-api-mapping.md` mục 3.3.
+
+#### 3.4.2. Dữ liệu đầu vào và API
+
+| Dữ liệu | Nguồn | Vai trò |
+|---|---|---|
+| `movieId` | Route | Xác định phim đang xem lịch chiếu |
+| `date` | Query string/UI | Ngày lịch chiếu đang được tải |
+| `showtimeId` | Showtime được chọn | Chuyển sang Seat Selection sau khi kiểm tra lại |
+
+- Gọi `GET /api/movies/{movieId}/showtimes?date={date}` khi vào màn hình, refresh hoặc đổi ngày.
+- Query ngày và thời gian hiển thị phải dùng cùng quy ước `Asia/Ho_Chi_Minh`; timestamp UTC từ API được chuyển đổi trước khi hiển thị.
+- `movieId` và `date` được đồng bộ với URL để Back/Forward, refresh và deep link tái dựng đúng màn hình.
+- Phạm vi ngày được phép chọn và ngày mặc định chưa được chốt trong UC-07; giao diện không hard-code một số ngày cố định như một business rule.
+
+#### 3.4.3. Lựa chọn phim, ngày và rạp
+
+| Tiêu chí | Hỗ trợ hiện tại | Hành vi giao diện |
+|---|---|---|
+| Phim | Có, qua `movieId` trên route | Showtime chỉ hiển thị lịch của phim đang chọn; đổi phim quay lại Movie Detail/Movie List |
+| Ngày | Có, qua query `date` của API | Hiển thị bộ chọn ngày; đổi ngày cập nhật URL và tải lại danh sách |
+| Rạp | **PROPOSED**, chưa phê duyệt | Sau khi API hỗ trợ, chọn rạp cập nhật `cinemaId`, tải lại danh sách và bỏ `showtimeId` cũ |
+| Phòng | Có tên/ID phòng trong từng suất | Dùng để mô tả nơi chiếu, không phải bộ lọc hiện có |
+| Định dạng chiếu | Chưa có trong DTO | Không tự thêm bộ lọc 2D/3D/IMAX hoặc giá trị tương tự |
+
+Mô hình dữ liệu có quan hệ Cinema → CinemaRoom, nhưng DTO Showtime hiện chỉ trả `cinemaRoomId` và `cinemaRoomName`. Không được suy ra rạp từ tên phòng. Yêu cầu xem/lọc theo rạp của Issue 75 vì vậy cần được hoàn thiện ở API contract trước khi giao diện triển khai đầy đủ.
+
+##### 3.4.3.1. Phương án lọc rạp — PROPOSED
+
+Phương án dưới đây là thiết kế ban đầu để nhóm/API owner xem xét, **không phải quyết định nghiệp vụ đã chốt**:
+
+- Danh sách rạp hoạt động: `GET /api/cinemas?status=active`.
+- Lịch chiếu theo rạp: `GET /api/movies/{movieId}/showtimes?date={date}&cinemaId={cinemaId}`.
+- Showtime DTO bổ sung `cinemaId` và `cinemaName`; vẫn giữ `cinemaRoomId` và `cinemaRoomName` để phân biệt rạp với phòng.
+- Khi Customer đổi rạp, frontend cập nhật `cinemaId` trên URL, bỏ lựa chọn suất cũ và gọi lại API với `movieId`, `date`, `cinemaId`.
+- Nếu MVP được xác nhận chỉ có một rạp, màn hình hiển thị thông tin rạp cố định và không render dropdown; không gửi một bộ lọc không có ý nghĩa.
+
+Ví dụ DTO dự kiến:
+
+```json
+{
+  "id": "uuid",
+  "cinemaId": "uuid",
+  "cinemaName": "Cinema 1",
+  "cinemaRoomId": "uuid",
+  "cinemaRoomName": "Room 2",
+  "startsAt": "2026-10-29T13:00:00Z",
+  "basePrice": 90000,
+  "currency": "VND",
+  "status": "scheduled",
+  "bookingAvailable": true
+}
+```
+
+**OPEN — cần nhóm/GV hoặc API owner xác nhận:**
+
+- MVP hỗ trợ một rạp hay nhiều rạp.
+- Có bắt buộc chọn rạp trước khi tải lịch hay có rạp mặc định.
+- Có hiển thị địa chỉ rạp trong bộ chọn hay chỉ tên rạp.
+- Tên endpoint, query và DTO chính thức; sau khi phê duyệt phải cập nhật `api-endpoints.md`, `dto-specification.md` và `customer-screen-api-mapping.md`.
+
+#### 3.4.4. Thông tin suất chiếu
+
+| Trường response | Hiển thị/sử dụng | Quy tắc |
+|---|---|---|
+| `id` | Không hiển thị trực tiếp | Dùng làm `showtimeId` cho thao tác chọn suất |
+| `cinemaRoomId` | Không cần hiển thị ID | Giữ trong context khi cần đối chiếu phòng |
+| `cinemaRoomName` | Tên phòng chiếu | Thiếu thông tin bắt buộc thì không suy đoán phòng/rạp |
+| `startsAt` | Ngày và giờ bắt đầu | Chuyển UTC sang `Asia/Ho_Chi_Minh`, không tự thay đổi thời điểm |
+| `basePrice` | Giá cơ sở nếu quyết định UI cho phép hiển thị | Không trình bày là tổng tiền hoặc giá cuối cùng của ghế/vé |
+| `currency` | Đơn vị của `basePrice` | Định dạng cùng giá; phạm vi hiện tại dùng VND theo dữ liệu backend |
+| `status` | Trạng thái suất | Chỉ `scheduled` còn bán mới cho phép tiếp tục; không mở rộng sang `in_progress` |
+| `bookingAvailable` | Trạng thái khả dụng do backend tính | `false` thì vô hiệu thao tác và yêu cầu chọn suất khác |
+
+UC-07 vẫn để mở quyết định có hiển thị giá ở bước Showtime hay chỉ sau khi chọn ghế. Nếu hiển thị, phải ghi rõ đây là **giá cơ sở** từ API; không tự tính phụ thu, giảm giá hoặc tổng booking.
+
+#### 3.4.5. Cấu trúc màn hình
+
+1. **Header toàn cục** theo `customer-navigation.md`.
+2. **Ngữ cảnh phim** — tên/poster tóm tắt khi dữ liệu đã có; không dùng dữ liệu cache để xác nhận khả năng đặt.
+3. **Bộ chọn ngày** — tabs trên màn hình rộng hoặc control phù hợp trên mobile; ngày đang chọn có trạng thái rõ ràng.
+4. **Bộ chọn rạp** — chỉ xuất hiện khi API contract cung cấp danh sách rạp, `cinemaId` và khả năng truy vấn tương ứng.
+5. **Danh sách suất chiếu** — mỗi mục hiển thị giờ bắt đầu, phòng, trạng thái khả dụng và giá cơ sở nếu quyết định hiển thị giá được chốt.
+6. **Empty/error state** gắn với tổ hợp `movieId`, `date` và rạp khi bộ lọc rạp được hỗ trợ.
+7. **Footer toàn cục**.
+
+Thứ tự suất chiếu tuân theo thứ tự backend trả về cho đến khi API contract quy định rõ sắp xếp; frontend không tự gắn nhãn "sớm nhất", "phổ biến" hoặc ưu tiên rạp/phòng.
+
+#### 3.4.6. Chọn suất và điều hướng
+
+| Thao tác | Điều kiện | Kết quả |
+|---|---|---|
+| Đổi ngày | Ngày nằm trong phạm vi UI/API cho phép | Cập nhật `date`, tải lại danh sách và không giữ `showtimeId` cũ |
+| Chọn suất | `status=scheduled` và `bookingAvailable=true` | Kiểm tra lại dữ liệu hiện hành rồi mở `/showtimes/:showtimeId/seats` |
+| Chọn suất không còn bán | Backend trả trạng thái mới/`bookingAvailable=false` | Giữ Customer tại Showtime, thông báo và tải lại danh sách |
+| Chọn suất không tồn tại | Kiểm tra lại trả 404 | Thông báo suất không còn khả dụng và yêu cầu chọn suất khác |
+| Back về Movie Detail | Có `movieId` | Quay lại đúng phim; giữ ngày trong UI session khi phù hợp |
+
+Việc kiểm tra lại có thể sử dụng endpoint chi tiết `GET /api/showtimes/{showtimeId}` đã được liệt kê trong API endpoints. Chỉ điều hướng tiếp khi backend xác nhận suất vẫn đủ điều kiện. Nếu API contract chọn cơ chế kiểm tra khác, phải cập nhật mapping trước khi triển khai; không dựa riêng vào card đã tải trước đó.
+
+Chuyển sang Seat Selection chỉ mang `showtimeId` và navigation context (`movieId`, ngày). Thao tác này chưa giữ ghế; UC-01 mới thực hiện kiểm tra khả dụng và giữ ghế nguyên tử.
+
+#### 3.4.7. Trạng thái giao diện và lỗi
+
+| Trạng thái | Hiển thị | Hành động |
+|---|---|---|
+| Loading ban đầu/đổi ngày | Skeleton cho bộ chọn và danh sách suất | Chặn click lặp trong request hiện tại |
+| Success có dữ liệu | Danh sách suất theo response | Chỉ suất đủ điều kiện có hành động tiếp tục |
+| Empty | "Chưa có suất chiếu phù hợp" cho ngày/bộ lọc hiện tại | Cho đổi ngày hoặc rạp khi rạp đã được hỗ trợ |
+| Lỗi API/timeout | Error state trong main content | "Thử lại" đúng `movieId` và `date` hiện tại |
+| Movie không tồn tại/không công khai | Error/Not Found | Cho về Movie Detail, Movie List hoặc Home phù hợp |
+| Suất đóng bán/hủy sau khi tải | Mục suất bị vô hiệu hoặc loại khỏi response sau refresh | Thông báo trạng thái mới, không tiếp tục bằng dữ liệu cũ |
+| Thiếu dữ liệu phòng/rạp bắt buộc | Không hiển thị thông tin suy đoán | Báo lỗi phù hợp hoặc không cho chọn suất theo kết quả backend |
+
+Không hiển thị stack trace, endpoint hoặc chi tiết kỹ thuật cho Customer. Empty state không bị coi là lỗi hệ thống.
+
+#### 3.4.8. Back, Forward, refresh và dữ liệu cũ
+
+- Back/Forward khôi phục `movieId` và `date` từ URL rồi tải lại lịch chiếu.
+- Refresh/deep link không phụ thuộc dữ liệu từ Movie Detail; màn hình tải lại bằng route/query hiện tại.
+- Khi quay lại từ Seat Selection, Showtime phải tải lại trạng thái suất; không giả định suất vẫn còn bán.
+- Không tự polling theo thời gian thực khi UC-07 chưa chốt yêu cầu cập nhật; bắt buộc kiểm tra lại khi Customer chọn suất.
+- Nếu suất bị hủy sau khi chọn nhưng trước khi giữ ghế, không chuyển tiếp bằng dữ liệu cũ; cách thông báo/điều hướng chi tiết vẫn tuân theo quyết định nghiệp vụ sẽ được chốt.
+
+#### 3.4.9. Khả dụng và accessibility
+
+- Bộ chọn ngày/rạp (khi có) có label và trạng thái được chọn bằng ngữ nghĩa, không chỉ bằng màu.
+- Mỗi suất có accessible name gồm giờ chiếu và phòng; trạng thái disabled được truyền đạt cho công nghệ hỗ trợ.
+- Giờ chiếu hiển thị nhất quán và có đủ ngữ cảnh ngày khi cần.
+- Loading, empty, lỗi và thông báo suất vừa thay đổi được công bố phù hợp mà không tự giành focus liên tục.
+- Các control dùng được bằng bàn phím và có focus state rõ ràng.
+
+#### 3.4.10. Tiêu chí nghiệm thu
+
+- AC-SHOWTIME-01: Showtime tải lịch đúng `movieId` và `date` bằng API đã đặc tả.
+- AC-SHOWTIME-02: Đổi ngày cập nhật URL, gọi lại API và không sử dụng `showtimeId` của ngày cũ.
+- AC-SHOWTIME-03: Mỗi suất hiển thị đúng giờ, phòng, trạng thái khả dụng và dữ liệu giá chỉ khi quyết định hiển thị đã được chốt.
+- AC-SHOWTIME-04: Chỉ suất `scheduled` còn bán với `bookingAvailable=true` mới cho phép tiếp tục.
+- AC-SHOWTIME-05: Khi chọn suất, hệ thống kiểm tra lại trạng thái; suất hủy/đóng bán/không tồn tại không được chuyển tiếp bằng cache cũ.
+- AC-SHOWTIME-06: Suất hợp lệ điều hướng tới `/showtimes/:showtimeId/seats` với đúng `showtimeId`.
+- AC-SHOWTIME-07: Loading, empty, error và retry được phân biệt; danh sách rỗng không bị coi là lỗi.
+- AC-SHOWTIME-08: Màn hình không khẳng định còn ghế, không giữ ghế, không tạo booking/payment và truy cập được khi chưa đăng nhập.
+- AC-SHOWTIME-09: Không hiển thị bộ lọc rạp/định dạng hoạt động giả khi API chưa hỗ trợ; khoảng trống API được ghi nhận rõ.
+- AC-SHOWTIME-10: Back/Forward/refresh/deep link tái dựng đúng phim/ngày và tải lại dữ liệu động.
 
 ### 3.5. Seat Selection
 
-- **Mục đích:** cho Guest hoặc Customer chọn ghế trong selection session 5 phút trước khi tạo booking.
-- **Bố cục:** sơ đồ ghế theo hàng (row_label + seat_number), chú thích loại ghế đang được hỗ trợ, số lượng Adult/Discounted, tổng tiền ước tính và đồng hồ selection session.
-<<<<<<< HEAD
-- **Dữ liệu hiển thị:** trạng thái ghế (trống / đã bán / đang chọn), loại ghế, phụ thu, giá từng ghế.
-=======
-- **Dữ liệu hiển thị:** trạng thái ghế (trống / đã bán / đang chọn), loại ghế, phụ thu và giá thành phần nếu backend trả về.
->>>>>>> origin/master
-- **Nút thao tác:** chọn/bỏ chọn ghế, chọn số lượng vé, "Tiếp tục".
-- **Validation:** chỉ ghế đơn đang khả dụng được chọn; ghế đã bị người khác giữ/bán → thông báo và cập nhật sơ đồ. Chọn ghế chưa tạo booking hoặc giữ ghế backend.
-- **Tiêu chí nghiệm thu:** selection session bắt đầu khi chọn ghế đầu tiên, không tự gia hạn; hết 5 phút → thông báo hết hạn và yêu cầu chọn lại.
+- **Mục đích:** cho Guest/Customer chọn ghế đơn trong selection session; không tạo booking hoặc hold khi click.
+- **Bố cục:** sơ đồ ghế theo hàng, trạng thái available/held/sold, summary ghế và quantity.
+- **Dữ liệu hiển thị:** trạng thái ghế, nhãn ghế và loại ghế theo backend; không suy Couple/multi-person scope.
+- **Nút thao tác:** chọn/bỏ chọn ghế, tiếp tục Ticket Type/Checkout Information.
+- **Validation:** ghế held/sold/inactive không chọn được; selection session bắt đầu ở ghế đầu tiên và mặc định 5 phút.
+- **Tiêu chí nghiệm thu:** selection session hết hạn thì yêu cầu chọn lại; không tự báo booking expired hoặc ghế đã available.
 
 ### 3.6. Payment
 
-- **Mục đích:** thực hiện thanh toán booking trong cửa sổ thanh toán 10 phút sau khi payment attempt được tạo.
+- **Mục đích:** thực hiện thanh toán booking sau Checkout Information trong payment window riêng.
 - **Bố cục:** tóm tắt booking (mã, suất, ghế, tổng tiền), chọn phương thức thanh toán, nút thanh toán.
-- **Dữ liệu hiển thị:** `booking.total_amount` (VND), `paymentExpiresAt`, chi tiết booking và trạng thái payment do backend xác minh.
+- **Dữ liệu hiển thị:** `booking.total_amount` (VND), payment window 10 phút, chi tiết snapshot.
 - **Nút thao tác:** "Thanh toán", hủy booking.
-- **Validation:** tổng tiền không được sửa; hết selection/payment window → chặn thao tác không hợp lệ theo trạng thái backend.
-- **Tiêu chí nghiệm thu:** payment result chỉ thành công khi payment đã applied, booking `confirmed`, allocation `sold` và vé đã phát hành.
+- **Validation:** tổng tiền không được sửa; hết payment window không tự kết luận payment failed khi attempt còn unknown/pending.
+- **Tiêu chí nghiệm thu:** payment applied và booking confirmed mới chuyển kết quả thành công; thất bại/pending giữ trạng thái authoritative để retry hoặc đối soát.
 
-<<<<<<< HEAD
-### 3.7. Checkout Information
-=======
-### 3.6. Checkout Information
->>>>>>> origin/master
-
-- **Mục đích:** cho Guest hoặc Customer nhập thông tin liên hệ, rà soát lựa chọn và xác nhận tạo booking.
-- **Bố cục:** thông tin phim/suất, ghế, số lượng Adult/Discounted, thông tin liên hệ và tổng tiền ước tính.
-- **Dữ liệu hiển thị:** selection session, `seatIds`, `requestKey`, contact và dữ liệu authoritative được backend trả về sau khi tạo booking.
-- **Nút thao tác:** "Tiếp tục thanh toán", quay lại Seat Selection.
-- **Tiêu chí nghiệm thu:** Guest không phải đăng ký/đăng nhập; backend tạo đúng một pending booking atomically hoặc trả lỗi mà không giữ một phần ghế.
-
-<<<<<<< HEAD
-### 3.8. Payment Result
-=======
 ### 3.7. Payment Result
->>>>>>> origin/master
 
-- **Mục đích:** hiển thị kết quả payment đã được backend xác minh.
-- **Dữ liệu hiển thị:** payment status, appliedAt, booking status, mã booking và ticket availability.
-- **Tiêu chí nghiệm thu:** không hiển thị vé hoặc QR chỉ vì payment `succeeded` nếu chưa `applied`.
+- **Mục đích:** hiển thị độc lập payment status và booking status.
+- **Bố cục:** mã booking, thông tin suất/ghế, trạng thái payment, trạng thái booking và entitlement vé khi đã phát hành.
+- **Dữ liệu hiển thị:** dữ liệu server; không dựng QR cho payment succeeded nhưng chưa applied/confirmed.
+- **Nút thao tác:** đọc lại trạng thái, về Payment khi được phép, mở My Tickets/Booking History.
+- **Tiêu chí nghiệm thu:** chỉ payment applied + booking confirmed + entitlement issued mới hiển thị thành công đầy đủ.
 
-<<<<<<< HEAD
-### 3.9. Đăng nhập / Đăng ký
-=======
 ### 3.8. Đăng nhập / Đăng ký
->>>>>>> origin/master
 
-- **Mục đích:** đăng ký/đăng nhập cho Customer; không phải điều kiện của Guest Checkout.
+- **Mục đích:** cung cấp xác thực tùy chọn cho Customer; Guest Checkout không bị chặn bởi màn hình này.
 - **Dữ liệu hiển thị:** form email, mật khẩu; đăng ký chỉ cấp role `CUSTOMER`.
 - **Validation:** định dạng email, mật khẩu bắt buộc; lỗi xác thực hiển thị thông báo chung.
 - **Tiêu chí nghiệm thu:** đăng nhập thành công quay lại màn hình trước khi bị chuyển hướng.
 
-<<<<<<< HEAD
-### 3.10. Tài khoản (Booking của tôi)
-=======
 ### 3.9. Tài khoản (Booking của tôi)
->>>>>>> origin/master
 
-- **Mục đích:** xem lịch sử booking và vé của user.
+- **Mục đích:** Customer đã đăng nhập xem lịch sử booking và vé của chính mình; Guest chỉ đọc booking/vé qua guest-safe verification theo booking.
 - **Dữ liệu hiển thị:** danh sách booking với trạng thái (`pending`, `confirmed`, `expired`, `cancelled`), vé theo booking.
-- **Tiêu chí nghiệm thu:** Booking History chỉ hiển thị booking của Customer hiện tại; Guest xem booking/vé qua cơ chế guest-safe verification, không dùng danh sách tài khoản.
+- **Tiêu chí nghiệm thu:** chỉ hiển thị booking của user hiện tại (authorization ở backend).
