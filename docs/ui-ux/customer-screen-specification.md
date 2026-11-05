@@ -234,7 +234,11 @@ Không hiển thị stack trace, endpoint hoặc thông tin nội bộ cho Custo
 
 - **Mục đích:** cho Guest hoặc Customer chọn ghế trong selection session 5 phút trước khi tạo booking.
 - **Bố cục:** sơ đồ ghế theo hàng (row_label + seat_number), chú thích loại ghế đang được hỗ trợ, số lượng Adult/Discounted, tổng tiền ước tính và đồng hồ selection session.
+<<<<<<< HEAD
 - **Dữ liệu hiển thị:** trạng thái ghế (trống / đã bán / đang chọn), loại ghế, phụ thu, giá từng ghế.
+=======
+- **Dữ liệu hiển thị:** trạng thái ghế (trống / đã bán / đang chọn), loại ghế, phụ thu và giá thành phần nếu backend trả về.
+>>>>>>> origin/master
 - **Nút thao tác:** chọn/bỏ chọn ghế, chọn số lượng vé, "Tiếp tục".
 - **Validation:** chỉ ghế đơn đang khả dụng được chọn; ghế đã bị người khác giữ/bán → thông báo và cập nhật sơ đồ. Chọn ghế chưa tạo booking hoặc giữ ghế backend.
 - **Tiêu chí nghiệm thu:** selection session bắt đầu khi chọn ghế đầu tiên, không tự gia hạn; hết 5 phút → thông báo hết hạn và yêu cầu chọn lại.
@@ -248,7 +252,11 @@ Không hiển thị stack trace, endpoint hoặc thông tin nội bộ cho Custo
 - **Validation:** tổng tiền không được sửa; hết selection/payment window → chặn thao tác không hợp lệ theo trạng thái backend.
 - **Tiêu chí nghiệm thu:** payment result chỉ thành công khi payment đã applied, booking `confirmed`, allocation `sold` và vé đã phát hành.
 
+<<<<<<< HEAD
 ### 3.7. Checkout Information
+=======
+### 3.6. Checkout Information
+>>>>>>> origin/master
 
 - **Mục đích:** cho Guest hoặc Customer nhập thông tin liên hệ, rà soát lựa chọn và xác nhận tạo booking.
 - **Bố cục:** thông tin phim/suất, ghế, số lượng Adult/Discounted, thông tin liên hệ và tổng tiền ước tính.
@@ -256,20 +264,32 @@ Không hiển thị stack trace, endpoint hoặc thông tin nội bộ cho Custo
 - **Nút thao tác:** "Tiếp tục thanh toán", quay lại Seat Selection.
 - **Tiêu chí nghiệm thu:** Guest không phải đăng ký/đăng nhập; backend tạo đúng một pending booking atomically hoặc trả lỗi mà không giữ một phần ghế.
 
+<<<<<<< HEAD
 ### 3.8. Payment Result
+=======
+### 3.7. Payment Result
+>>>>>>> origin/master
 
 - **Mục đích:** hiển thị kết quả payment đã được backend xác minh.
 - **Dữ liệu hiển thị:** payment status, appliedAt, booking status, mã booking và ticket availability.
 - **Tiêu chí nghiệm thu:** không hiển thị vé hoặc QR chỉ vì payment `succeeded` nếu chưa `applied`.
 
+<<<<<<< HEAD
 ### 3.9. Đăng nhập / Đăng ký
+=======
+### 3.8. Đăng nhập / Đăng ký
+>>>>>>> origin/master
 
 - **Mục đích:** đăng ký/đăng nhập cho Customer; không phải điều kiện của Guest Checkout.
 - **Dữ liệu hiển thị:** form email, mật khẩu; đăng ký chỉ cấp role `CUSTOMER`.
 - **Validation:** định dạng email, mật khẩu bắt buộc; lỗi xác thực hiển thị thông báo chung.
 - **Tiêu chí nghiệm thu:** đăng nhập thành công quay lại màn hình trước khi bị chuyển hướng.
 
+<<<<<<< HEAD
 ### 3.10. Tài khoản (Booking của tôi)
+=======
+### 3.9. Tài khoản (Booking của tôi)
+>>>>>>> origin/master
 
 - **Mục đích:** xem lịch sử booking và vé của user.
 - **Dữ liệu hiển thị:** danh sách booking với trạng thái (`pending`, `confirmed`, `expired`, `cancelled`), vé theo booking.

@@ -47,7 +47,7 @@ Quy tắc:
 - Mục menu tương ứng route hiện tại có trạng thái active.
 - Link Movie List giữ trạng thái phim trong query string để có thể bookmark/chia sẻ.
 - Header không hiển thị dữ liệu private còn sót lại sau đăng xuất.
-- Khi Customer đang có booking `pending`, rời luồng qua logo/menu không tự hủy booking; UI cảnh báo thời gian giữ ghế vẫn tiếp tục chạy.
+- Khi Guest hoặc Customer đang có booking `pending`, rời luồng qua logo/menu không tự hủy booking; UI cảnh báo thời gian còn lại vẫn tiếp tục chạy.
 
 ### 3.2. Menu chính
 
