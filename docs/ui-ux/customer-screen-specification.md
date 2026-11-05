@@ -2,18 +2,20 @@
 
 ## 1. Mục đích
 
-Đặc tả chức năng và nội dung của từng màn hình Customer. Tài liệu trả lời câu hỏi: mỗi màn hình có gì?
+Đặc tả chức năng và nội dung của từng màn hình Guest/Customer. Tài liệu trả lời câu hỏi: mỗi màn hình có gì?
 
 ## 2. Danh sách màn hình
 
 1. Home (Danh sách phim)
-2. Movie Detail
-3. Showtime (Lịch chiếu)
-4. Seat Selection (Sơ đồ ghế)
-5. Payment
-6. Booking Confirmation
-7. Đăng nhập / Đăng ký
-8. Tài khoản (Booking của tôi)
+2. Movie List
+3. Movie Detail
+4. Showtime (Lịch chiếu)
+5. Seat Selection (Sơ đồ ghế)
+6. Checkout Information
+7. Payment
+8. Payment Result
+9. My Tickets / Booking History
+10. Đăng nhập / Đăng ký
 
 ## 3. Đặc tả từng màn hình
 
@@ -133,39 +135,45 @@ Không hiển thị stack trace, endpoint hoặc chi tiết kỹ thuật cho Cus
 
 ### 3.4. Seat Selection
 
-- **Mục đích:** cho khách chọn ghế và loại vé, khởi tạo booking giữ ghế 5 phút.
-- **Bố cục:** sơ đồ ghế theo hàng (row_label + seat_number), chú thích loại ghế (Standard/VIP/Couple), tổng tiền tạm tính, đồng hồ đếm ngược giữ ghế.
-- **Dữ liệu hiển thị:** trạng thái ghế (trống / đã bán / đang chọn), loại ghế, phụ thu, giá từng ghế.
-- **Nút thao tác:** chọn/bỏ chọn ghế, chọn loại vé cho từng ghế, "Đặt vé".
-- **Validation:** ghế Couple chọn theo đơn vị ghế đôi; ghế đã bị người khác giữ/bán → thông báo và cập nhật sơ đồ.
-- **Tiêu chí nghiệm thu:** giữ ghế thành công tạo booking; hết 5 phút → thông báo hết hạn, ghế được giải phóng.
+- **Mục đích:** cho Guest hoặc Customer chọn ghế trong selection session 5 phút trước khi tạo booking.
+- **Bố cục:** sơ đồ ghế theo hàng (row_label + seat_number), chú thích loại ghế đang được hỗ trợ, số lượng Adult/Discounted, tổng tiền ước tính và đồng hồ selection session.
+- **Dữ liệu hiển thị:** trạng thái ghế (trống / đã bán / đang chọn), loại ghế, phụ thu và giá thành phần nếu backend trả về.
+- **Nút thao tác:** chọn/bỏ chọn ghế, chọn số lượng vé, "Tiếp tục".
+- **Validation:** chỉ ghế đơn đang khả dụng được chọn; ghế đã bị người khác giữ/bán → thông báo và cập nhật sơ đồ. Chọn ghế chưa tạo booking hoặc giữ ghế backend.
+- **Tiêu chí nghiệm thu:** selection session bắt đầu khi chọn ghế đầu tiên, không tự gia hạn; hết 5 phút → thông báo hết hạn và yêu cầu chọn lại.
 
 ### 3.5. Payment
 
-- **Mục đích:** thực hiện thanh toán booking trong thời gian giữ ghế.
+- **Mục đích:** thực hiện thanh toán booking trong cửa sổ thanh toán 10 phút sau khi payment attempt được tạo.
 - **Bố cục:** tóm tắt booking (mã, suất, ghế, tổng tiền), chọn phương thức thanh toán, nút thanh toán.
-- **Dữ liệu hiển thị:** `booking.total_amount` (VND), thời gian còn lại, chi tiết từng detail (giá đã snapshot).
+- **Dữ liệu hiển thị:** `booking.total_amount` (VND), `paymentExpiresAt`, chi tiết booking và trạng thái payment do backend xác minh.
 - **Nút thao tác:** "Thanh toán", hủy booking.
-- **Validation:** tổng tiền không được sửa; hết thời gian giữ ghế → chặn thanh toán, hiển thị expired.
-- **Tiêu chí nghiệm thu:** thanh toán thành công chuyển sang Booking Confirmation; thất bại giữ booking `pending` cho phép retry theo chính sách.
+- **Validation:** tổng tiền không được sửa; hết selection/payment window → chặn thao tác không hợp lệ theo trạng thái backend.
+- **Tiêu chí nghiệm thu:** payment result chỉ thành công khi payment đã applied, booking `confirmed`, allocation `sold` và vé đã phát hành.
 
-### 3.6. Booking Confirmation
+### 3.6. Checkout Information
 
-- **Mục đích:** xác nhận đặt vé thành công, hiển thị vé.
-- **Bố cục:** mã booking, thông tin suất/ghế, danh sách vé với mã QR riêng cho từng vé (ghế Couple phát hành 2 vé riêng).
-- **Dữ liệu hiển thị:** `booking_code`, giờ chiếu, phòng, ghế, mã vé/QR, trạng thái vé `valid`.
-- **Nút thao tác:** về trang chủ, xem "Booking của tôi".
-- **Tiêu chí nghiệm thu:** số vé hiển thị đúng số ghế/capacity_units; trạng thái `confirmed` chỉ xuất hiện sau khi payment được áp dụng.
+- **Mục đích:** cho Guest hoặc Customer nhập thông tin liên hệ, rà soát lựa chọn và xác nhận tạo booking.
+- **Bố cục:** thông tin phim/suất, ghế, số lượng Adult/Discounted, thông tin liên hệ và tổng tiền ước tính.
+- **Dữ liệu hiển thị:** selection session, `seatIds`, `requestKey`, contact và dữ liệu authoritative được backend trả về sau khi tạo booking.
+- **Nút thao tác:** "Tiếp tục thanh toán", quay lại Seat Selection.
+- **Tiêu chí nghiệm thu:** Guest không phải đăng ký/đăng nhập; backend tạo đúng một pending booking atomically hoặc trả lỗi mà không giữ một phần ghế.
 
-### 3.7. Đăng nhập / Đăng ký
+### 3.7. Payment Result
 
-- **Mục đích:** xác thực người dùng trước khi đặt vé.
+- **Mục đích:** hiển thị kết quả payment đã được backend xác minh.
+- **Dữ liệu hiển thị:** payment status, appliedAt, booking status, mã booking và ticket availability.
+- **Tiêu chí nghiệm thu:** không hiển thị vé hoặc QR chỉ vì payment `succeeded` nếu chưa `applied`.
+
+### 3.8. Đăng nhập / Đăng ký
+
+- **Mục đích:** đăng ký/đăng nhập cho Customer; không phải điều kiện của Guest Checkout.
 - **Dữ liệu hiển thị:** form email, mật khẩu; đăng ký chỉ cấp role `CUSTOMER`.
 - **Validation:** định dạng email, mật khẩu bắt buộc; lỗi xác thực hiển thị thông báo chung.
 - **Tiêu chí nghiệm thu:** đăng nhập thành công quay lại màn hình trước khi bị chuyển hướng.
 
-### 3.8. Tài khoản (Booking của tôi)
+### 3.9. Tài khoản (Booking của tôi)
 
 - **Mục đích:** xem lịch sử booking và vé của user.
 - **Dữ liệu hiển thị:** danh sách booking với trạng thái (`pending`, `confirmed`, `expired`, `cancelled`), vé theo booking.
-- **Tiêu chí nghiệm thu:** chỉ hiển thị booking của user hiện tại (authorization ở backend).
+- **Tiêu chí nghiệm thu:** Booking History chỉ hiển thị booking của Customer hiện tại; Guest xem booking/vé qua cơ chế guest-safe verification, không dùng danh sách tài khoản.

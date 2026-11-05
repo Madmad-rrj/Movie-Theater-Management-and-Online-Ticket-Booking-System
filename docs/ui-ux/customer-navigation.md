@@ -2,7 +2,7 @@
 
 ## 1. Mục đích và phạm vi
 
-Tài liệu xác định menu, liên kết, route và hành vi điều hướng dành cho Customer. Navigation phải bám theo luồng trong `customer-user-flow.md`:
+Tài liệu xác định menu, liên kết, route và hành vi điều hướng dành cho Guest và Customer. Navigation phải bám theo luồng trong `customer-user-flow.md`:
 
 ```text
 Home
@@ -10,13 +10,13 @@ Home
   → Showtime
   → Seat Selection
   → Ticket Type
-  → Booking Confirmation
+  → Checkout Information
   → Payment
   → Payment Result
   → My Tickets
 ```
 
-`Booking Confirmation` là bước rà soát đơn trước Payment. `Payment Result` là màn hình kết quả sau thanh toán. `My Tickets` hiển thị vé đã phát hành; `Booking History` hiển thị toàn bộ booking của Customer theo trạng thái.
+`Checkout Information` là bước nhập thông tin và rà soát đơn trước Payment. Selection session do server kiểm soát tối đa 5 phút; sau khi tạo pending booking, Payment có cửa sổ riêng 10 phút. `Payment Result` là màn hình kết quả sau thanh toán. `My Tickets` hiển thị vé đã phát hành; `Booking History` hiển thị booking của Customer đã đăng nhập.
 
 ## 2. Nguyên tắc điều hướng
 
@@ -91,9 +91,9 @@ Các path dưới đây là hợp đồng điều hướng phía frontend; API e
 | Showtime | `/movies/:movieId/showtimes?date={date}` | Public | `movieId`, ngày tùy chọn |
 | Seat Selection | `/showtimes/:showtimeId/seats` | Public | `showtimeId` |
 | Ticket Type | `/booking/ticket-types` | Public; draft trong UI session | `showtimeId`, danh sách ghế draft |
-| Booking Confirmation | `/booking/confirmation` | Yêu cầu đăng nhập trước khi tạo booking | Booking draft + thông tin liên hệ |
-| Payment | `/bookings/:bookingId/payment` | Private, chủ booking | `bookingId` |
-| Payment Result | `/bookings/:bookingId/payment-result` | Private, chủ booking | `bookingId`; payment lấy/xác minh từ backend |
+| Checkout Information | `/booking/checkout` | Public; Guest hoặc Customer trong selection session | Booking draft + thông tin liên hệ |
+| Payment | `/bookings/:bookingId/payment` | Guest/Customer đã xác minh quyền sở hữu booking | `bookingId` |
+| Payment Result | `/bookings/:bookingId/payment-result` | Guest/Customer đã xác minh quyền sở hữu booking | `bookingId`; payment lấy/xác minh từ backend |
 | Account | `/account` | Private | User hiện tại |
 | My Tickets | `/account/tickets` | Private | User hiện tại; có thể nhận `bookingId` để highlight |
 | Booking History | `/account/bookings` | Private | User hiện tại, phân trang |
@@ -122,10 +122,9 @@ Nếu router thực tế dùng tên path khác, quan hệ màn hình, quyền tr
 | Từ | Thao tác/điều kiện | Đến | Dữ liệu giữ lại |
 |---|---|---|---|
 | Seat Selection | Chọn ít nhất một ghế hợp lệ và tiếp tục | Ticket Type | `showtimeId`, `selectedSeatIds` draft |
-| Ticket Type | Gán loại vé cho mọi ghế và tiếp tục | Booking Confirmation | Booking draft |
-| Booking Confirmation | Chưa đăng nhập | Login | `returnUrl=/booking/confirmation`; draft trong UI session |
-| Booking Confirmation | Backend tạo booking all-or-nothing thành công | Payment | `bookingId`, `expiresAt`; bỏ draft đã được chốt |
-| Payment | Có payment attempt; quay về từ cổng/kiểm tra kết quả | Payment Result | `bookingId`; backend phân giải payment hiện hành |
+| Ticket Type | Gán loại vé cho mọi ghế và tiếp tục | Checkout Information | Booking draft |
+| Checkout Information | Guest hoặc Customer xác nhận | Backend tạo booking all-or-nothing thành công | `bookingId`, `expiresAt`; bỏ draft đã được chốt |
+| Payment | Có payment attempt; cửa sổ thanh toán riêng 10 phút | Payment Result | `bookingId`; backend phân giải payment hiện hành |
 | Payment Result | Payment `succeeded` và applied; booking `confirmed` | My Tickets | `bookingId` để mở/highlight vé vừa mua |
 | Payment Result | Payment terminal thất bại, booking còn `pending`/còn hạn | Payment | `bookingId`; attempt mới chỉ khi backend cho phép |
 | Payment Result | Booking đã `expired` | Showtime hoặc Seat Selection | `movieId`/`showtimeId`; không dùng lại booking cũ |
@@ -146,8 +145,8 @@ Nếu router thực tế dùng tên path khác, quan hệ màn hình, quyền tr
 | Nhóm | Route | Hành vi khi chưa đăng nhập |
 |---|---|---|
 | Public | Home, Movie List, Movie Detail, Showtime, Seat Selection, Ticket Type | Cho phép truy cập; dữ liệu chọn chỉ là draft và chưa giữ ghế |
-| Guarded booking | Booking Confirmation khi xác nhận tạo booking | Chuyển Login, giữ `returnUrl` và draft trong UI session |
-| Private booking/payment | Payment, Payment Result, Booking Detail | Chuyển Login; sau đăng nhập backend kiểm tra quyền sở hữu/trạng thái |
+| Guest-safe booking | Checkout Information khi xác nhận tạo booking | Cho phép Guest Checkout; giữ guest-safe session và draft trong UI session |
+| Private booking/payment | Payment, Payment Result, Booking Detail | Guest dùng cơ chế xác minh booking; Customer dùng Login và backend kiểm tra quyền sở hữu/trạng thái |
 | Private account | Account, My Tickets, Booking History | Chuyển Login và quay lại route ban đầu sau đăng nhập thành công |
 
 Frontend xử lý độc lập:
@@ -162,8 +161,8 @@ Frontend xử lý độc lập:
 
 1. Kiểm tra `returnUrl` là route nội bộ hợp lệ.
 2. Nếu có `returnUrl`, quay lại đúng màn hình và tải lại dữ liệu authoritative.
-3. Với booking draft, xác minh lại phim/suất/ghế trước khi Customer xác nhận tạo booking.
-4. Với Payment/Payment Result/Booking Detail, backend kiểm tra user là chủ booking.
+3. Với booking draft, xác minh lại phim/suất/ghế trước khi Guest hoặc Customer xác nhận tạo booking.
+4. Với Payment/Payment Result/Booking Detail, backend kiểm tra Customer là chủ booking hoặc Guest đã qua cơ chế xác minh guest-safe.
 5. Nếu không có `returnUrl`, về Home.
 
 Không tự động gửi lại POST tạo booking hoặc payment chỉ vì đăng nhập thành công.
@@ -184,10 +183,10 @@ Không tự động gửi lại POST tạo booking hoặc payment chỉ vì đă
 
 ### 8.1. Trước khi tạo booking
 
-- Back/Forward được phép giữa Movie Detail, Showtime, Seat Selection, Ticket Type và Booking Confirmation.
+- Back/Forward được phép giữa Movie Detail, Showtime, Seat Selection, Ticket Type và Checkout Information.
 - Có thể khôi phục filter, ngày, vị trí danh sách và booking draft từ UI session.
 - Khi vào lại Showtime/Seat Selection, phải tải lại dữ liệu động; ghế/suất không còn hợp lệ bị loại khỏi draft và thông báo cho Customer.
-- Refresh ở Ticket Type/Booking Confirmation khi không còn draft: chuyển về Seat Selection hoặc Showtime với thông báo cần chọn lại.
+- Refresh ở Ticket Type/Checkout Information khi không còn draft: chuyển về Seat Selection hoặc Showtime với thông báo cần chọn lại.
 
 ### 8.2. Sau khi tạo booking
 
@@ -200,7 +199,7 @@ Không tự động gửi lại POST tạo booking hoặc payment chỉ vì đă
 ### 8.3. Deep link
 
 - Deep link public tải trực tiếp theo ID/query.
-- Deep link private chưa đăng nhập đi qua Login rồi quay lại.
+- Deep link Payment/Payment Result của Guest đi qua cơ chế xác minh booking; Customer chưa đăng nhập đi qua Login rồi quay lại.
 - ID sai → 404; tài nguyên thuộc user khác → 403.
 - Showtime vừa đóng bán vẫn có thể hiển thị thông tin nhưng hành động tiếp tục bị disabled theo backend.
 
@@ -222,7 +221,7 @@ Không tự động gửi lại POST tạo booking hoặc payment chỉ vì đă
 Danh sách màn hình Customer:
 
 - Duyệt phim: Home, Movie List, Movie Detail, Showtime.
-- Đặt vé: Seat Selection, Ticket Type, Booking Confirmation, Payment, Payment Result.
+- Đặt vé: Seat Selection, Ticket Type, Checkout Information, Payment, Payment Result.
 - Tài khoản: Account, My Tickets, Booking History, Booking Detail.
 - Xác thực/hệ thống: Login, Register, Not Found, Access Denied.
 
@@ -234,4 +233,4 @@ Nguồn đối chiếu:
 - `docs/ui-ux/customer-screen-api-mapping.md`
 - `docs/requirements/business-system-analysis.md`
 
-Các tài liệu màn hình/API hiện còn dùng thuật ngữ cũ cho Booking Confirmation và chưa liệt kê đủ Movie List, Ticket Type, Payment Result, My Tickets, Booking History. Khi cập nhật các tài liệu đó phải dùng cùng quan hệ màn hình và route guard được xác định tại đây.
+Các tài liệu màn hình/API hiện còn dùng thuật ngữ cũ cho Checkout Information và chưa liệt kê đủ Movie List, Ticket Type, Payment Result, My Tickets, Booking History. Khi cập nhật các tài liệu đó phải dùng cùng quan hệ màn hình và route guard được xác định tại đây.
