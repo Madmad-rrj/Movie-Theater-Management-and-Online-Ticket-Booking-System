@@ -1,8 +1,8 @@
-# Customer Screen Specification
+# Customer/Guest Screen Specification
 
 ## 1. Mục đích
 
-Đặc tả chức năng và nội dung của từng màn hình Customer. Tài liệu trả lời câu hỏi: mỗi màn hình có gì?
+Đặc tả chức năng và nội dung của từng màn hình Guest/Customer. Tài liệu trả lời câu hỏi: mỗi màn hình có gì?
 
 ## 2. Danh sách màn hình
 
@@ -22,7 +22,7 @@
 
 #### 3.1.1. Mục đích và phạm vi
 
-- Là điểm vào chính của website Customer.
+- Là điểm vào chính của website Guest/Customer.
 - Giới thiệu nhanh hai nhóm phim `now_showing` và `coming_soon`.
 - Cho phép mở Movie Detail hoặc chuyển sang Movie List đã lọc theo nhóm tương ứng.
 - Home không thay thế Movie List: không cung cấp toàn bộ phân trang/bộ lọc và không tự xếp hạng phim khi nghiệp vụ chưa quy định.
@@ -118,9 +118,9 @@ Không hiển thị stack trace, endpoint hoặc chi tiết kỹ thuật cho Cus
 
 #### 3.2.1. Mục đích và phạm vi
 
-- Cung cấp danh sách phim đầy đủ theo từng trạng thái được phép hiển thị cho Customer.
-- Cho phép Customer duyệt danh sách, chuyển trang và mở Movie Detail của một phim.
-- Chỉ hiển thị phim `now_showing` hoặc `coming_soon`; không đưa `ended`/`archived` vào danh sách Customer theo UC-06 và FR-MOVIE-001.
+- Cung cấp danh sách phim đầy đủ theo từng trạng thái được phép hiển thị cho Guest/Customer.
+- Cho phép Guest/Customer duyệt danh sách, chuyển trang và mở Movie Detail của một phim.
+- Chỉ hiển thị phim `now_showing` hoặc `coming_soon`; không đưa `ended`/`archived` vào danh sách theo UC-06A và FR-MOVIE-001.
 - Không tạo booking, giữ ghế hoặc xác nhận phim còn suất chiếu từ dữ liệu danh sách.
 
 **Route và quyền truy cập:** `/movies`, Public.
@@ -215,20 +215,20 @@ Không hiển thị stack trace, endpoint hoặc thông tin nội bộ cho Custo
 
 #### 3.3.1. Mục đích và phạm vi
 
-- Cung cấp thông tin đầy đủ của một phim để Customer quyết định có xem lịch chiếu hay không.
+- Cung cấp thông tin đầy đủ của một phim để Guest hoặc Customer quyết định có xem lịch chiếu hay không.
 - Là điểm chuyển từ Home/Movie List sang Showtime, giữ đúng `movieId` đang xem.
 - Chỉ hiển thị dữ liệu phim do backend trả về; không suy diễn lịch chiếu, khả năng còn ghế hoặc khả năng đặt vé.
 - Không tạo booking, giữ ghế hoặc yêu cầu đăng nhập.
 
 **Route và quyền truy cập:** `/movies/:movieId`, Public.
 
-**Yêu cầu liên quan:** FR-MOVIE-002; UC-06; `customer-user-flow.md` mục 3.2; `customer-navigation.md` mục 4 và 5.1; `customer-screen-api-mapping.md` mục 3.2.
+**Yêu cầu liên quan:** FR-MOVIE-002; UC-06A/UC-06B; `customer-user-flow.md` mục 3.2; `customer-navigation.md` mục 4 và 5.1; `customer-screen-api-mapping.md` mục 3.2.
 
 #### 3.3.2. Dữ liệu đầu vào và tải màn hình
 
 - Đọc `movieId` từ route và gọi `GET /api/movies/{movieId}` khi vào màn hình hoặc mở deep link.
 - Response `MovieDetail` là nguồn dữ liệu authoritative của màn hình; dữ liệu card đã giữ từ Home/Movie List chỉ có thể dùng làm placeholder trong lúc tải, không thay thế response chi tiết.
-- Khi Customer chọn xem lịch chiếu, chỉ chuyển `movieId`; Showtime phải tải lịch hiện tại từ backend.
+- Khi Guest/Customer chọn xem lịch chiếu, chỉ chuyển `movieId`; Showtime phải tải lịch hiện tại từ backend.
 - Backend quyết định phim có tồn tại và được phép công khai. Frontend không tự cho phép phim dựa trên dữ liệu cache cũ.
 
 #### 3.3.3. Thông tin hiển thị
@@ -247,7 +247,7 @@ Không hiển thị stack trace, endpoint hoặc thông tin nội bộ cho Custo
 | `trailerUrl` | Link/nút xem trailer khi có URL sử dụng được | NULL/không dùng được thì ẩn hành động trailer |
 | `status` | Nhãn "Đang chiếu" hoặc "Sắp chiếu" theo giá trị backend | Không đổi trạng thái dựa trên ngày phía client |
 
-Phạm vi Customer hiện xác nhận danh sách công khai cho `now_showing` và `coming_soon`. Việc phim `ended` có được mở bằng deep link hay không vẫn là câu hỏi mở của UC-06; màn hình không hard-code quyết định này và tuân theo kết quả API.
+Phạm vi Guest/Customer hiện xác nhận danh sách công khai cho `now_showing` và `coming_soon`. Phim `ended`/`archived` không thuộc discovery hiện hành; deep link phải tuân theo kết quả authoritative của API và không tự mở dữ liệu cache.
 
 #### 3.3.4. Cấu trúc màn hình
 
@@ -271,7 +271,7 @@ Phạm vi Customer hiện xác nhận danh sách công khai cho `now_showing` v�
 | Back | Có lịch sử Home/Movie List | Quay lại và khôi phục filter, trang, vị trí cuộn trong UI session khi có thể |
 | Mở deep link | `movieId` hợp lệ | Tải trực tiếp chi tiết từ API, không phụ thuộc màn hình trước |
 
-Không vô hiệu "Xem lịch chiếu" chỉ vì chưa biết có suất. Trường hợp chưa có suất được xác định sau khi Showtime gọi API và hiển thị empty state. Dữ liệu phim hiện tại không được dùng để xác nhận suất còn bán.
+Không vô hiệu "Xem lịch chiếu" chỉ vì chưa biết có suất. Trường hợp chưa có suất được xác định sau khi Showtime gọi API và hiển thị empty state. Dữ liệu phim hiện tại không được dùng để xác nhận suất còn bán; màn hình không yêu cầu login.
 
 #### 3.3.6. Trạng thái giao diện và lỗi
 
