@@ -26,13 +26,13 @@ Header/main/footer căn theo cùng trục. Main tăng theo nội dung; footer đ
 | KH-02 Movie Detail | Poster trái, thông tin phải; mô tả theo chiều dài thật | Một hoặc hai cột tùy không gian thực là đề xuất UI | Poster → tiêu đề/thông tin → nội dung → chọn suất theo thứ tự đọc; không cắt mô tả hoặc mất nút. Trailer chỉ khi có dữ liệu. |
 | KH-03 Showtime | Nhóm ngày và suất rõ; giờ/phòng/giá cùng ngữ cảnh | Suất xuống hàng khi không đủ chỗ | Bộ ngày cuộn ngang trong khối hoặc Select theo thiết kế; danh sách suất xếp dọc, không mất trạng thái không còn bán. |
 | KH-04 Seat Selection | Sơ đồ trái rộng, tóm tắt phải; chú thích đi cùng sơ đồ | Sơ đồ toàn chiều rộng, tóm tắt bên dưới | Cuộn ngang riêng sơ đồ; tóm tắt ngắn và nút tiếp tục có thể bám đáy theo mục 4, chi tiết vẫn trong nội dung chính. |
-| KH-09 Ticket Type | Một hàng cho một đơn vị ghế, nhãn và Select gần nhau | Hàng dài có thể xếp dọc | Nhãn ghế/loại/số chỗ → lựa chọn loại vé → giá/điều kiện nếu có. Couple một đơn vị, không tách thành hai ô do màn hình nhỏ. |
-| KH-06 Booking Confirmation | Một cột rà soát, nút xác nhận sau thông tin | Giữ một cột, không tạo sidebar trống | Thông tin draft xuống dòng; giá dự kiến có nhãn; Back/xác nhận phân biệt rõ. Chưa tạo không có countdown/QR. |
+| KH-09 Ticket Type | Một hàng cho quantity Adult/Discounted và summary ghế | Hàng dài có thể xếp dọc | Nhãn số lượng → điều kiện/giá nếu có; không thay đổi nghiệp vụ theo breakpoint. |
+| KH-06 Checkout Information | Một cột contact và rà soát, nút xác nhận sau thông tin | Giữ một cột, không tạo sidebar trống | Thông tin draft xuống dòng; giá dự kiến có nhãn; selection session/confirmation phân biệt rõ. Chưa tạo booking không có booking countdown/QR. |
 | KH-05 Payment | Một cột gọn căn giữa, tóm tắt trước thao tác thanh toán | Giữ thứ tự nội dung | Một cột: mã/thông tin đơn → giá chốt → hạn/trạng thái → phương thức → hành động. Không tự thêm bottom bar thanh toán che thông báo. |
 | KH-10 Payment Result | Thông báo, mã/thông tin giao dịch và hành động theo trạng thái | Giữ một cột | Lời giải thích dài xuống dòng, không rút unknown thành icon; nút kiểm tra lại/xem vé/lịch sử chỉ theo điều kiện thực. |
 | KH-07 Login/Register | Form hẹp căn giữa, input một cột | Form vừa vùng nhìn | Một cột có nhãn/lỗi; khi bàn phím mở vẫn cuộn tới field/nút. Không ẩn điện thoại/validation chỉ để giảm chiều dài. |
 | KH-08 Booking History | Table hoặc danh sách thẻ là đề xuất; chi tiết gắn đúng đơn | Cho nội dung xuống dòng/chuyển thẻ nếu bảng không đủ chỗ | Ưu tiên thẻ có mã, ngày, trạng thái, tiền và thao tác. Nếu giữ bảng, chỉ cuộn ngang trong khối; không giấu cột quan trọng. |
-| KH-11 My Tickets | Nhóm theo đơn/suất, mỗi vé một thẻ và QR riêng | Giữ mã/QR đủ diện tích | Thẻ xếp dọc, Couple hiện đủ hai vé; không carousel giấu mã còn lại. Trạng thái valid/used/voided có chữ. |
+| KH-11 My Tickets | Nhóm theo booking/suất, thẻ vé hoặc booking-level QR do backend cấp | Giữ mã/QR đủ diện tích | Thẻ xếp dọc; không carousel giấu dữ liệu. Trạng thái valid/used/voided có chữ. |
 | KH-12 Profile | Form/vùng đọc hẹp, tách lịch sử; chỉ field được duyệt cho sửa | Một cột, lỗi cạnh field | Input và hành động trong vùng cuộn chính; không che “Lưu”/lỗi bởi bàn phím. Thiếu contract không biến thành form lưu giả. |
 
 Nếu dùng sidebar tài khoản trên desktop, mobile chuyển thành tabs/menu trong vùng tài khoản, giữ mục đang xem. Tabs dài chỉ cuộn trong khối; không tạo sidebar rỗng trên trang không dùng. Các mục My Tickets/Profile mới cần phối hợp Navigation, responsive không tự đặt URL hoặc mở rộng quyền.
@@ -42,7 +42,7 @@ Nếu dùng sidebar tài khoản trên desktop, mobile chuyển thành tabs/menu
 ### 4.1. Giữ hình học và thao tác
 
 - Giữ thứ tự hàng, số ghế và tương quan vị trí theo dữ liệu đã được chốt. Không tự bẻ một hàng ghế thành hai hàng khi thiếu chiều rộng vì sẽ sai sơ đồ phòng.
-- Vùng bấm ghế tối thiểu 44px theo đặc tả layout/component; không co toàn sơ đồ đến mức không chạm được. Couple có bề rộng phù hợp hai chỗ nhưng vẫn một vùng chọn/seatId.
+- Vùng bấm ghế tối thiểu 44px theo đặc tả layout/component; không co toàn sơ đồ đến mức không chạm được. Chỉ hỗ trợ ghế đơn trong phạm vi PA3.
 - Khi sơ đồ rộng hơn container, cuộn ngang **bên trong khối sơ đồ**; body, tóm tắt, nút, thông báo không bị kéo ngang cùng sơ đồ. Có dấu hiệu đọc được rằng còn nội dung bên cạnh.
 - Hàng/nhãn ghế và hướng màn hình phải còn nhận diện khi cuộn. Cách ghim nhãn hàng là đề xuất cần thử với dữ liệu hình học; không tự tạo lối đi/hướng màn hình từ seed hoặc màu nền.
 - Ghế available/selected/held/sold và bảo trì/inactive nếu API hỗ trợ có chú giải, nhãn/biểu tượng ngoài màu sắc. Không làm held thành chọn được khi đổi breakpoint.
@@ -71,7 +71,7 @@ Khi bàn phím nhập liệu/lớp phủ làm vùng nhìn thấp, điều chỉn
 
 QR giữ tỉ lệ, không bị crop, kéo giãn, làm mờ để vừa card hoặc phủ bằng nhãn trạng thái. Không cố định một số pixel cho mọi QR khi chưa có quy cách sinh/quét; cần nghiệm thu khả năng quét với mã thật sau tích hợp. Mã chữ luôn có thể đọc và xuống dòng an toàn nếu dài; ảnh lỗi vẫn giữ mã, ghế, trạng thái và thao tác đọc lại phù hợp.
 
-Couple có hai mã/thẻ độc lập; mobile dùng chiều dài trang để hiển thị đủ, không ghép QR hoặc chỉ hiện một mã đại diện. Xem vé không chuyển valid sang used; breakpoint không thay dữ liệu đã phát hành. Không bổ sung in/PDF/tải về hoặc gửi email chỉ để xử lý màn hình nhỏ.
+QR do backend cấp có thể ở cấp booking hoặc ticket theo contract; mobile dùng chiều dài trang để hiển thị đủ, không dựng QR đại diện ở client. Xem vé không chuyển valid sang used; breakpoint không thay dữ liệu đã phát hành. Không bổ sung in/PDF/tải về hoặc gửi email chỉ để xử lý màn hình nhỏ.
 
 ## 6. Form, menu và lớp phủ
 
@@ -107,12 +107,12 @@ Bảng dưới là các kịch bản **cần chạy khi có UI**, chưa phải b
 | RP-02 | Header/menu với tên tài khoản dài; đổi breakpoint khi drawer mở | Đủ mục được phép, đóng/mở/focus được; không còn backdrop chặn trang hoặc mất dữ liệu phiên. |
 | RP-03 | Home ít/nhiều phim, poster lỗi; chi tiết tên/mô tả dài | Grid 3/2/1, thông tin/nút đọc được; không méo ảnh, card giả hoặc cắt nội dung chính. |
 | RP-04 | Showtime nhiều ngày/suất, ngày rỗng và GET lỗi | Cuộn/chọn ngày rõ, giờ/phòng/giá đủ; empty khác lỗi; không mất trạng thái đóng bán. |
-| RP-05 | Sơ đồ rộng, ghế ở hai mép, hàng cuối, Couple và ghế không khả dụng | Hình học không bẻ hàng, vùng bấm ≥44px, chỉ sơ đồ cuộn ngang; Couple nguyên đơn vị và chú giải rõ. |
+| RP-05 | Sơ đồ rộng, ghế ở hai mép, hàng cuối và ghế không khả dụng | Hình học không bẻ hàng, vùng bấm ≥44px, chỉ sơ đồ cuộn ngang; trạng thái ghế rõ. |
 | RP-06 | Thanh tiếp tục mobile, tóm tắt dài và vùng an toàn | Không che ghế/lỗi/footer; tiếp tục chưa tạo booking; không có hai submit độc lập. |
 | RP-07 | Ticket Type/rà soát nhiều ghế, thiếu danh mục/báo giá/liên hệ chưa chốt | Hàng xếp dọc đọc được, lỗi đúng hàng; không có giá cuối/countdown/QR giả trước tạo. |
 | RP-08 | Payment đang gửi, attempt mở, countdown 0, lời giải thích dài | Giá/trạng thái và hành động thấy được; responsive không bật retry hoặc tự hủy/nhả ghế. |
 | RP-09 | Payment Result success/failed/unknown/GET lỗi | Có chữ giải thích, nút theo điều kiện; thông báo không bị cắt hoặc chỉ nằm trong toast. |
-| RP-10 | History nhiều đơn/mã dài và My Tickets nhiều vé/Couple | Đủ dữ liệu quan trọng, từng mã/QR rõ; trạng thái vé độc lập, không mất vé thứ hai. |
+| RP-10 | History nhiều đơn/mã dài và My Tickets nhiều vé | Đủ dữ liệu quan trọng, mã/QR rõ; không mất dữ liệu khi cuộn. |
 | RP-11 | Login/Register/Profile với lỗi trường, bàn phím và draft chưa lưu | Input/lỗi/nút tiếp cận được, resize giữ draft; không tự lưu hoặc báo đã lưu khi chưa có contract. |
 | RP-12 | Modal dài, dropdown sát mép, tabs dài, zoom và bàn phím | Không vượt vùng nhìn, thao tác đóng/focus tiếp cận được; X/Escape không gửi cancel. |
 | RP-13 | Resize/xoay trong lúc chọn ghế, POST chưa rõ hoặc payment đang chờ | Không mất state, đổi key, resubmit hoặc đổi booking/payment status. Phải đọc server khi cần xác minh. |

@@ -2,7 +2,7 @@
 
 ## 1. Mục đích
 
-Đặc tả chức năng và nội dung của từng màn hình Customer. Tài liệu trả lời câu hỏi: mỗi màn hình có gì?
+Đặc tả chức năng và nội dung của từng màn hình Guest/Customer. Tài liệu trả lời câu hỏi: mỗi màn hình có gì?
 
 ## 2. Danh sách màn hình Customer — CIN-SUB-048
 
@@ -19,21 +19,21 @@ API/DTO được nêu trong bộ tài liệu hiện còn ở mức Proposed. Đ�
 | Khám phá phim | KH-01 | Home / danh sách phim | Duyệt đang chiếu, sắp chiếu; chọn phim | Công khai | KH-02, KH-07, KH-08 |
 | Khám phá phim | KH-02 | Movie Detail | Xem thông tin và mở lịch của đúng phim | Công khai | KH-01, KH-03 |
 | Khám phá phim | KH-03 | Showtime | Chọn ngày và suất còn được bán | Công khai | KH-02, KH-04 |
-| Đặt vé | KH-04 | Seat Selection | Chọn đơn vị ghế cho một suất | Xem sơ đồ công khai theo endpoint dự kiến; tạo booking cần đăng nhập | KH-03, KH-09, KH-06 |
-| Đặt vé | KH-09 | Ticket Type | Gán một loại vé hợp lệ cho mỗi đơn vị ghế | Theo ngữ cảnh KH-04; gửi đặt cần đăng nhập | KH-04, KH-06 |
-| Đặt vé | KH-06 | Booking Confirmation | Rà soát draft và xác nhận tạo đơn trước thanh toán | Có thể rà soát draft; xác nhận tạo đơn cần Customer đã đăng nhập | KH-04, KH-09, KH-07, KH-05 |
-| Thanh toán | KH-05 | Payment | Bắt đầu thanh toán đúng đơn và số tiền chốt | Chủ booking đã đăng nhập | KH-06, KH-10, KH-08 |
-| Thanh toán | KH-10 | Payment Result | Xem kết quả payment và việc booking đã được xác nhận hay chưa | Chủ booking đã đăng nhập | KH-05, KH-11, KH-08 |
+| Đặt vé | KH-04 | Seat Selection | Chọn ghế trong selection session | Public; chưa tạo booking hoặc giữ ghế | KH-03, KH-09, KH-06 |
+| Đặt vé | KH-09 | Ticket Type | Chọn số lượng Adult/Discounted hợp lệ | Guest hoặc Customer trong selection session | KH-04, KH-06 |
+| Đặt vé | KH-06 | Checkout Information | Nhập contact, rà soát draft và xác nhận tạo đơn | Guest hoặc Customer; không yêu cầu đăng nhập | KH-04, KH-09, KH-05 |
+| Thanh toán | KH-05 | Payment | Bắt đầu thanh toán đúng đơn và số tiền chốt | Guest/Customer đã xác minh quyền sở hữu | KH-06, KH-10, KH-08 |
+| Thanh toán | KH-10 | Payment Result | Xem kết quả payment và việc booking đã được xác nhận hay chưa | Guest/Customer đã xác minh quyền sở hữu | KH-05, KH-11, KH-08 |
 | Xác thực | KH-07 | Đăng nhập / đăng ký | Tạo tài khoản Customer hoặc phiên xác thực | Công khai; đích quay lại theo ngữ cảnh | Các trang được bảo vệ, KH-01 |
 | Tài khoản | KH-08 | Booking History / chi tiết booking | Tra cứu mọi đơn của chính mình, kể cả pending/expired/cancelled | Customer đã đăng nhập, kiểm tra ownership | KH-05, KH-10, KH-11, KH-12 |
-| Tài khoản | KH-11 | My Tickets / chi tiết vé | Tra cứu vé đã được phát hành của chính mình | Chủ booking đã đăng nhập | KH-08, KH-10 |
+| Tài khoản | KH-11 | My Tickets / chi tiết vé | Tra cứu vé đã được phát hành của Customer | Customer đã đăng nhập; Guest dùng guest verification theo booking | KH-08, KH-10 |
 | Tài khoản | KH-12 | Profile | Xem và cập nhật hồ sơ trong phạm vi được cho phép | User đã đăng nhập, chỉ hồ sơ của mình | KH-07, KH-08 |
 
 ### 2.3. Ranh giới giữa các màn hình
 
 - Home dùng danh sách phim và phân nhóm; không tạo thêm màn Movie List trùng chức năng nếu không có nhu cầu giao diện riêng.
 - Seat Selection chọn ghế; Ticket Type gán loại vé cho từng ghế. Cả hai dùng chung lựa chọn trong phiên, không tạo hai booking hoặc hai đồng hồ giữ ghế.
-- **Booking Confirmation KH-06 là bước rà soát trước tạo booking/thanh toán:** KH-04 → KH-09 → KH-06 → KH-05 → KH-10 → KH-11. Nhấn xác nhận tại KH-06 tạo booking pending, không tự chuyển confirmed. Kết quả cuối thuộc KH-10; vé và chi tiết đơn đã xác nhận thuộc KH-11/KH-08.
+- **Checkout Information KH-06 là bước nhập contact và rà soát trước tạo booking/thanh toán:** KH-04 → KH-09 → KH-06 → KH-05 → KH-10 → KH-11. Guest không cần đăng nhập. Nhấn xác nhận tại KH-06 tạo booking pending, không tự chuyển confirmed. Kết quả cuối thuộc KH-10; vé và chi tiết đơn đã xác nhận thuộc KH-11/KH-08.
 - Thứ tự này theo Customer User Flow mới trên `master` (CIN-SUB-047). Bảng điều hướng trong `customer-navigation.md` của branch hiện tại còn dùng luồng rút gọn KH-04 → Payment → Confirmation; cần người phụ trách đồng bộ bảng đó. Việc gộp các bước trên cùng URL vẫn có thể là đề xuất UI nhưng phải giữ đúng trình tự và điều kiện.
 - Payment thao tác tạo/theo dõi attempt; Payment Result hiển thị kết quả. Payment `succeeded` không tự chứng minh booking `confirmed` hoặc vé đã phát hành.
 - Booking History liệt kê đơn ở mọi trạng thái; My Tickets chỉ trình bày vé đã phát hành, không biến đơn pending thành vé. Không tự thêm API danh sách vé chưa được chốt.
@@ -42,11 +42,11 @@ API/DTO được nêu trong bộ tài liệu hiện còn ở mức Proposed. Đ�
 
 ### 2.4. Quy tắc truy cập và điều hướng chung
 
-1. Public: Home, Movie Detail, Showtime; sơ đồ ghế có API đọc công khai. Không yêu cầu đăng nhập chỉ để xem phim/lịch.
-2. Tạo booking, thanh toán và đọc đơn/vé/hồ sơ cá nhân cần phiên hợp lệ. Chưa đăng nhập thì lưu đích nội bộ và chuyển KH-07; quay lại phải tải lại dữ liệu.
+1. Public: Home, Movie Detail, Showtime, Seat Selection, Ticket Type và Checkout Information; selection session/Guest Checkout không yêu cầu đăng nhập.
+2. Payment, Result và đọc booking/vé cần Customer ownership hoặc guest-safe verification. Account/History/Profile cần Customer đăng nhập.
 3. Backend kiểm tra role và ownership trên mọi tài nguyên riêng tư. Biết UUID, mã booking hoặc ticketCode không tạo quyền xem.
 4. Back/Forward và đổi màn hình không tự gửi lại POST, hủy đơn, giải phóng ghế hoặc gia hạn `expiresAt`.
-5. Chỉ chạy countdown sau khi backend tạo booking thành công; chọn ghế trong phiên chưa giữ ghế. Countdown về 0 chỉ yêu cầu kiểm tra trạng thái, không tự xác nhận expired/released.
+5. Selection session 5 phút bắt đầu khi chọn ghế đầu tiên; countdown booking chỉ chạy sau khi tạo booking. Payment attempt mở cửa sổ riêng 10 phút. Không tự xác nhận expired/released khi đồng hồ về 0.
 6. Chỉ một attempt `created`/`pending`/`unknown` được mở trên mỗi booking. Không tạo attempt mới vì chưa có kết quả từ cổng hoặc vì chuyển trang kết quả.
 7. Header có logo, nhóm phim và tài khoản theo phiên. Menu mới cho My Tickets/Profile là đề xuất điều hướng cần phối hợp; quyền truy cập vẫn áp dụng dù mở trực tiếp.
 
@@ -99,7 +99,7 @@ API/DTO được nêu trong bộ tài liệu hiện còn ở mức Proposed. Đ�
 
 ### 3.4. Seat Selection
 
-**KH-04 — CIN-SUB-055.** Chọn đơn vị ghế cho một suất; chọn cục bộ chưa giữ ghế. Xem sơ đồ theo API public dự kiến; tạo booking cần Customer đã đăng nhập.
+**KH-04 — CIN-SUB-055.** Chọn ghế đơn cho một suất; chọn cục bộ trong selection session, chưa giữ ghế. Guest và Customer đều được dùng flow này.
 
 #### Dữ liệu và vị trí ghế
 
@@ -111,7 +111,7 @@ API/DTO được nêu trong bộ tài liệu hiện còn ở mức Proposed. Đ�
 | Tình trạng vật lý | Hoạt động, bảo trì, ngừng hoạt động | Cần API biểu diễn độc lập; DTO hiện chưa có field đầy đủ — TBD phối hợp API. |
 | Loại vé / giá | Loại vé cho từng đơn vị ghế, phụ thu, giá server nếu có | Chuyển vùng KH-09; chưa có contract báo giá tổng trước booking. |
 
-Hiển thị nhãn hàng và số ghế theo dữ liệu; không hard-code số hàng, lối đi hoặc vị trí Couple từ seed. Nhãn hướng màn hình và bố trí lối đi cần dữ liệu/thiết kế đã thống nhất. Couple là một đơn vị hai chỗ, không có hai nút cho hai nửa ghế.
+Hiển thị nhãn hàng và số ghế theo dữ liệu; không hard-code số hàng, lối đi hoặc loại ghế chưa có trong contract. PA3 hiện chỉ hỗ trợ physical single-occupancy seats.
 
 #### Thao tác và giới hạn lựa chọn
 
@@ -119,17 +119,17 @@ Hiển thị nhãn hàng và số ghế theo dữ liệu; không hard-code số 
 |---|---|---|
 | Chọn ghế | Suất còn bán; ghế hoạt động và available | Đánh dấu selected trong phiên, thêm một đơn vị ghế vào tóm tắt. Không POST giữ riêng từng ghế. |
 | Bỏ chọn | Ghế đang selected, chưa tạo booking | Bỏ lựa chọn và loại vé gắn với ghế đó. Không tự hủy booking đã có. |
-| Chọn Couple | Cả đơn vị available | Một seatId, hai chỗ, dự kiến hai vé khi booking được xác nhận; không gửi hai item trùng seatId. |
+| Chọn ghế | Ghế đơn available | Đánh dấu selected trong selection session; không POST hold hoặc booking theo click. |
 | Chọn loại vé | Đã chọn ghế | Mở/tập trung KH-09, giữ cùng showtimeId và lựa chọn trong phiên. |
 | Tiếp tục | Ít nhất một ghế hợp lệ | Chuyển KH-09 để gán loại vé, sau đó KH-06 để rà soát; chưa POST tạo đơn tại click ghế hoặc nút chuyển bước. |
 | Quay lại / đổi suất | Không có mutation đang gửi | Giữ ngữ cảnh cần thiết; khi đổi suất phải xác nhận/chọn lại ghế của suất mới, không mang seatId cũ sang phòng khác. |
 
-Không cho chọn ghế held/sold/maintenance/inactive. Ghế được chọn phải khác nhau, thuộc phòng của cùng suất. Chưa có giới hạn tối đa ghế/booking đã chốt; không tự áp 6/8/10 vé, quy tắc ghế lẻ hoặc ép ngồi liền nhau. Số đơn vị ghế khác số chỗ: một Standard và một Couple là hai ghế, ba chỗ.
+Không cho chọn ghế held/sold/maintenance/inactive. Ghế được chọn phải khác nhau, thuộc phòng của cùng suất. Số lượng Adult/Discounted được tổng hợp ở cấp booking; giới hạn tối đa mặc định 8 theo PA3 và backend vẫn là authority.
 
 #### Tạo booking và chuyển bước
 
 1. Từ KH-04 sang KH-09 rồi KH-06, giữ lựa chọn cục bộ; chưa chạy countdown. Khi xác nhận tạo đơn ở KH-06 mà chưa đăng nhập thì chuyển KH-07, sau đăng nhập tải lại suất/ghế, không tự gửi POST đặt vé.
-2. Tại KH-06, Customer nhấn xác nhận để gửi `POST /api/bookings` với `showtimeId`, `requestKey`, `items` gồm `seatId`, `ticketTypeId`. Không gửi giá, mức giảm, status hoặc snapshot.
+2. Tại KH-06, Guest hoặc Customer nhấn xác nhận để gửi `POST /api/bookings` với selection session, `showtimeId`, `requestKey`, `seatIds`, quantity Adult/Discounted và contact theo contract. Không gửi giá, mức giảm, status hoặc snapshot.
 3. Tạo mới thành công nhận booking pending, details, giá chốt và `expiresAt`; chuyển KH-05 để xem snapshot và thanh toán. Countdown bắt đầu từ hạn server, không từ lúc mở sơ đồ.
 4. Retry cùng ý định dùng cùng key và nội dung. Replay trả booking cũ ở trạng thái hiện tại; confirmed thì xem kết quả/vé, expired/cancelled không tái mở.
 5. Timeout POST chưa chứng minh không có đơn. Giữ thông tin yêu cầu để khôi phục cùng key; cách khôi phục sau reload khi mất key còn cần contract, không tạo key mới mù.
@@ -147,7 +147,7 @@ Không cho chọn ghế held/sold/maintenance/inactive. Ghế được chọn ph
 #### Nghiệm thu Seat Selection
 
 - **SS-01:** Đúng hàng/ghế/loại; ghế không khả dụng không chọn được; trường vật lý chưa có được ghi TBD.
-- **SS-02:** Selected chưa held; Couple nguyên đơn vị; số ghế và số chỗ tách rõ.
+- **SS-02:** Selected chưa held; chỉ ghế đơn; số ghế khớp quantity theo contract.
 - **SS-03:** Hai khách cùng ghế chỉ một request giữ được; lựa chọn có ghế xung đột không giữ một phần.
 - **SS-04:** Retry cùng key không tạo đơn/hạn mới; timeout không tự phát sinh booking khác.
 - **SS-05:** Thành công dùng giá/hạn server, không gửi giá hoặc tự sửa booking cũ.
@@ -212,16 +212,16 @@ Tải lại trang khi state client trống không chứng minh không có attemp
 - **PA-05:** Hủy/đổi ghế chỉ hoàn tất sau backend; không hủy confirmed hoặc một phần.
 - **PA-06:** Nhà cung cấp, polling/return và khôi phục attempt được ghi TBD khi chưa có contract; không tự chọn cổng.
 
-### 3.6. Booking Confirmation
+### 3.6. Checkout Information
 
-**KH-06 — CIN-SUB-057.** Bước rà soát và xác nhận **trước khi tạo booking/thanh toán**. Thứ tự theo User Flow mới trên master: chọn ghế → loại vé → rà soát → tạo booking pending → Payment. Từ “Confirmation” là hành động Customer xác nhận lựa chọn; `booking.status = confirmed` chỉ có sau xử lý thanh toán hợp lệ ở backend.
+**KH-06 — CIN-SUB-057.** Bước nhập contact, rà soát và xác nhận **trước khi tạo booking/thanh toán**. Guest và Customer đều được dùng flow này; `booking.status = confirmed` chỉ có sau xử lý thanh toán hợp lệ ở backend.
 
 #### Dữ liệu rà soát
 
 | Dữ liệu | Yêu cầu |
 |---|---|
 | Phim, rạp, suất | Tên phim, rạp/phòng, ngày/giờ Việt Nam khớp movieId/showtimeId của draft. Dữ liệu truy cập trực tiếp còn thiếu DTO phải ghi TBD, không ghép từ phim khác. |
-| Ghế và loại vé | Nhãn ghế, loại ghế, loại vé và số chỗ của từng đơn vị; Couple vẫn một seatId. Bỏ ghế phải bỏ gán loại tương ứng. |
+| Ghế và quantity | Nhãn các ghế đơn và quantity Adult/Discounted; quantity phải khớp draft ghế. |
 | Giá trước tạo | Chỉ hiển thị giá dự kiến nếu có nguồn server và nhãn rõ. Contract báo giá tổng trước tạo chưa có; không tự tính tổng như giá cuối hoặc thay giá thiếu bằng 0. |
 | Liên hệ | Thông tin liên hệ theo nhu cầu User Flow; nguồn đọc, trường bắt buộc/được gửi và validation còn TBD trong contract booking. Không tự thêm field vào request hiện tại. |
 | Dữ liệu chưa tồn tại | Trước tạo chưa có bookingCode, expiresAt, giữ ghế hay vé. Không hiển thị countdown/QR hoặc lời nhắn “đã giữ ghế”. |
@@ -231,13 +231,13 @@ Tải lại trang khi state client trống không chứng minh không có attemp
 | Thao tác | Điều kiện | Kết quả mong đợi / phản hồi lỗi |
 |---|---|---|
 | Xem lại draft | Có đúng suất, ghế và loại vé từ KH-04/09 | Rà soát ngữ cảnh; thiếu dữ liệu thì chỉ rõ bước cần bổ sung, chưa cho submit. |
-| Xác nhận tạo đơn | Customer đã đăng nhập, draft đủ điều kiện, không có request cùng ý định đang gửi | Một POST booking với requestKey và payload hợp lệ; submitting, khóa nhấn lặp. Server kiểm tra toàn bộ. |
-| Cần đăng nhập | Chưa có phiên khi nhấn xác nhận | Giữ đích KH-06 và draft không nhạy cảm; login xong đọc lại suất/ghế và yêu cầu Customer xác nhận, không auto-POST. |
+| Xác nhận tạo đơn | Guest/Customer, draft/contact đủ điều kiện, không có request cùng ý định đang gửi | Một POST booking với requestKey và payload hợp lệ; submitting, khóa nhấn lặp. Server kiểm tra toàn bộ. |
+| Cần xác minh | Chưa có guest-safe scope hoặc phiên Customer khi đọc đơn riêng tư | Hoàn tất verification/login rồi đọc lại suất/ghế và yêu cầu xác nhận, không auto-POST. |
 | Quay lại chỉnh sửa | Chưa tạo đơn, không có kết quả tạo đang chưa rõ | KH-09 hoặc KH-04; giữ gán loại cho ghế vẫn còn hợp lệ. Đổi suất bỏ các seatId của suất cũ. |
 | Bỏ lựa chọn / rời luồng | Chỉ có draft, chưa gửi mutation hoặc đã xác định chưa có đơn | Bỏ draft theo xác nhận UI nếu cần; không gọi API cancel vì chưa có booking. |
 | Retry sau timeout | Còn giữ cùng key/payload; chưa xác định kết quả | Dùng cơ chế idempotency/khôi phục của API, không đổi key để tạo đơn khác. Mất key sau reload là khoảng trống contract cần xử lý. |
 
-Request đã mô tả là `POST /api/bookings` với `showtimeId`, `requestKey`, `items` gồm `seatId`, `ticketTypeId`; không gửi giá, mức giảm, status hay snapshot. Không có endpoint confirm riêng. Quy tắc fingerprint do backend/nhóm chốt, frontend không tự quyết định thuật toán chuẩn hóa.
+Request dùng selection session, `showtimeId`, `requestKey`, `seatIds`, quantity Adult/Discounted và contact theo API contract; không gửi giá, mức giảm, status hay snapshot. Không có endpoint confirm riêng. Quy tắc fingerprint do backend/nhóm chốt, frontend không tự quyết định thuật toán chuẩn hóa.
 
 Tạo mới thành công trả booking pending, giá snapshot và expiresAt; chuyển KH-05 rồi mới hiển thị countdown. Replay cùng key trả đơn cũ ở trạng thái thực: pending thì xem Payment, confirmed thì xem kết quả/vé, expired/cancelled thì xem lịch sử hoặc đặt đơn mới. Không khởi động lại hạn giữ.
 
@@ -251,14 +251,14 @@ Tạo mới thành công trả booking pending, giá snapshot và expiresAt; chu
 6. Hủy booking pending khác bỏ draft: nếu có attempt mở cần backend Query/Cancel và bằng chứng chưa thu tiền; đã thu/chưa rõ thì không báo đã hủy. Booking confirmed không có hủy/refund Customer trong MVP.
 7. Đơn expired/cancelled không tái mở; countdown bằng 0 không tự expired. Payment succeeded nhưng chưa applied/confirmed đi KH-10 để kiểm tra, không hiện vé. Đơn confirmed thiếu dữ liệu vé thì đọc lại/báo lỗi dữ liệu, không tạo ticket ở UI.
 
-#### Nghiệm thu Booking Confirmation
+#### Nghiệm thu Checkout Information
 
 - **BC-01:** Đủ context và draft có nguồn; giá trước tạo khác giá chốt, liên hệ/báo giá thiếu contract được ghi TBD.
 - **BC-02:** Nhấn xác nhận tạo đúng một booking pending qua backend; không tự confirmed, tạo payment hoặc phát vé.
 - **BC-03:** Back giữ phần draft hợp lệ trước tạo; sau tạo đọc snapshot, không sửa đơn hoặc reset hạn.
 - **BC-04:** Xung đột/timeout/expired/cancelled/không có quyền không bị hiển thị thành đặt thành công.
-- **BC-05:** Kết quả booking confirmed và vé được xem qua KH-10/08/11; Couple hai mã độc lập, không biến KH-06 thành một bước tạo vé.
-- **BC-06:** Điều hướng KH-04 → KH-09 → KH-06 → KH-05 đúng User Flow; gửi POST chỉ sau đăng nhập và xác nhận của Customer.
+- **BC-05:** Kết quả booking confirmed và vé được xem qua KH-10/08/11; không biến KH-06 thành một bước phát hành vé.
+- **BC-06:** Điều hướng KH-04 → KH-09 → KH-06 → KH-05 đúng User Flow; Guest/Customer chỉ gửi POST sau xác nhận.
 
 ### 3.7. Đăng nhập / Đăng ký
 
@@ -310,7 +310,7 @@ Lỗi tải có thử lại, khác danh sách rỗng. 401 cần đăng nhập; 4
 
 #### Mục đích và quyền truy cập
 
-Gán loại vé cho từng đơn vị ghế đã chọn của cùng suất. Đây có thể là vùng trong KH-04 hoặc bước liền sau; chưa chốt route riêng. Tạo booking vẫn yêu cầu đăng nhập; không có một quyền thanh toán khác cho bước chọn loại vé.
+Chọn quantity Adult/Discounted cho các ghế đơn đã chọn của cùng suất. Đây có thể là vùng trong KH-04 hoặc bước liền sau; chưa chốt route riêng. Guest và Customer dùng cùng selection session.
 
 #### Nội dung và số lượng
 
@@ -319,8 +319,8 @@ Gán loại vé cho từng đơn vị ghế đã chọn của cùng suất. Đâ
 | Ghế đã chọn | Nhãn ghế, loại ghế, số chỗ; không cho thêm seatId không thuộc lựa chọn hiện tại. |
 | Loại vé | ID, tên/mã, điều kiện áp dụng và còn hiệu lực từ server; endpoint `/api/ticket-types` mới ở mức Proposed, DTO chi tiết TBD. |
 | Adult / Student / Child | Là các mã danh mục được mô tả; điều kiện tuổi/giấy tờ/quyền lợi cụ thể chưa đủ chốt. Không coi ghi chú seed là quy trình xác minh hoàn chỉnh. |
-| Couple | Một đơn vị hai chỗ, bản đầu dùng Adult; không chọn Student cho một người và Adult cho người kia trong cùng detail. |
-| Số lượng | Số detail bằng số đơn vị ghế, không có quantity tùy ý. Số vé sau xác nhận theo sức chứa đã snapshot, không theo số lần tăng một bộ đếm. |
+| Adult/Discounted | Quantity tổng hợp ở cấp booking; không gán ticket category vào từng seat nếu contract hiện hành không yêu cầu. |
+| Số lượng | Tổng quantity phải khớp số ghế đơn đã chọn; mặc định tối đa 8 theo PA3. |
 | Giá và tổng | Dùng báo giá/snapshot từ server; không gửi discountPercent, unitPrice hoặc totalAmount để quyết định giá. |
 
 Một booking được dùng nhiều loại vé cho các ghế khác nhau, mỗi ghế chỉ một loại vé. Không tách thanh toán từng detail. Loại vé ngừng hoạt động hoặc không đủ điều kiện phải bị backend từ chối dù client còn giữ lựa chọn cũ.
@@ -330,14 +330,12 @@ Một booking được dùng nhiều loại vé cho các ghế khác nhau, mỗi
 Công thức sau giải thích giá do **backend** tính khi tạo booking; không yêu cầu frontend tự tính tổng để thay báo giá:
 
 ```text
-base_amount = giá cơ sở suất × sức chứa của đơn vị ghế
-surcharge_amount = phụ thu loại ghế, một lần cho mỗi detail
-discount_amount = round(base_amount × tỷ lệ giảm / 100, 0)
-unit_price = base_amount + surcharge_amount - discount_amount
-booking.total_amount = tổng unit_price của các detail
+base_amount = giá cơ sở suất × số ghế đơn
+discount_amount = quy tắc giảm do backend áp dụng cho quantity Discounted
+booking.total_amount = giá theo quantity và chính sách backend
 ```
 
-Giảm chỉ trên base_amount, không giảm phụ thu. Couple nhân hai phần giá cơ sở, phụ thu chỉ cộng một lần; unitPrice là giá cả đơn vị hai chỗ, không nhân thêm lần nữa trên UI. VND nguyên đồng. OQ-06 đã chọn Option B: detail có thể giá 0 nhưng tổng booking/payment phải dương; không có luồng xác nhận booking 0 đồng trong MVP.
+VND là số nguyên đồng. Không tự thêm phụ thu, coupon, Student/Child hoặc công thức Couple khi nguồn hiện hành không hỗ trợ.
 
 Chưa có contract báo giá tổng trước tạo booking: đánh dấu **TBD phối hợp API**, hiện các thành phần tham khảo có dữ liệu và ghi rõ giá chốt được trả khi tạo đơn. Không tự thêm API preview, phí đặt vé, coupon hoặc mức giảm mặc định.
 
@@ -354,14 +352,14 @@ Loading danh mục: khóa tiếp tục; danh mục rỗng: nêu chưa có loại
 #### Nghiệm thu Ticket Type
 
 - **TT-01:** Mỗi đơn vị ghế đúng một loại vé; số detail, số chỗ và số vé không bị gộp lẫn.
-- **TT-02:** Couple không bị tách loại vé hoặc nhân đôi phụ thu/giá cuối trên UI.
+- **TT-02:** Quantity Adult/Discounted khớp số ghế đơn và không bị nhân đôi khi responsive hoặc reload.
 - **TT-03:** Không tiếp tục khi thiếu danh mục/loại vé; backend kiểm tra lại điều kiện, không tin giá từ client.
 - **TT-04:** Quay lại không tạo booking và giữ lựa chọn còn hợp lệ; booking đã có dùng snapshot.
 - **TT-05:** Không tự đặt giới hạn vé/giảm giá/eligibility chưa chốt; thiếu báo giá được ghi TBD, không tạo tổng giả.
 
 ### 3.10. KH-10 — Payment Result — CIN-SUB-059
 
-**Mục đích:** thông báo kết quả lần thanh toán và kết quả xác nhận booking như hai dữ liệu độc lập. Chủ booking đã đăng nhập mới xem được; biết paymentId/bookingCode không thay quyền sở hữu.
+**Mục đích:** thông báo kết quả lần thanh toán và kết quả xác nhận booking như hai dữ liệu độc lập. Guest/Customer chỉ xem được sau guest-safe hoặc authenticated ownership verification.
 
 #### Dữ liệu và thời điểm đọc
 
@@ -406,8 +404,8 @@ Danh sách vé đã phát hành thuộc các booking của Customer hiện tại
 |---|---|
 | `ticketCode` | Mã nguyên server trả, dùng phân biệt từng vé; không tạo mã từ bookingCode. |
 | Booking và suất | Mã đơn, phim, ngày/giờ Việt Nam, phòng/rạp khi có dữ liệu; giữ thông tin lịch sử. |
-| Ghế | Nhãn ghế và thông tin đủ nhận diện; Couple có hai mã độc lập có thể cùng nhãn ghế. |
-| QR | QR của chính vé, giữ mã chữ khi ảnh không tải; payload/cấp ảnh cần contract thống nhất. |
+| Ghế | Nhãn các ghế đơn và thông tin đủ nhận diện. |
+| QR | Booking/ticket-level QR do backend cấp sau khi payment applied, booking confirmed và ticket entitlement đã phát hành; giữ mã chữ khi ảnh không tải. |
 | Trạng thái | valid “Chưa sử dụng”, used “Đã sử dụng”, voided “Đã vô hiệu hóa”; không dùng màu làm dấu hiệu duy nhất. |
 | Mốc thời gian | Phát hành/đã dùng/lý do void chỉ hiển thị khi API cho phép và có dữ liệu, không tự thêm ngày hiệu lực. |
 
@@ -418,7 +416,7 @@ Danh sách vé đã phát hành thuộc các booking của Customer hiện tại
 1. Vào trang: loading danh sách, chỉ lấy dữ liệu của phiên hiện tại; nếu nguồn danh sách chưa chốt, nêu TBD tích hợp và không tạo vé mẫu để lấp giao diện.
 2. Chọn vé: mở đúng mã và đọc lại chi tiết theo quyền, có thể dùng `GET /api/tickets/{ticketCode}`; dữ liệu QR/ngữ cảnh thiếu phải được thống nhất, không coi response vé riêng đã đủ toàn bộ thẻ.
 3. Xem booking: mở chi tiết KH-08 của chính vé. Quay lại danh sách giữ ngữ cảnh đọc nếu còn hợp lệ, làm mới trạng thái khi cần.
-4. Đọc/hiện QR không gọi validate và không chuyển valid thành used; thao tác soát vé thuộc Staff. Một vé Couple used không làm vé còn lại used.
+4. Đọc/hiện QR không gọi validate và không chuyển valid thành used; thao tác soát vé thuộc Staff.
 5. Sau đăng xuất/đổi tài khoản: xóa dữ liệu riêng tư trên UI. Không dùng cache của user trước để hiện nhanh.
 
 Rỗng chỉ sau khi nguồn danh sách được đọc thành công và xác nhận không có vé trong phạm vi truy vấn: “Bạn chưa có vé”, hành động xem phim/lịch sử. Khi dữ liệu còn một phần, không báo không có vé toàn bộ. Lỗi tải có thử lại; ảnh QR lỗi giữ mã chữ; 401/403/404 được phân biệt. Không hứa in/PDF/email, không hiện nút hủy/refund Customer khi chưa có nghiệp vụ.
@@ -427,7 +425,7 @@ Rỗng chỉ sau khi nguồn danh sách được đọc thành công và xác nh
 
 - **TK-01:** Không biến booking pending/expired/cancelled chưa có vé thành vé mua thành công.
 - **TK-02:** Chỉ vé của chính user; mở mã của người khác bị từ chối, không lộ dữ liệu cũ khi đổi phiên.
-- **TK-03:** Couple hai vé/QR riêng, trạng thái từng vé đúng; xem vé không soát vé.
+- **TK-03:** Chỉ hiển thị QR/entitlement do backend cấp sau confirmed/applied; xem vé không soát vé.
 - **TK-04:** Loading/rỗng/lỗi/ảnh lỗi rõ; danh sách một phần không được báo là toàn bộ.
 - **TK-05:** API danh sách, phân trang/lọc và QR còn thiếu được ghi TBD, không tự tạo contract hoặc dữ liệu.
 
@@ -496,7 +494,7 @@ Các thao tác click đều có cách kích hoạt bằng bàn phím tương đ�
 
 | Mã | Màn hình / thao tác | Điều kiện | Kết quả mong đợi | Phản hồi khi lỗi / thiếu điều kiện |
 |---|---|---|---|---|
-| AC-10 | KH-04: chọn/bỏ ghế | Available, vật lý hoạt động, suất còn bán; chưa có booking | Cập nhật selected cục bộ; Couple một đơn vị; bỏ ghế bỏ gán loại vé | Ghế không khả dụng có nhãn và disabled; chưa tải đủ dữ liệu thì chặn, không giả ghế trống. |
+| AC-10 | KH-04: chọn/bỏ ghế | Available, vật lý hoạt động, suất còn bán; chưa có booking | Cập nhật selected cục bộ; ghế đơn; bỏ ghế cập nhật quantity | Ghế không khả dụng có nhãn và disabled; chưa tải đủ dữ liệu thì chặn, không giả ghế trống. |
 | AC-11 | KH-04: tiếp tục / đổi suất | Có ít nhất một ghế để tiếp tục; đổi suất chỉ ở draft chưa gửi | Tiếp tục KH-09; đổi suất yêu cầu chọn ghế/loại vé cho suất mới | Chưa chọn thì chỉ lý do; không mang seatId phòng cũ sang suất mới hoặc gửi booking ngay. |
 | AC-12 | KH-09: chọn loại / tiếp tục / Back | Loại có trong nguồn hợp lệ, mỗi ghế một loại | Cập nhật đúng hàng; tiếp tục KH-06; Back giữ gán cho ghế còn chọn | Eligibility/loại hết hoạt động báo cạnh hàng, khóa tiếp tục; không tự đổi Adult hoặc tăng quantity ngoài seat list. |
 | AC-13 | KH-06: xác nhận tạo booking | Đã login, draft hợp lệ, không request đang gửi/chưa rõ | Một POST với requestKey; thành công → KH-05 dùng booking snapshot | Xung đột ghế toàn bộ quay chọn; timeout giữ cùng ý định; khác payload/cùng key không tự bỏ qua REQUEST_KEY_CONFLICT. |
@@ -513,7 +511,7 @@ Các thao tác click đều có cách kích hoạt bằng bàn phím tương đ�
 | Mã | Màn hình / thao tác | Điều kiện | Kết quả mong đợi | Phản hồi khi lỗi / thiếu điều kiện |
 |---|---|---|---|---|
 | AC-21 | KH-08: đổi trang / mở chi tiết / tiếp tục đơn | Phiên hợp lệ, metadata nguồn đúng; hành động dựa trạng thái mới nhất | Giữ trang khi Back; GET chi tiết trước hành động; pending tới Payment, confirmed tới vé | Filter/sort chưa có query thì ghi TBD; không lọc một trang như toàn bộ dữ liệu. Không cho sửa/hủy confirmed. |
-| AC-22 | KH-11: mở vé / QR / đọc lại | Vé của mình và dữ liệu đã phát hành | Hiển thị đúng mã, trạng thái; Couple hai vé riêng | QR lỗi giữ mã chữ; không gọi validate Staff, không biến used/voided thành valid. Nguồn danh sách toàn bộ còn TBD. |
+| AC-22 | KH-11: mở vé / QR / đọc lại | Booking confirmed và entitlement đã phát hành | Hiển thị đúng mã/QR do backend cấp và trạng thái | QR lỗi giữ mã chữ; không gọi validate Staff, không biến used/voided thành valid. Nguồn danh sách toàn bộ còn TBD. |
 | AC-23 | KH-12: nhập / lưu / bỏ chỉnh sửa | Field đã được cho sửa; có contract và draft hợp lệ | Dirty cục bộ; submit một lần; response thành công mới báo đã lưu | GET lỗi không gửi form trống; validation/save lỗi giữ draft; timeout cần xác minh; email/password không tự được sửa. |
 | AC-24 | Các trang: Back/Forward/refresh / mở trực tiếp | Đích nội bộ, phiên và quyền hợp lệ nếu private | Khôi phục từ id/draft phù hợp; GET dữ liệu động; không auto resubmit POST | Thiếu draft cho quay bước phù hợp; thiếu cơ chế khôi phục ghi TBD. Không reset expiresAt hoặc dùng cache tài khoản trước. |
 | AC-25 | Các khối: thử tải lại / resize / mở đóng menu | GET lỗi hoặc đổi cách bố trí | Retry đọc đúng tài nguyên; giữ state nghiệp vụ; menu không làm gửi form | Response cũ không ghi đè tài nguyên mới; breakpoint không tạo lại booking, mất lựa chọn hoặc sinh hai nút submit độc lập. |

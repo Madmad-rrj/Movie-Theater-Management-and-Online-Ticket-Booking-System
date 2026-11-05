@@ -84,7 +84,7 @@ Nếu ảnh đang tải hoặc không tải được, giữ vùng ảnh theo cá
 |---|---|---|
 | Trái | Logo, dẫn về trang chủ | Giữ tỉ lệ ảnh; không kéo giãn logo để lấp khoảng trống. Nếu chưa có tài sản logo, cách thay bằng tên ứng dụng là đề xuất thiết kế. |
 | Giữa / cạnh logo | “Phim đang chiếu”, “Sắp chiếu” | Các mục nằm cùng hàng nếu đủ rộng; đánh dấu mục hiện tại theo thông tin đang xem. |
-| Phải, chưa đăng nhập | “Đăng nhập”, “Đăng ký” | Nhóm thao tác rõ ràng, không chèn giữa các mục phim. |
+| Phải, Guest | “Đăng nhập”, “Đăng ký” tùy chọn | Guest vẫn có thể checkout; nhóm xác thực không chặn mục phim/đặt vé. |
 | Phải, đã đăng nhập | Tên người dùng và menu tài khoản | Menu có “Booking của tôi”, “Đăng xuất”; không tự thêm mục quản trị vào header Customer. |
 
 Header dùng cùng trục căn trái/phải với container nội dung. Nếu nền header trải toàn chiều rộng, phần nội dung bên trong vẫn căn theo container để logo và tiêu đề trang không lệch trục.
@@ -101,7 +101,7 @@ Header thu gọn thành logo và nút menu. Menu mở dưới dạng ngăn kéo 
 
 1. Phần đầu có tiêu đề menu và nút đóng dễ nhận biết.
 2. Phần điều hướng chứa nhóm phim đang chiếu/sắp chiếu, giữ cùng ý nghĩa với desktop.
-3. Phần tài khoản chứa đăng nhập/đăng ký hoặc tên tài khoản, booking của tôi và đăng xuất.
+3. Phần tài khoản chứa đăng nhập/đăng ký hoặc tên tài khoản, booking của tôi và đăng xuất; không coi header guard là security boundary.
 4. Nếu nội dung dài hơn chiều cao thiết bị, cuộn trong drawer; nút đóng luôn tiếp cận được.
 
 Không đưa form đăng ký, thông tin thanh toán hoặc toàn bộ lịch sử booking vào drawer toàn cục. Drawer là nơi điều hướng; dữ liệu và thao tác chính nằm tại màn hình tương ứng.
@@ -289,7 +289,7 @@ Khối tóm tắt rộng đủ cho nhãn ghế, loại vé và tiền xuống d�
 |---|---|
 | Nhãn hàng / số ghế | Đọc rõ, gắn đúng vị trí; giữ thứ tự hàng và ghế theo dữ liệu bố trí được cung cấp. |
 | Standard và VIP | Cùng đơn vị ghế một chỗ; hình thức phân biệt theo component, không thu hẹp vùng bấm để vừa trang. |
-| Couple | Biểu diễn nguyên một đơn vị hai chỗ, rộng hơn ghế đơn theo thiết kế; không vẽ thành hai nút chọn nửa ghế. |
+| Ghế | Biểu diễn ghế đơn theo dữ liệu backend; không tự thêm Couple/multi-person seat vào layout hiện hành. |
 | Chú thích | Phân biệt loại ghế và khả năng chọn; không chỉ dựa vào màu. Khi nhiều mục, cho xuống dòng trong vùng chú thích. |
 | Hướng màn hình / lối đi | Dựa trên bố trí đã được cung cấp. Nhãn hướng màn hình là đề xuất UI; không suy lối đi hoặc hàng Couple từ số ghế. |
 | Vùng cuộn ngang | Chỉ bao sơ đồ cần thiết; có dấu hiệu cho biết còn nội dung ngang. Không kéo thông tin suất và bảng tóm tắt đi theo sơ đồ. |
@@ -334,7 +334,7 @@ Khi kết quả đang được xác nhận hoặc đã qua hạn danh nghĩa, v�
 
 ### 5.6. KH-06 — Rà soát và xác nhận tạo đơn
 
-Theo Customer User Flow mới trên master, KH-06 đứng sau Ticket Type và trước Payment. Bố cục một cột: tiêu đề rà soát → phim/rạp/phòng/ngày giờ → ghế và loại vé → tiền dự kiến có nguồn → liên hệ nếu contract được chốt → xác nhận tạo đơn và quay lại chỉnh sửa. Có thể dùng chung container với Payment nhưng phải là hai bước rõ ràng.
+Theo Customer User Flow, KH-06 (Checkout Information) đứng sau Ticket Type và trước Payment. Bố cục một cột: tiêu đề rà soát → phim/rạp/phòng/ngày giờ → ghế và quantity → contact → tiền dự kiến có nguồn → xác nhận tạo đơn và quay lại chỉnh sửa. Có thể dùng chung container với Payment nhưng phải là hai bước rõ ràng.
 
 | Khối | Quy tắc bố trí |
 |---|---|
@@ -345,7 +345,7 @@ Theo Customer User Flow mới trên master, KH-06 đứng sau Ticket Type và tr
 | Kết quả tạo | Thành công chuyển KH-05 với snapshot server và hạn giữ; lỗi ghế/validation hiển thị gần ngữ cảnh, timeout là chưa rõ kết quả. |
 | Quay lại khi đã có đơn | Hiện tham chiếu đơn và hướng tới Payment/chi tiết; không mở draft cũ thành form sửa snapshot hoặc tạo đơn lần hai. |
 
-Kết quả thanh toán thuộc KH-10; đơn đã confirmed và vé thuộc KH-08/KH-11. Không dùng tiêu đề Booking Confirmation cho cả bước rà soát lẫn trang vé thành công. Bảng điều hướng cũ cần người phụ trách Navigation đồng bộ theo thứ tự này.
+Kết quả thanh toán thuộc KH-10; đơn đã confirmed và vé thuộc KH-08/KH-11. Không dùng tiêu đề Booking Confirmation cho cả bước rà soát lẫn trang vé thành công.
 
 #### 5.6.1. Sơ đồ thứ tự nội dung theo bước
 
@@ -407,7 +407,7 @@ Mã dài, nhiều ghế và tên phim dài được xuống dòng trong thẻ. N
 Ticket Type dùng vùng chọn loại vé cạnh danh sách ghế đã chọn hoặc bước liền sau sơ đồ; không tự chốt route mới. Mỗi đơn vị ghế có một hàng: nhãn ghế, loại ghế/sức chứa, bộ chọn loại vé và giá do server cung cấp nếu có.
 
 - Desktop có thể đặt trong bảng tóm tắt; mobile dùng thẻ/hàng xếp dọc dưới sơ đồ, không nhồi toàn bộ bộ chọn vào bottom bar.
-- Một Couple là một đơn vị chọn với hai chỗ; không tách thành hai bộ chọn cho hai nửa. Bản đầu áp dụng Adult theo phạm vi hiện có.
+- PA3 hiện chỉ hỗ trợ ghế đơn; layout không tự tạo vùng Couple hoặc hai nửa ghế.
 - Ghi chú điều kiện vé giảm và cách tính phụ thu đặt cạnh lựa chọn. Chưa có báo giá thì hiện ghi chú chờ giá, không dùng tổng tự tính để lấp layout.
 - Nút quay lại chọn ghế và tiếp tục đặt ở cuối khối, giữ được lựa chọn khi đổi cách bố trí.
 
@@ -425,13 +425,13 @@ Một cột: tiêu đề kết quả → mã booking và thông tin payment đư
 Một danh sách vé thuộc tài khoản hiện tại, ưu tiên nhóm theo booking/suất và hiển thị từng thẻ vé. Khác KH-08, không dùng đơn pending/expired như một thẻ vé đã phát hành.
 
 - Mỗi vé có mã chữ, ghế, suất/phòng khi có dữ liệu, QR và trạng thái; khi mở chi tiết giữ đúng vé được chọn.
-- Couple có hai vé riêng trong cùng nhóm ghế, không dùng carousel giấu vé thứ hai.
+- Vé/QR chỉ hiển thị sau khi backend xác nhận payment applied, booking confirmed và ticket entitlement đã phát hành.
 - Mobile xếp dọc, giữ vùng mã/QR không bị cắt; lỗi ảnh vẫn có mã chữ.
 - Tải lần đầu, rỗng và lỗi nằm trong vùng danh sách. Chưa có API danh sách vé đầy đủ thì thể hiện giới hạn dữ liệu, không bố trí bộ lọc hoặc tổng số vé chưa được trả.
 
-Thẻ vé đặt mã chữ, nhãn ghế, QR và trạng thái trong cùng khối; thông tin booking nhóm riêng với mã từng vé. **Đề xuất bố cục:** hai vé Couple được nhóm cùng ghế, xếp dọc và có số thứ tự 1/2, 2/2 nếu nguồn dữ liệu hỗ trợ.
+Thẻ vé đặt mã chữ, nhãn ghế, QR và trạng thái trong cùng khối; thông tin booking nhóm riêng với mã vé. QR chỉ hiển thị sau khi backend xác nhận entitlement đã phát hành.
 
-QR có diện tích đủ để nhìn và quét ở thiết bị kiểm tra; kích thước cụ thể cần review cùng cách sinh QR, không tự chốt chuẩn pixel. Không đặt hai mã chồng nhau, ghép thành QR chung hoặc để badge che vùng mã. Danh sách dài dùng cuộn dọc chính; không nhốt vé trong carousel/khung nhỏ. Used/voided vẫn có mã và nhãn chữ theo dữ liệu, không chỉ đổi màu. Không bổ sung in/PDF/gửi email nếu chức năng chưa được chốt.
+QR có diện tích đủ để nhìn và quét ở thiết bị kiểm tra; kích thước cụ thể cần review cùng cách sinh QR, không tự chốt chuẩn pixel. Không để badge che vùng mã. Danh sách dài dùng cuộn dọc chính; không nhốt vé trong carousel/khung nhỏ. Used/voided vẫn có mã và nhãn chữ theo dữ liệu, không chỉ đổi màu. Không bổ sung in/PDF/gửi email nếu chức năng chưa được chốt.
 
 ### 5.12. KH-12 — Profile
 
@@ -558,7 +558,7 @@ Các hướng dẫn sau là **đề xuất thiết kế cần review**:
 - Logo, nút menu, nút đóng và nút biểu tượng có tên truy cập rõ, không chỉ có hình ảnh không nhãn.
 - Quan hệ nhãn–input–lỗi được giữ khi form đổi chiều rộng hoặc hiện thêm thông báo.
 - Ghế có thể nhận biết bằng nhãn hàng/số, loại và tình trạng có thể chọn; dùng chữ/hình thức bổ sung cho màu.
-- Trong một thẻ vé, mã chữ và QR gắn cùng nhãn ghế; không dựa vào vị trí trái/phải để phân biệt hai vé Couple.
+- Trong một thẻ vé, mã chữ và QR gắn cùng booking/ticket data do backend cấp; không dựa vào vị trí layout để suy trạng thái.
 - Tên phim, tổng tiền và thông báo quan trọng vẫn đọc được khi chữ tăng kích thước; không dùng chiều cao cố định để cắt phần tăng thêm.
 - Drawer/modal có điểm đóng dễ tiếp cận; nếu cuộn trong lớp phủ, không làm mất đường quay lại thao tác đóng.
 
@@ -578,10 +578,10 @@ Các mã `BL-*` dùng để kiểm tra tài liệu và thiết kế layout, khô
 | BL-08 | Bộ chọn ngày và item suất | Ngày đang chọn rõ; giờ/phòng/giá không bị cắt mất ý; rỗng vẫn đổi ngày được. |
 | BL-09 | Trang ghế desktop/tablet | Desktop hai vùng cạnh nhau; tablet tóm tắt xuống dưới; không ép sơ đồ thành dải quá hẹp. |
 | BL-10 | Sơ đồ ghế mobile | Cuộn ngang trong khối, vùng bấm tối thiểu 44px; không cuộn ngang toàn trang. |
-| BL-11 | Couple và chú thích | Couple là nguyên một đơn vị; nhãn/chú thích rõ, không chỉ phân biệt bằng màu hoặc vị trí. |
+| BL-11 | Ghế và chú thích | Ghế đơn có nhãn/chú thích rõ, không chỉ phân biệt bằng màu hoặc vị trí. |
 | BL-12 | Thanh đặt mobile | Tổng hợp/nút đọc được; không che hàng ghế cuối, lỗi, ghi chú, input hoặc footer. |
 | BL-13 | Trang thanh toán | Một cột; tóm tắt/giá/hạn giữ đặt trước hoặc gần hành động; hủy tách rõ với thanh toán. |
-| BL-14 | Vé và QR | Mỗi vé có mã/QR riêng; không cắt hoặc phủ mã; Couple hiển thị đủ hai vé, mã chữ còn đọc khi QR lỗi. |
+| BL-14 | Vé và QR | Mã/QR do backend cấp không bị cắt hoặc phủ; mã chữ còn đọc khi QR lỗi. |
 | BL-15 | Form xác thực | Nhãn, input, lỗi, nút theo một thứ tự đọc; form dài không bị ép vào khung cố định. |
 | BL-16 | Tài khoản và lịch sử | Booking dài/mã dài xuống dòng đúng, thao tác gắn đúng đơn; không giữ sidebar rỗng hoặc giấu cột quan trọng. |
 | BL-17 | Loading / rỗng / lỗi | Phản hồi đúng vùng, giữ khung trang; lỗi quan trọng không chỉ có trong toast. |
@@ -593,7 +593,7 @@ Các mục bổ sung của CIN-SUB-049:
 
 | Mã | Nội dung kiểm tra | Kết quả cần đạt |
 |---|---|---|
-| BL-21 | Ticket Type | Chọn theo từng đơn vị ghế; không tách Couple hoặc chen form vào bottom bar. |
+| BL-21 | Ticket Type | Chọn quantity theo booking; không chen form vào bottom bar. |
 | BL-22 | Payment Result | Phân biệt payment và booking; thông báo đủ chỗ, hành động theo điều kiện. |
 | BL-23 | My Tickets | Danh sách vé khác danh sách đơn; từng QR/mã độc lập, rỗng/lỗi đúng vùng. |
 | BL-24 | Profile | Form tách lịch sử, chỉ trường đã chốt được sửa, lỗi/lưu ở gần thao tác. |

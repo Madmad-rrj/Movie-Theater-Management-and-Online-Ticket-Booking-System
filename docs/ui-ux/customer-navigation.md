@@ -1,60 +1,86 @@
 # Customer Navigation
 
-## 1. Mục đích
+## 1. Mục đích và luồng
 
-Quy định cách người dùng di chuyển giữa các màn hình. Tài liệu trả lời câu hỏi: chuyển giữa các màn hình bằng cách nào?
+Tài liệu xác định navigation cho Guest và Customer. Luồng nghiệp vụ là:
 
-## 2. Cấu trúc điều hướng toàn cục
+```text
+Home → Movie List/Movie Detail → Showtime → Seat Selection
+  → Ticket Type → Checkout Information → Payment
+  → Payment Result → My Tickets
+```
 
-### 2.1. Header
+Selection session bắt đầu khi chọn ghế đầu tiên và có thời hạn gốc 5 phút. Sau khi tạo booking `pending`, payment attempt có cửa sổ riêng 10 phút. Không thời hạn nào được reset bởi Back/Forward, refresh, redirect hoặc webhook retry.
 
-- Logo → Home.
-- Liên kết: "Phim đang chiếu", "Sắp chiếu".
-- Khu vực tài khoản:
-  - Chưa đăng nhập: nút "Đăng nhập" / "Đăng ký".
-  - Đã đăng nhập: menu tên người dùng → "Booking của tôi", "Đăng xuất".
+## 2. Nguyên tắc
 
-### 2.2. Footer
+- Home, Movie List, Movie Detail, Showtime, Seat Selection, Ticket Type và Checkout Information là public.
+- Guest Checkout không yêu cầu đăng ký hoặc đăng nhập. Guest dùng guest-safe session và cơ chế xác minh booking khi đọc dữ liệu sau đó.
+- Payment, Payment Result và Booking Detail không phải dữ liệu công khai: Customer phải là chủ booking; Guest phải qua guest-safe verification.
+- Account, My Tickets và Booking History là vùng của Customer đã đăng nhập. Guest không có danh sách tài khoản.
+- Frontend không coi route guard là bảo mật; backend luôn kiểm tra authentication, authorization, ownership và trạng thái authoritative.
+- ID trên route chỉ định vị tài nguyên; refresh/Back/Forward không tự gửi lại POST booking/payment.
+- Không đặt booking payload, token, secret payment hoặc dữ liệu private vào URL.
 
-- Thông tin rạp, liên kết tĩnh (giới thiệu, điều khoản).
-- Footer không chứa điều hướng nghiệp vụ bắt buộc.
+## 3. Header và menu
 
-## 3. Quy tắc điều hướng giữa các trang
+| Thành phần | Guest | Customer | Đích/hành vi |
+|---|---|---|---|
+| Logo/Home | Hiển thị | Hiển thị | `/` |
+| Phim đang chiếu | Hiển thị | Hiển thị | `/movies?status=now_showing` |
+| Phim sắp chiếu | Hiển thị | Hiển thị | `/movies?status=coming_soon` |
+| Đăng nhập/Đăng ký | Hiển thị | Ẩn hoặc trong menu | Login/Register |
+| Menu tài khoản | Ẩn | Hiển thị | Account, My Tickets, Booking History, Logout |
 
-| Từ màn hình | Thao tác | Đến màn hình |
-|---|---|---|
-| Home | Click movie card | Movie Detail |
-| Movie Detail | "Chọn suất chiếu" | Showtime (với phim đang chọn) |
-| Showtime | Chọn suất còn bán | Seat Selection |
-| Seat Selection | "Đặt vé" (đã chọn ≥ 1 ghế) | Payment |
-| Payment | Thanh toán thành công | Booking Confirmation |
-| Booking Confirmation | "Về trang chủ" | Home |
-| Bất kỳ | Logo / "Phim đang chiếu" | Home |
+Rời luồng khi booking `pending` không tự hủy đơn hoặc nhả ghế. Sau logout, xóa dữ liệu private khỏi UI; không coi logout là cancellation.
 
-## 4. Điều hướng sau thao tác
+## 4. Route
 
-### 4.1. Sau đặt vé
+| Màn hình | Route | Quyền | Context |
+|---|---|---|---|
+| Home | `/` | Public | — |
+| Movie List | `/movies?status={status}&page={page}` | Public | `status`, `page` |
+| Movie Detail | `/movies/:movieId` | Public | `movieId` |
+| Showtime | `/movies/:movieId/showtimes?date={date}` | Public | `movieId`, ngày |
+| Seat Selection | `/showtimes/:showtimeId/seats` | Public | `showtimeId` |
+| Ticket Type | `/booking/ticket-types` | Public | draft ghế/số lượng |
+| Checkout Information | `/booking/checkout` | Public | draft + contact + selection session |
+| Payment | `/bookings/:bookingId/payment` | Guest/Customer đã xác minh | `bookingId` |
+| Payment Result | `/bookings/:bookingId/payment-result` | Guest/Customer đã xác minh | `bookingId` |
+| Account | `/account` | Customer | current user |
+| My Tickets | `/account/tickets` | Customer | current user, `bookingId` tùy chọn |
+| Booking History | `/account/bookings` | Customer | current user, phân trang |
+| Booking Detail | `/account/bookings/:bookingId` | Customer/Guest đã xác minh | `bookingId` |
+| Login/Register | `/login`, `/register` | Public | internal `returnUrl` tùy chọn |
 
-- Tạo booking thành công → đến Payment, đồng hồ đếm ngược giữ ghế tiếp tục chạy khi di chuyển trong phạm vi luồng đặt vé.
-- Rời khỏi luồng đặt vé (về Home) khi booking `pending`: hiển thị cảnh báo mất ghế nếu hết thời gian giữ.
+## 5. Chuyển màn hình
 
-### 4.2. Sau đăng nhập / đăng ký
+| Từ | Hành động | Đến | Dữ liệu giữ lại |
+|---|---|---|---|
+| Home/Movie List | Chọn phim | Movie Detail | `movieId`, filter |
+| Movie Detail | Chọn suất chiếu | Showtime | `movieId` |
+| Showtime | Chọn suất còn bán | Seat Selection | `movieId`, `showtimeId` |
+| Seat Selection | Chọn ghế | Ticket Type | `selectedSeatIds` draft |
+| Ticket Type | Chọn số lượng vé hợp lệ | Checkout Information | ghế, quantity, selection session |
+| Checkout Information | Xác nhận | Payment | `bookingId`, `expiresAt` |
+| Payment | Tạo/theo dõi attempt | Payment Result | `bookingId`, `paymentId` |
+| Payment Result | Đã applied/confirmed/ticket issued | My Tickets | `bookingId` |
+| Payment Result | Pending/unknown/failed chưa chốt | Payment hoặc trạng thái đang xác minh | `bookingId` |
 
-- Nếu được chuyển hướng từ luồng đặt vé (guarded route): quay lại đúng màn hình trước đó.
-- Nếu truy cập trực tiếp: về Home.
+## 6. Guard, deep link và lỗi
 
-### 4.3. Sau đăng xuất
+- Guest deep link Payment/Result/Detail phải qua guest verification; Customer chưa đăng nhập đi qua Login với `returnUrl` nội bộ.
+- `401` trên vùng Customer → Login; `403` → Access Denied; `404` → Not Found. Không lấy cache private để che lỗi.
+- Hết selection session trước khi tạo booking → Seat Selection/Showtime; không có booking để hủy.
+- Booking expired/cancelled → không quay lại Payment để dùng lại booking cũ.
+- Payment `pending`/`unknown` → Payment Result hiển thị đang xác minh, không tạo attempt song song.
+- Payment thành công và applied → My Tickets; `succeeded` nhưng chưa applied → không hiển thị vé/QR thành công.
+- Back/Forward/refresh không resubmit mutation; timeout POST phải giữ request key và đọc lại trạng thái.
 
-- Về Home; không giữ trạng thái đăng nhập; các trang cần đăng nhập chuyển hướng sang Đăng nhập.
+## 7. Tài liệu liên quan
 
-## 5. Back / Forward
-
-- Back/Forward của trình duyệt hoạt động theo lịch sử điều hướng; các màn hình dữ liệu động (Showtime, Seat Selection) tải lại dữ liệu khi vào lại.
-- Back khỏi Seat Selection/Payment không tự hủy booking; booking `pending` hết hạn theo thời gian giữ ghế (5 phút).
-- Không chặn Back/Forward; tránh trạng thái "form đã gửi" bị gửi lại (trang thanh toán dùng trạng thái phiên, không dùng resubmit).
-
-## 6. Điều hướng khi chưa đăng nhập
-
-- Các trang xem (Home, Movie Detail, Showtime): truy cập tự do.
-- Các trang cần đăng nhập (Payment, Booking Confirmation, Booking của tôi): chuyển hướng đến Đăng nhập và lưu URL gốc để quay lại sau khi đăng nhập thành công (xem 4.2).
-- Authorization luôn được backend kiểm tra; frontend chỉ ẩn/hiện điều hướng theo trạng thái đăng nhập, không dùng nó làm bảo mật.
+- `customer-user-flow.md`
+- `customer-screen-specification.md`
+- `customer-ui-state.md`
+- `customer-screen-api-mapping.md`
+- `../api/api-contract.md`

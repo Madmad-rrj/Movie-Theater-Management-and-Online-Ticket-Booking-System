@@ -1,4 +1,4 @@
-# Đặc tả component dùng chung của Customer — CIN-SUB-063
+# Đặc tả component dùng chung của Guest/Customer — CIN-SUB-063
 
 ## 1. Mục đích và quy ước
 
@@ -54,23 +54,23 @@ Loading Indicator, Empty State và Inline Feedback có phạm vi khối hoặc t
 
 ### 3.3. Seat, Seat Map và Ticket Type Row
 
-- Seat chỉ là một đơn vị bán. Couple rộng hơn và capacity 2, nhưng phát đúng một sự kiện chọn seatId; không phát hai item trùng ghế.
+- Seat Map chỉ hỗ trợ physical single-occupancy seats trong phạm vi PA3. Component phát lựa chọn seatId; không tạo hold hoặc booking khi click.
 - Selected là lựa chọn phiên, không phải held server. Held/sold/bảo trì/inactive không cho chọn; field tình trạng vật lý chưa có phải được phối hợp API, không suy từ thiếu phân bổ.
-- Seat Map hiển thị theo hàng/nhãn dữ liệu, không tự dựng lối đi, số cột hoặc hàng Couple. Mobile cuộn trong khối, vùng bấm tối thiểu 44px.
+- Seat Map hiển thị theo hàng/nhãn dữ liệu, không tự dựng lối đi hoặc hình học từ seed. Mobile cuộn trong khối, vùng bấm tối thiểu 44px.
 - Sau lỗi ghế xung đột, trang tải lại sơ đồ và thông báo toàn yêu cầu bị từ chối; component không giữ phần ghế còn lại như đã thành công.
-- Ticket Type Row chỉ gán một loại vé mỗi đơn vị, không có bộ đếm quantity độc lập với ghế. Couple bản đầu Adult; eligibility giảm giá còn TBD.
+- Ticket Type/Quantity Row quản lý quantity Adult/Discounted ở cấp booking theo selection session; backend mới quyết định validation và giá.
 - Đổi/bỏ ghế trước tạo cập nhật lựa chọn; sau tạo đơn không sửa snapshot thông qua component.
 
 ### 3.4. Booking Summary và Countdown
 
-Booking Summary có thể dùng chế độ lựa chọn trước tạo hoặc dữ liệu booking đã chốt, nhưng nhãn phải phân biệt rõ. Trước tạo chưa có contract báo giá thì không tự tính giá cuối; sau tạo chỉ hiện giá/snapshot server. Không cộng phí hoặc nhân lại giá Couple đã tính cho hai chỗ.
+Booking Summary có thể dùng chế độ lựa chọn trước tạo hoặc dữ liệu booking đã chốt, nhưng nhãn phải phân biệt rõ. Trước tạo chưa có contract báo giá thì không tự tính giá cuối; sau tạo chỉ hiện giá/snapshot server. Không tạo booking hoặc hold trong component.
 
 Countdown chưa xuất hiện như thời gian giữ khi chỉ có selection. Với booking pending đã có, hiển thị theo expiresAt; reload không reset. Khi 0:00, chỉ phát tín hiệu để trang đọc lại trạng thái một lần/phù hợp cơ chế đã chốt; không tự hủy booking, giải phóng ghế hoặc đổi payment failed. Đồng bộ thời gian server và polling còn cần contract, không cho client gia hạn tùy ý.
 
 ### 3.5. QR Ticket Card và danh sách booking
 
-- Một ticketCode là một thẻ vé; Couple hai thẻ/mã/QR độc lập. Cập nhật một vé used không ghi đè vé còn lại.
-- valid/used/voided có nhãn chữ; QR lỗi vẫn giữ mã chữ, không tự tạo QR từ bookingCode.
+- Chỉ hiển thị ticket/booking-level QR do backend cấp sau khi payment applied, booking confirmed và ticket entitlement đã phát hành. Không dựng QR từ bookingCode.
+- valid/used/voided có nhãn chữ; QR lỗi vẫn giữ mã chữ. PA3 không quy định Couple hoặc hai QR từ một seatId.
 - Không có API validate trong component Customer; xem vé không đổi trạng thái.
 - Booking List/Table nhận dữ liệu của phiên đã kiểm tra quyền. Row action dựa vào điều kiện hiện tại do trang xác minh, không chỉ summary cũ.
 - Pagination dùng metadata server, không tự tính tổng theo số item trang đang có. Chưa có pagination My Tickets thì không giả có đủ toàn bộ vé.
@@ -94,6 +94,6 @@ Không tự thêm refresh token, WebSocket, hệ thống state nặng, API báo 
 - **CP-AC-01:** Đủ component được yêu cầu (Movie Card, Button, Modal, Form, Table/List, Seat, Pagination, Toast) và bảng màn hình sử dụng, không trùng hệ trạng thái.
 - **CP-AC-02:** Dữ liệu/props, sự kiện và trách nhiệm hiển thị tách khỏi quyền/giá/transaction backend.
 - **CP-AC-03:** Loading/rỗng/lỗi/disabled/selected có hành vi rõ, không phát mutation trùng hoặc thành công giả.
-- **CP-AC-04:** Couple, countdown, QR, pagination và ownership đúng quy tắc từng màn hình.
+- **CP-AC-04:** Selection session, payment window, QR, pagination và ownership đúng quy tắc từng màn hình; responsive không thay đổi business state.
 - **CP-AC-05:** Nhãn/focus/lỗi đọc được, không dựa màu duy nhất; lớp phủ và responsive không làm mất hành động.
 - **CP-AC-06:** Tên thuộc tính UI không được mô tả là field API mới; thiếu dữ liệu và đề xuất vẫn được ghi rõ.

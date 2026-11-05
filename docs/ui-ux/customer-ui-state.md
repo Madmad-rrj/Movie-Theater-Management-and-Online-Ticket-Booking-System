@@ -18,7 +18,7 @@ Trạng thái tải dữ liệu, trạng thái tương tác và trạng thái ng
 | Error khi cập nhật | GET mới lỗi nhưng còn dữ liệu cũ | Giữ nội dung được phép xem và cảnh báo chưa cập nhật | Cho đọc lại; không dựa vào dữ liệu cũ để cam kết ghế/giá/trạng thái thanh toán. |
 | Not found | Backend xác nhận không tìm thấy | “Không tìm thấy thông tin”, liên kết về danh sách | Không suy 404 thành suất đã hủy, booking hết hạn hoặc vé vô hiệu. |
 | Forbidden | Backend từ chối quyền/ownership | “Bạn không có quyền xem thông tin này” | Không để lộ nội dung từ cache; cho về vùng được phép. |
-| Chưa xác thực / phiên hết hạn | Không có phiên hoặc API trả 401 tương ứng | Yêu cầu đăng nhập, lưu đích nội bộ hợp lệ | Xóa nội dung private đang hiển thị; trở lại phải GET mới. Không tự lặp POST sau đăng nhập. |
+| Chưa xác thực / phiên hết hạn | Không có authenticated session hoặc API trả 401 tương ứng | Guest vẫn được checkout; chỉ yêu cầu guest-safe verification cho booking/payment/ticket hoặc login khi vào Account | Xóa nội dung private đang hiển thị; trở lại phải GET mới. Không tự lặp POST sau đăng nhập. |
 | Dữ liệu chưa đủ / contract còn thiếu | Response thiếu trường bắt buộc, chức năng chưa có API | Nêu chưa tải đủ dữ liệu hoặc chức năng chưa sẵn sàng | Giữ phần có căn cứ, khóa thao tác phụ thuộc; không gán một trạng thái nghiệp vụ mới. |
 
 Một response chỉ được áp dụng cho đúng ID, ngày, trang và phiên đã yêu cầu. Nếu Customer đổi ngày liên tục, response cũ đến muộn không được ghi đè ngày mới. Khi logout/đổi tài khoản, kết quả request của phiên trước không được đưa lại vào UI.
@@ -44,14 +44,14 @@ Các quy tắc focus, modal và nút dùng chung theo component. Đóng modal b�
 
 | Lớp | Giá trị / điều kiện | Biểu hiện và thao tác |
 |---|---|---|
-| Lựa chọn trong phiên | selected / chưa chọn | Có thể chọn/bỏ trước tạo booking; không có countdown và không nói đã giữ ghế. |
+| Lựa chọn trong phiên | selected / chưa chọn | Có thể chọn/bỏ trước tạo booking; selection session bắt đầu ở ghế đầu tiên và mặc định 5 phút. Không nói đã giữ ghế. |
 | Phân bổ theo suất | `available` | Chỉ cho chọn khi ghế vật lý hoạt động và suất còn bán; server xác minh lại lúc tạo booking. |
-| Phân bổ theo suất | `held` | Không cho chọn như ghế trống; nếu thuộc đơn hiện tại thì xem trong snapshot của đơn, không sửa trực tiếp. |
+| Phân bổ theo suất | `held` | Không cho chọn như ghế trống; allocation `held` chỉ xuất hiện khi Checkout tạo booking pending, không phải khi click ghế. |
 | Phân bổ theo suất | `sold` | Không cho chọn; không suy từ màu selected. |
 | Ghế vật lý | Bảo trì / ngừng hoạt động | Không cho chọn, chú giải riêng; field API biểu diễn tình trạng này còn TBD, không tự thêm giá trị vào enum allocation. |
 | Xung đột lúc đặt | `SEAT_ALREADY_TAKEN` theo DTO Proposed | Từ chối toàn bộ yêu cầu; tải lại sơ đồ, bỏ các lựa chọn không còn hợp lệ, giữ phần draft còn hợp lệ để rà soát. |
 
-Couple luôn là một đơn vị chọn với `capacityUnits = 2`; chưa có hai ghế đơn độc lập để chọn nửa. Hai ticket sau phát hành có trạng thái riêng. Không suy “hết ghế” từ lỗi tải sơ đồ.
+PA3 hiện chỉ hỗ trợ physical single-occupancy seats. Không tạo trạng thái Couple/multi-person hoặc hai ticket từ một seatId trong UI hiện hành. Không suy “hết ghế” từ lỗi tải sơ đồ.
 
 ### 4.2. Booking và thời hạn
 
@@ -59,7 +59,7 @@ Couple luôn là một đơn vị chọn với `capacityUnits = 2`; chưa có ha
 |---|---|---|
 | Chưa tạo booking | “Lựa chọn chưa được giữ” | Sửa ghế/loại vé, rà soát ở KH-06, xác nhận tạo đơn. |
 | Tạo booking đang gửi | “Đang tạo đơn” | Khóa submit; giữ requestKey và payload của ý định đó. |
-| `pending`, còn hạn, không có attempt mở | Đang giữ ghế; tổng tiền đã chốt, countdown | Bắt đầu thanh toán hoặc yêu cầu hủy hợp lệ. |
+| `pending`, còn hạn, không có attempt mở | Đơn đã tạo; thời hạn còn lại kế thừa selection session | Bắt đầu payment hoặc yêu cầu hủy hợp lệ. |
 | `pending`, có `created`/`pending`/`unknown` | Đang chờ/xác minh giao dịch | Khóa tạo attempt mới; kiểm tra kết quả; hủy chỉ qua quy trình backend xác minh cổng. |
 | Countdown bằng 0 nhưng chưa có trạng thái mới | “Đang kiểm tra trạng thái đơn” | Khóa tạo attempt mới; GET trạng thái. Không tự đánh dấu expired hoặc mở ghế. |
 | `expired` | “Đơn đã hết hạn” | Không thanh toán/tái mở; xem lịch sử hoặc chọn suất/ghế cho đơn mới. |
@@ -67,7 +67,7 @@ Couple luôn là một đơn vị chọn với `capacityUnits = 2`; chưa có ha
 | `confirmed` | Đơn đã được xác nhận theo server | Xem vé đã phát hành; không sửa/hủy sau thanh toán trong phạm vi demo. |
 | Đơn confirmed nhưng vé chưa tải đủ | Chưa tải đủ thông tin vé | Đọc lại và báo lỗi dữ liệu; không chuyển đơn về pending, không tạo vé ở client. |
 
-Thời hạn giữ ghế danh nghĩa là 5 phút sau tạo booking; UI dùng `expiresAt` trả về, không tự cộng lại mỗi lần reload. Đồng hồ chỉ hiển thị thời gian, không thực hiện lifecycle. Quá hạn mà còn attempt mở có thể cần grace period và đối soát; giá trị grace period, chu kỳ đọc lại và cách đồng bộ giờ server còn cần thống nhất. Không hứa ghế được giải phóng ở đúng thời điểm client đếm hết.
+Selection session có thời hạn gốc 5 phút từ khi chọn ghế đầu tiên. Tạo booking không reset đồng hồ; booking `pending` kế thừa thời hạn còn lại. Payment attempt mở payment window riêng 10 phút. UI dùng các mốc server trả về, không tự cộng lại mỗi lần reload. Đồng hồ chỉ hiển thị thời gian, không thực hiện lifecycle. Grace period mặc định 10 giây chỉ phục vụ xác minh payment, không gia hạn payment window. Không hứa ghế được giải phóng ở đúng thời điểm client đếm hết.
 
 Replay cùng requestKey và cùng nội dung sử dụng booking hiện có ở trạng thái thực. `REQUEST_KEY_CONFLICT` yêu cầu kiểm tra lại ý định, không sửa nội dung dưới key cũ. Timeout tạo đơn giữ trạng thái chưa rõ; không đổi key để đặt lại mù. Contract khôi phục sau reload/mất key còn TBD.
 
@@ -107,7 +107,7 @@ DTO payment hiện chưa có `appliedAt`, `reconciliationStatus` và cơ chế t
 | KH-03 Showtime | Tải theo phim/ngày; “Chưa có suất chiếu” | Suất không còn bán disabled khi API xác nhận; lỗi GET khác rỗng | Chọn suất với `bookingAvailable` hợp lệ. |
 | KH-04 Seat Selection | Tải sơ đồ; rỗng/không còn ghế chọn được được phân biệt | Ghế held/sold/vật lý không hoạt động disabled; xung đột tải lại | Chọn/bỏ ghế cục bộ rồi tới KH-09. |
 | KH-09 Ticket Type | Tải danh mục; không có loại hợp lệ thì chặn tiếp | Thiếu loại cho một ghế, loại đã ngừng, eligibility chưa xác minh | Gán loại từng đơn vị rồi tới KH-06; chưa giữ ghế. |
-| KH-06 Booking Confirmation | Rà soát draft; xác nhận tạo booking có submitting | Draft không đủ/chưa login thì chưa POST; lỗi ghế trả lại lựa chọn | POST booking thành công → KH-05 với snapshot server. |
+| KH-06 Checkout Information | Nhập contact, rà soát draft; xác nhận tạo booking có submitting | Draft/contact không đủ thì chưa POST; lỗi ghế trả lại lựa chọn | POST booking thành công → KH-05 với snapshot server. |
 | KH-05 Payment | Đọc booking/attempt; không dùng empty cho booking không tìm thấy | Khóa khi attempt mở, hết điều kiện hoặc chưa tải được trạng thái | Khởi tạo/theo dõi attempt; tới KH-10 để xem kết quả. |
 | KH-10 Payment Result | Đang kiểm tra; không dùng empty cho unknown | Lỗi GET có retry đọc; không retry POST mù | Theo ma trận mục 5; tới vé/lịch sử khi phù hợp. |
 | KH-07 Login/Register | Loading trên submit, không có empty state danh sách | Lỗi trường, sai thông tin hoặc email trùng; khóa nhấn lặp | Login có phiên → đích nội bộ; register thành công → đăng nhập vì response chưa có token. |
@@ -119,7 +119,7 @@ DTO payment hiện chưa có `appliedAt`, `reconciliationStatus` và cơ chế t
 
 - **ST-01:** Có loading/refreshing/ready/empty/error/disabled/selected/validation/submitting; mỗi trạng thái có trigger, phản hồi và thao tác.
 - **ST-02:** Đủ KH-01..12; cùng một mã nghiệp vụ có nội dung nhất quán trên Payment, Result, History và chi tiết đơn.
-- **ST-03:** Ghế selected chưa held; Couple một đơn vị; xung đột không giữ một phần và không mất toàn bộ draft còn hợp lệ.
+- **ST-03:** Ghế selected chưa held; chỉ ghế đơn trong phạm vi PA3; xung đột không giữ một phần và không mất toàn bộ draft còn hợp lệ.
 - **ST-04:** Countdown bằng 0, timeout và lỗi GET không tự đổi trạng thái booking/payment/ghế.
 - **ST-05:** Attempt created/pending/unknown chặn tạo song song; succeeded chưa áp dụng không thành vé; expired/cancelled không tái mở.
 - **ST-06:** Logout/đổi tài khoản/response cũ không làm lộ dữ liệu; modal đóng không gửi hủy; form lỗi giữ input phù hợp.
