@@ -17,13 +17,13 @@ Danh mục phục vụ `CIN-SUB-068`..`CIN-SUB-071`: endpoint, method, dữ li�
 |---|---|
 | Public | Không cần phiên; chỉ dữ liệu được phép công khai, không trả dữ liệu khách hàng, booking hoặc payment của người khác. |
 | Phiên của chính mình | Một trong `CUSTOMER`, `STAFF`, `MANAGER`, `ADMIN` đang có hiệu lực; user hiện tại lấy từ phiên đã xác minh. Không nhận `userId` của client để chọn chủ thể. |
-| Customer/chủ sở hữu | Có role `CUSTOMER` đang hiệu lực và `booking.user_id = currentUser.id`; payment/ticket kiểm tra quyền qua booking. Biết mã tài nguyên không đủ quyền. |
+| Guest/Customer/chủ sở hữu | Customer phải có role `CUSTOMER` và `booking.user_id = currentUser.id`; Guest Checkout không cần đăng nhập nhưng phải qua guest-safe session và cơ chế xác minh quyền sở hữu booking. Payment/ticket kiểm tra quyền qua booking. Biết mã tài nguyên không đủ quyền. |
 | Staff/soát vé | Có role `STAFF` đang hiệu lực; chỉ tra cứu booking/vé phục vụ soát vé và thực hiện soát vé. Không bao gồm quản lý payment, hủy booking hoặc báo cáo. |
 | Admin/danh mục | Có role `ADMIN` đang hiệu lực; quản lý danh mục/phòng/ghế/suất theo các bất biến dữ liệu. `MANAGER` mới là đề xuất, chờ OQ-04, chưa tự động được cấp quyền. |
 | Admin/tài khoản | Chỉ role `ADMIN` đang hiệu lực được quản lý tài khoản/cấp thu hồi role. |
 | Gateway | Xác thực nguồn, chữ ký và chống phát lại theo giao thức cổng được chọn; không dùng token Customer/Staff thay chữ ký cổng. Chi tiết chờ OQ-01. |
 
-Khi đăng nhập, tài khoản phải `active`, chỉ role đang active được đưa vào token. Token đã phát hành có thể giữ quyền đến hết hạn theo BR-AUTH-004; không cam kết kiểm tra hiện hành/thu hồi tức thời chưa triển khai. Các role không kế thừa nhau mặc định: `ADMIN`/`MANAGER` không tự có quyền Customer hoặc Staff. Người có nhiều role phải thỏa policy tương ứng. Phân quyền theo chi nhánh ngoài demo; không tự đặt điều kiện phân công chi nhánh khi schema/policy chưa có.
+Khi đăng nhập, tài khoản phải `active`, chỉ role đang active được đưa vào token. Token đã phát hành có thể giữ quyền đến hết hạn theo BR-AUTH-004; không cam kết kiểm tra hiện hành/thu hồi tức thời chưa triển khai. Guest không có token nhưng vẫn được phép dùng các chức năng công khai và Guest Checkout. Các role không kế thừa nhau mặc định: `ADMIN`/`MANAGER` không tự có quyền Customer hoặc Staff. Người có nhiều role phải thỏa policy tương ứng. Phân quyền theo chi nhánh ngoài demo; không tự đặt điều kiện phân công chi nhánh khi schema/policy chưa có.
 
 ## 3. Xác thực và hồ sơ hiện tại
 
@@ -58,15 +58,15 @@ Truy vết: FR-MOVIE-*, FR-SHOW-*, UC-06/07, Customer User Flow §§3.1–3.5.
 
 Sơ đồ ghế chỉ là ảnh chụp khả dụng, không tạo hold. Việc chọn ghế/loại vé trên UI không cần endpoint ghi dữ liệu riêng; backend giữ ghế khi tạo booking thành công. API không tiết lộ người đang giữ ghế. Giá xem trước và điều kiện vé giảm giá theo `TBD` của contract/OQ-08.
 
-## 5. Booking và lịch sử của Customer
+## 5. Booking và lịch sử của Guest/Customer
 
 Truy vết: UC-01/10, FR-BOOK-*, BR-BOOK-001..010; Customer User Flow §§3.6, 3.9, 5.
 
 | Method | URL | Mục đích / query | Request → data | Quyền | Thành công; lỗi bổ sung |
 |---|---|---|---|---|---|
-| POST | `/api/bookings` | Tạo booking, giữ toàn bộ ghế; `requestKey` bắt buộc | `BookingCreate` → `Booking` | Role `CUSTOMER`; chủ booking lấy từ phiên | `201` mới, `200` replay; `409 SEAT_ALREADY_TAKEN`, `SHOWTIME_CLOSED`, `REQUEST_KEY_CONFLICT` |
-| GET | `/api/bookings/{bookingId}` | Booking, giá snapshot, vé và ngữ cảnh thanh toán của mình | — → `Booking` | Customer/chủ sở hữu | `200`; `404 BOOKING_NOT_FOUND` |
-| POST | `/api/bookings/{bookingId}/cancel` | Hủy toàn bộ booking `pending` theo lifecycle | — → `Booking` | Customer/chủ sở hữu | `200`; `409 BOOKING_NOT_CANCELLABLE` nếu confirmed/đang thu tiền/chưa xác minh an toàn |
+| POST | `/api/bookings` | Tạo booking từ selection session, giữ toàn bộ ghế; `requestKey` và thông tin liên hệ bắt buộc | `BookingCreate` → `Booking` | Guest Checkout hoặc Customer; chủ booking lấy từ guest-safe session hoặc phiên | `201` mới, `200` replay; `409 SEAT_ALREADY_TAKEN`, `SHOWTIME_CLOSED`, `REQUEST_KEY_CONFLICT` |
+| GET | `/api/bookings/{bookingId}` | Booking, giá snapshot, vé và ngữ cảnh thanh toán của mình | — → `Booking` | Guest/Customer đã qua cơ chế xác minh quyền sở hữu | `200`; `404 BOOKING_NOT_FOUND`, `403 FORBIDDEN` |
+| POST | `/api/bookings/{bookingId}/cancel` | Hủy toàn bộ booking `pending` theo lifecycle | — → `Booking` | Guest/Customer đã qua cơ chế xác minh quyền sở hữu | `200`; `409 BOOKING_NOT_CANCELLABLE` nếu confirmed/đang thu tiền/chưa xác minh an toàn |
 | GET | `/api/users/me/bookings` | Lịch sử phân trang; lọc `status`, sort theo contract | — → `Page<BookingSummary>` | Role `CUSTOMER`; chỉ booking của current user | `200`; không có booking trả mảng rỗng |
 
 Không nhận giá, trạng thái hoặc `userId` để tạo/hủy booking. Có payment `created`/`pending`/`unknown` thì không giải phóng ghế trước khi backend xác minh an toàn với cổng. Không cung cấp hủy từng ghế, chuyển chủ booking hoặc hủy booking `confirmed` trong demo.
@@ -77,8 +77,8 @@ Truy vết: UC-09/02/03/04, FR-PAY-*, BR-PAY-001..008.
 
 | Method | URL | Mục đích / query | Request → data | Quyền | Thành công; lỗi bổ sung |
 |---|---|---|---|---|---|
-| POST | `/api/payments` | Khởi tạo hoặc lấy lại attempt hợp lệ của booking | `PaymentCreate` → `Payment` | Customer/chủ sở hữu | Đề xuất `201` mới, `200` attempt hiện có theo UC-09; `409 BOOKING_EXPIRED`, `BOOKING_ALREADY_CONFIRMED` |
-| GET | `/api/payments/{paymentId}` | Trạng thái đã xác minh; phân biệt succeeded với applied | — → `Payment` | Customer/chủ sở hữu | `200`; `404` payment không tồn tại |
+| POST | `/api/payments` | Khởi tạo hoặc lấy lại attempt hợp lệ của booking; mở cửa sổ thanh toán riêng 10 phút | `PaymentCreate` → `Payment` | Guest/Customer đã qua cơ chế xác minh quyền sở hữu | Đề xuất `201` mới, `200` attempt hiện có theo UC-09; `409 BOOKING_EXPIRED`, `BOOKING_ALREADY_CONFIRMED` |
+| GET | `/api/payments/{paymentId}` | Trạng thái đã xác minh; phân biệt succeeded với applied | — → `Payment` | Guest/Customer đã qua cơ chế xác minh quyền sở hữu | `200`; `404` payment không tồn tại |
 | POST | `/api/payments/callback` | Nhận sự kiện cổng; giữ route cũ, wire protocol chờ OQ-01 | `ProviderCallback` → `ProviderAck` (**TBD**) | Gateway | HTTP/ACK cuối cùng **TBD** theo cổng; baseline cũ `200` hợp lệ/lặp, `400` malformed; chữ ký không hợp lệ bị từ chối |
 
 **TBD cần chốt:** DTO cũ trả `409 PAYMENT_ATTEMPT_OPEN` khi có attempt mở; UC-09 yêu cầu dùng lại hoặc trả trạng thái attempt hiện có. Đề xuất `200` cho attempt có thể dùng lại, không tạo attempt thứ hai; FE/BE cần phê duyệt trước triển khai. Lỗi không thể dùng lại và idempotency payment xem contract.
@@ -91,7 +91,7 @@ Truy vết: FR-ADMIN-BOOK-001, FR-TICKET-001/002, UC-05; OQ-03, OQ-04, OQ-UC-07.
 
 | Method | URL | Mục đích / query | Request → data | Quyền | Thành công; lỗi bổ sung |
 |---|---|---|---|---|---|
-| GET | `/api/tickets/{ticketCode}` | Đọc vé của mình hoặc tra cứu phục vụ soát vé | — → `Ticket` (chủ sở hữu) / `AdmissionTicket` (Staff) | Customer/chủ sở hữu **hoặc** Staff/soát vé | `200`; `404 TICKET_NOT_FOUND` |
+| GET | `/api/tickets/{ticketCode}` | Đọc vé của mình hoặc tra cứu phục vụ soát vé | — → `Ticket` (chủ sở hữu) / `AdmissionTicket` (Staff) | Guest/Customer đã qua xác minh quyền sở hữu **hoặc** Staff/soát vé | `200`; `404 TICKET_NOT_FOUND` |
 | POST | `/api/tickets/{ticketCode}/validate` | Soát vé một lần | — → `TicketValidation` | Staff/soát vé | `200`; `409 TICKET_ALREADY_USED`, `422` vé voided/sai suất/ngoài cửa sổ được cấu hình |
 | GET | `/api/manage/bookings` | `bookingCode` bắt buộc, khớp chính xác; chỉ dữ liệu soát vé | — → `AdmissionBooking[]` (0 hoặc 1 phần tử) | Staff/soát vé | `200`; không mở tìm kiếm khách/payment hàng loạt |
 
@@ -171,4 +171,4 @@ Các dòng dưới là mục truy vết, **không phải endpoint sẵn sàng g�
 
 Nguồn: [requirements](../requirements/business-system-analysis.md), [use cases](../requirements/use-cases.md), [architecture](../analysis%20and%20design/architecture.md), [database design](../../database/database-design.md), [database schema](../../database/database-schema.md), [customer user flow](../ui-ux/customer-user-flow.md), [screen–API mapping](../ui-ux/customer-screen-api-mapping.md).
 
-Customer User Flow định nghĩa **Booking Confirmation trước Payment**, rồi **Payment Result → My Tickets**; screen/navigation/mapping cũ còn gọi trang sau thanh toán là Confirmation. API dùng trạng thái backend để quyết định thành công. Dependency đồng bộ UI/DTO cũ và câu hỏi `TBD` được ghi trong [API contract](api-contract.md).
+PA3 định nghĩa selection session 5 phút trước khi tạo booking, sau đó Checkout Step 2 tạo pending booking và UC-09 mở cửa sổ thanh toán riêng 10 phút; cuối cùng là Payment Result → My Tickets. Screen/navigation/mapping cũ còn gọi trang sau thanh toán là Confirmation. API dùng trạng thái backend để quyết định thành công. Dependency đồng bộ UI/DTO cũ và câu hỏi `TBD` được ghi trong [API contract](api-contract.md).

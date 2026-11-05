@@ -9,10 +9,10 @@ Contract FE–BE tại prefix `/api`, **bản thiết kế để review**, khôn
 | Nguồn | Nội dung đối chiếu |
 |---|---|
 | [Requirements](../requirements/business-system-analysis.md) §3, §7–8, §13 | Phạm vi demo, FR/BR, actor, OQ-01..09 |
-| [Use cases](../requirements/use-cases.md) UC-01..11 | Booking, callback, worker, soát vé, đăng nhập, checkout, hủy pending, chatbot |
+| [Use cases](../requirements/use-cases.md) UC-01..05, UC-06A..UC-11, UC-12..UC-19 | Guest/Customer discovery, reservation and checkout, callback, worker, soát vé, account access, operational management and payment recovery |
 | [Business design](../analysis%20and%20design/business-system-design.md) §0–1; [Architecture](../analysis%20and%20design/architecture.md) §5–9, §12–14 | Ranh giới actor, JWT, service/transaction, gateway adapter |
 | [Database design](../../database/database-design.md) §12–17, §31–35; [Schema](../../database/database-schema.md); [SQL](../../database/database-schema.sql); [Relational model](../analysis%20and%20design/relational-model.md) | Kiểu/enum/constraint thực tế, snapshot, concurrency, payment/refund |
-| [Customer flow](../ui-ux/customer-user-flow.md) §2–8 | Chọn ghế → Booking Confirmation → Payment → Payment Result → My Tickets |
+| [Customer flow](../ui-ux/customer-user-flow.md) §2–8 | Chọn ghế → Checkout information → Payment → Payment Result → My Tickets |
 | [Screen specification](../ui-ux/customer-screen-specification.md), [Screen–API mapping](../ui-ux/customer-screen-api-mapping.md), [UI state](../ui-ux/customer-ui-state.md), [Navigation](../ui-ux/customer-navigation.md) | Dữ liệu màn hình, khôi phục phiên và chỗ chưa đồng bộ với flow mới |
 
 Không có refund, hủy booking đã thanh toán hoặc workflow hủy suất trong demo theo phạm vi DB design; schema có bảng/trạng thái tương lai không tự mở chức năng. Mâu thuẫn FR-MGT-ST-002 về hủy suất giữ tại TBD-12. UC-11 chatbot xung đột phạm vi architecture, theo TBD-16.
@@ -79,13 +79,13 @@ pagination chỉ có ở danh sách P. Trang vượt cuối trả mảng rỗng,
     "code": "VALIDATION_ERROR",
     "message": "Dữ liệu không hợp lệ",
     "details": [
-      { "field": "items[0].seatId", "code": "INVALID_FORMAT", "message": "ID phải là chuỗi số nguyên dương" }
+      { "field": "seatIds[0]", "code": "INVALID_FORMAT", "message": "ID phải là chuỗi số nguyên dương" }
     ]
   }
 }
 ```
 
-error.code/message/details bắt buộc. details là mảng `{ field: string|null, code: string, message: string }`, rỗng khi không có chi tiết. Lỗi ghế ghi vị trí items[i].seatId với code SEAT_ALREADY_TAKEN, không đổi kiểu details thành mảng ID. FE phân nhánh theo code; không trả SQL/stack trace/PII.
+error.code/message/details bắt buộc. details là mảng `{ field: string|null, code: string, message: string }`, rỗng khi không có chi tiết. Lỗi ghế ghi vị trí `seatIds[i]` với code SEAT_ALREADY_TAKEN, không đổi kiểu details thành mảng ID. FE phân nhánh theo code; không trả SQL/stack trace/PII.
 
 ### 3.2. HTTP status
 
@@ -150,14 +150,21 @@ SeatMap và mảng con details/tickets/genres/roles không phân trang riêng. G
 
 Nguồn: FR-BOOK-001..004, BR-BOOK-001..009; DB design §12–13, §31.1–31.2; UC-01/06/09.
 
-1. Chọn ghế trên UI là cục bộ. POST booking commit mới giữ ghế; checkout dùng booking đó, không tạo đơn thứ hai.
-2. User từ principal. Sau khóa, kiểm tra lại suất scheduled/còn bán, room/seat active, ghế đúng phòng, ticket type hợp lệ, items ít nhất một và không trùng seatId. Không tự thêm cutoff hoặc điều kiện vé giảm (TBD-03/04).
+1. Chọn ghế trên UI nằm trong selection session do server kiểm soát. Session 5 phút bắt đầu khi chọn ghế đầu tiên; POST booking tại Checkout Step 2 mới commit giữ ghế, checkout không tạo đơn thứ hai.
+2. Với Customer, chủ thể lấy từ principal; với Guest, lấy từ guest-safe selection session. Sau khóa, kiểm tra lại suất scheduled/còn bán, room/seat active, ghế đúng phòng, quantities và seatIds hợp lệ, không trùng ghế. Không tự thêm cutoff hoặc điều kiện vé giảm (TBD-03/04).
 3. Booking + mọi detail held trong một transaction; lỗi một ghế rollback toàn bộ. SQL ux_booking_detail_active_seat, FK ghép và unique(booking_id,seat_id) bảo vệ race/đúng phòng.
 4. Unique(user_id,request_key): cùng fingerprint trả 200 booking hiện tại, không gia hạn/reopen; khác trả 409. Backend tính SHA-256, không nhận fingerprint từ client. Retry timeout dùng key/body cũ; chuẩn hóa thứ tự/contact còn TBD-05.
-5. Giữ danh nghĩa 5 phút; createdAt là thời gian thực sau khóa, expiresAt do backend trả. Rút ngắn gần cutoff còn TBD-03; không gia hạn theo client.
+5. Booking kế thừa thời hạn còn lại của selection session; tạo booking không khởi động lại đồng hồ 5 phút. `createdAt` là thời gian thực sau khóa, `expiresAt` do backend trả và không gia hạn theo client.
 6. Snapshot giá/lựa chọn bất biến; đổi ghế phải hủy pending hợp lệ rồi tạo đơn khác; không reopen expired/cancelled.
 7. baseAmount=basePrice×capacityUnits; discountAmount=round(baseAmount×discountPercent/100) theo quy tắc làm tròn VND của DB; unitPrice=baseAmount+surchargeAmount−discountAmount. Phụ thu một lần/đơn vị bán, discount chỉ trên base. Tổng sum detail gốc, không tính lại sau release. Detail có thể 0 nhưng tổng booking/payment >0 (OQ-06).
-8. Couple một ghế/một detail capacity=2, một ticket type cho detail, hai vé/QR độc lập. Không quantity tùy ý hoặc tách bán nửa ghế. Điều kiện loại vé còn TBD-04.
+8. Phạm vi PA3 chỉ hỗ trợ ghế đơn; số lượng vé Adult/Discounted được tổng hợp ở cấp booking và không gán loại vé vào từng ghế. Giới hạn tối đa mặc định là 8 vé; Couple/capacity nhiều người không thuộc phạm vi hiện hành.
+
+### 5.1.1. Guest Checkout
+
+- Guest và Customer đều có thể duyệt phim, xem chi tiết, xem suất, chọn ghế và hoàn tất Checkout.
+- Guest Checkout không yêu cầu đăng ký hoặc đăng nhập. Backend liên kết booking với guest-safe session/request scope và lưu thông tin liên hệ đã xác thực trong booking.
+- Idempotency scope phải phân biệt principal đã xác thực với guest-safe session; không dùng `userId` giả hoặc cho phép Guest truy cập booking của người khác.
+- Quyền đọc booking/vé của Guest phải dùng cơ chế xác minh Guest được phê duyệt, không suy quyền chỉ từ mã công khai. Chi tiết wire contract còn TBD nếu chưa được chốt.
 
 ### 5.2. Hủy pending và expiry
 
@@ -283,11 +290,12 @@ Sơ đồ không trả bookingId, userId, contact hay thời hạn giữ của n
 
 | Schema | Trường / validation |
 |---|---|
-| `BookingCreate` | `showtimeId: Id`, `requestKey: Uuid`, `items: BookingItem[]` ít nhất một. `BookingItem={seatId: Id, ticketTypeId: Id}`; không trùng seatId, không quantity/price/status/userId. ID có thật/active và ghế đúng phòng; sai quan hệ 422, ghế vừa bị giữ 409. Contact payload chưa chốt TBD-06; không tự thêm trường. |
+| `BookingCreate` | `showtimeId: Id`, `selectionSessionId: Uuid`, `requestKey: Uuid`, `adultQuantity: integer`, `discountedQuantity: integer`, `seatIds: Id[]`, `contact: BookingContactWrite`. Tổng quantity ≥1, ≤ giới hạn cấu hình (mặc định 8), bằng số ghế đơn được chọn; không trùng `seatIds`, không nhận price/status/userId. Selection session phải thuộc Customer hoặc guest-safe request scope và còn hạn; sai quan hệ 422, ghế vừa bị giữ 409. |
 | `BookingSummary` | `bookingId: Id`, `bookingCode: Uuid`, `status: BookingStatus`, `showtime: BookingShowtime`, `createdAt: Instant`, `expiresAt: Instant`, `confirmedAt: Instant\|null`, `cancelledAt: Instant\|null`, `cancellationReason: string\|null`, `totalAmount: Money >0`, `currency: "VND"`, `ticketCount: integer >=0`. Lịch sử không nhúng QR/contact/payment; mở chi tiết để lấy. |
 | `BookingShowtime` | `id: Id`, `movieId: Id`, `movieTitle: string`, `cinemaId: Id`, `cinemaName: string`, `cinemaRoomId: Id`, `cinemaRoomName: string`, `startsAt: Instant`. Title/room từ snapshot suất; cinemaName từ danh mục. |
 | `Booking` | Toàn bộ BookingSummary + `contact: BookingContact`, `details: BookingDetail[]` ít nhất một, `tickets: Ticket[]`, `currentPayment: Payment\|null`. contact/tickets/payment chỉ trong projection chủ sở hữu. |
 | `BookingContact` | `email: string`, `phone: string\|null`, lấy contact_*_snapshot, không đọc profile hiện tại để thay lịch sử. Nguồn ghi snapshot khi tạo booking còn TBD-06. |
+| `BookingContactWrite` | `fullName: string`, `email: string`, `phone: string`; bắt buộc cho Guest Checkout và được kiểm tra/ghi snapshot khi tạo booking. Không dùng contact do client gửi để thay quyền sở hữu hoặc thay giá. |
 | `BookingDetail` | `seatId: Id`, `ticketTypeId: Id`, `seatLabel: string`, `seatTypeName: string`, `ticketTypeName: string`, `capacityUnits: 1\|2`, `baseAmount: Money >0`, `surchargeAmount: Money`, `discountPercent: Percent`, `discountAmount: Money`, `unitPrice: Money`, `allocationStatus: AllocationStatus`. Tất cả tên/giá/capacity là snapshot khi đặt. |
 | `AdmissionBooking` | `bookingCode: Uuid`, `status: BookingStatus`, `showtime: BookingShowtime`, `tickets: AdmissionTicket[]`. Không contact/email/phone/giá/payment/QR; tìm chính xác mã trả mảng 0 hoặc 1. |
 
@@ -297,7 +305,11 @@ currentPayment là đề xuất projection để refresh không làm mất payme
 {
   "showtimeId": "17",
   "requestKey": "2bd049bc-9768-4af7-9615-f0ca9d0c7a38",
-  "items": [{ "seatId": "102", "ticketTypeId": "1" }]
+  "selectionSessionId": "1f7e08cb-5dc8-47d1-82fb-5db9a4f6a1a0",
+  "adultQuantity": 1,
+  "discountedQuantity": 0,
+  "seatIds": ["102"],
+  "contact": { "fullName": "Nguyen Van A", "email": "customer@example.com", "phone": "0900000000" }
 }
 ```
 
@@ -335,8 +347,8 @@ Tạo mới trả 201; replay cùng user/key/body trả 200 với booking hiện
 
 | Schema | Trường / validation |
 |---|---|
-| `PaymentCreate` | `bookingId: Id`, `provider: string(30)` không rỗng và thuộc allowlist cổng đã cấu hình. Không tự chọn vnpay; cổng chưa chốt TBD-01. Không nhận amount/currency/userId/status/merchantRequestId/returnUrl. |
-| `Payment` | `paymentId: Id`, `bookingId: Id`, `provider: string`, `status: PaymentStatus`, `amount: Money >0`, `currency: "VND"`, `appliedAt: Instant\|null`, `reconciliationStatus: ReconciliationStatus`, `payUrl: string\|null`, `createdAt: Instant`. payUrl là URL HTTPS tin cậy do adapter tạo/xác minh, null khi chưa có hoặc không còn dùng được. Không expose raw payload/merchant secrets hoặc mã lỗi cổng chưa lọc. |
+| `PaymentCreate` | `bookingId: Id`, `provider: string(30)` không rỗng và thuộc allowlist cổng đã cấu hình. Không tự chọn vnpay; cổng chưa chốt TBD-01. Không nhận amount/currency/userId/status/merchantRequestId/returnUrl. Khi attempt hợp lệ được tạo, backend ghi riêng thời hạn thanh toán 10 phút; không gia hạn do redirect/webhook. |
+| `Payment` | `paymentId: Id`, `bookingId: Id`, `provider: string`, `status: PaymentStatus`, `amount: Money >0`, `currency: "VND"`, `appliedAt: Instant\|null`, `reconciliationStatus: ReconciliationStatus`, `payUrl: string\|null`, `createdAt: Instant`, `paymentExpiresAt: Instant`. payUrl là URL HTTPS tin cậy do adapter tạo/xác minh, null khi chưa có hoặc không còn dùng được. Không expose raw payload/merchant secrets hoặc mã lỗi cổng chưa lọc. |
 | `ProviderCallback` / `ProviderAck` | **TBD-01/11:** schema, required fields, signature, event identity, raw content type, HTTP ACK/retry theo cổng. Không dùng JSON user DTO để giả định chữ ký. Chưa đủ contract để tích hợp callback thực. |
 
 Không có payUrl không đồng nghĩa failed. created/pending/unknown đều ngăn tạo attempt mới; FE đọc lại currentPayment và trạng thái đã xác minh. Chính sách khôi phục payUrl và polling interval chưa chốt, không tự quy định thời gian. Lỗi đặc thù: 409 BOOKING_EXPIRED/BOOKING_ALREADY_CONFIRMED/BOOKING_NOT_PAYABLE; xung đột provider theo TBD-09. Không tự retry POST với attempt/reference mới sau timeout.
