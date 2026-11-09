@@ -1,227 +1,218 @@
 # Business System Design
 
-## 0. Phạm vi và chính sách dùng chung
+## Mục đích, baseline và phạm vi
 
-| Trạng thái | Quyết định |
+Bản soạn ngày 09/11/2026 mô tả actors, 28 use case, chín functional domain và các luồng phối hợp nghiệp vụ của Promethe-Phos. Nguồn hành vi là **Use-Case Specifications v2.4** (bản đính kèm `rup_ucspec-v2.4_final(5).docx`); nguồn kiến trúc là **SAD v3.15** (`rup_sad(1).docx`). Đường dẫn dự kiến trong repository: `pa/PA3-Group15/`; phải kiểm tra version/nội dung khi đổi tên file.
+
+Đây là tóm lược thiết kế, không thay thế toàn bộ Basic/Alternative Flows của DOCX và không xác nhận implementation. Không dùng các mã cũ “UC-01 Login”, “UC-02 Book Tickets” hoặc “UC-03A Cancel Booking”. Database và API phải dẫn xuất từ baseline này, không giới hạn nghiệp vụ theo schema cũ.
+
+| Chủ đề | Baseline hiện hành |
 |---|---|
-| **CONFIRMED — MVP/demo** | Hệ thống triển khai một chi nhánh ban đầu; hỗ trợ phim/thể loại, phòng/ghế, suất chiếu, đặt vé, thanh toán, phát hành/soát vé, tài khoản và vai trò cơ bản. |
-| **PROPOSED — data-model readiness** | Database có thể chứa nhiều Cinema và CinemaRoom thuộc từng Cinema; demo chỉ vận hành một Cinema. Phân quyền theo chi nhánh chưa nằm trong MVP. |
-| **CONFIRMED — booking** | Ghế được giữ khi booking pending được tạo thành công, giữ 5 phút tính từ lúc tạo booking. Hủy trước thanh toán giải phóng ghế. |
-| **CONFIRMED — sales** | Không áp dụng cutoff cố định 10/15/30 phút trước giờ chiếu; việc bán sát giờ được cho phép theo mốc vận hành được nhóm chốt. |
-| **OUT OF SCOPE — DEMO** | Customer cancellation sau thanh toán, refund, cinema-initiated showtime cancellation, và reconciliation phức tạp cho payment thành công đến muộn sau khi ghế đã được bán lại. |
-| **PROPOSED** | `MANAGER` là actor quản trị vận hành với quyền quản lý phim, phòng/ghế, suất chiếu và xem báo cáo; phạm vi quyền chi tiết vẫn cần được nhóm chốt. |
-| **OPEN** | Gateway cụ thể, mốc đóng bán cuối cùng, cửa sổ soát vé, điều kiện vé giảm, quyền staff theo chi nhánh và ranh giới chính xác giữa Manager/Admin. |
+| Cinema scope | Hỗ trợ cinema assignments theo role; seed/demo một rạp không loại bỏ phân quyền đa rạp |
+| Public / Guest | Có Guest Checkout; không bắt đăng nhập chỉ để hoàn tất đặt vé |
+| Reservation | Năm phút từ ghế đầu tiên; pending booking tạo ở Step 1 → Step 2 và kế thừa deadline |
+| Payment | MoMo, cửa sổ mười phút; grace mặc định mười giây để xác minh; unresolved tiếp tục được bảo vệ |
+| Pricing | Hai category Adult/Discounted ở cấp booking; base price theo cinema và surcharge theo physical seat |
+| Ticket | Một QR cấp booking, nhiều đợt admission theo quota; không Couple hay QR từng ghế |
+| Refund | Quản lý nghĩa vụ, review và ghi nhận verified manual completion trong phạm vi; thực chuyển tiền ngoài app trong demo |
+| Operational permission | Quyền cụ thể theo operation/role/cinema; không gộp Staff, Manager, Admin |
+| Chat | Informational-only; bounded backend-memory history theo SAD, không lưu PostgreSQL |
+| Implementation | Chưa kiểm tra code/live services trong lần soạn; không coi Designed là Implemented |
 
-Tài liệu này mô tả actors, use cases và luồng nghiệp vụ; chi tiết PK/FK, snapshot giá và ràng buộc concurrency nằm trong `database/database-design.md`.
+## Actors và ranh giới hệ thống
 
-## 1. Xây dựng Use Case
-
-### 1.1. Mục tiêu
-
-Use Case Diagram mô tả các chức năng mà hệ thống cung cấp cho từng Actor, đồng thời xác định phạm vi tương tác giữa người dùng và hệ thống quản lý rạp chiếu phim, đặt vé trực tuyến.
-
-Các chức năng được chia thành hai nhóm chính:
-
-- **Customer:** tra cứu phim, xem suất chiếu, chọn ghế, đặt vé, hủy booking trước thanh toán, thanh toán và tra cứu vé.
-- **Staff/Manager/Admin:** vận hành và quản trị dữ liệu theo role được cấp; phạm vi chi tiết của Manager là đề xuất, chưa thay thế authorization policy.
-
-### 1.2. Xác định Actor
-
-| Actor | Mô tả | Trách nhiệm chính |
-|---|---|---|
-| Customer | Khách hàng sử dụng hệ thống | Xem phim, chọn suất chiếu và ghế, đặt vé, thanh toán, xem vé |
-| Staff | Nhân viên rạp chiếu phim | Kiểm tra vé, xác thực vé và hỗ trợ nghiệp vụ tại rạp |
-| Manager | Quản lý vận hành | **PROPOSED:** quản lý phim, phòng/ghế, suất chiếu và xem báo cáo; không mặc nhiên có quyền quản trị tài khoản/phân quyền |
-| Admin | Quản trị viên hệ thống | Quản lý dữ liệu, tài khoản, phân quyền và cấu hình hệ thống |
-| Payment Gateway | Hệ thống thanh toán bên ngoài | Xử lý giao dịch thanh toán và gửi kết quả giao dịch về hệ thống |
-
-`Payment Gateway` là một hệ thống bên ngoài, không phải người dùng trực tiếp. Actor này chỉ tham gia các Use Case có liên quan đến thanh toán.
-
-### 1.3. Xác định Use Case
-
-**Nhóm Customer**
-
-| Use Case | Mô tả |
+| Actor | Trách nhiệm / giới hạn |
 |---|---|
-| Register Account | Đăng ký tài khoản khách hàng |
-| Login | Đăng nhập vào hệ thống |
-| Browse Movies | Xem danh sách phim |
-| View Movie Details | Xem thông tin chi tiết của phim |
-| View Showtimes | Xem các suất chiếu có sẵn |
-| Select Seats | Chọn ghế cho suất chiếu |
-| Book Tickets | Tạo đơn đặt vé |
-| Cancel Booking | Hủy booking pending trước khi thanh toán |
-| Make Payment | Thanh toán đơn đặt vé |
-| View Booking History | Xem lịch sử đặt vé |
-| View Ticket | Xem thông tin vé đã đặt |
+| Guest | Duyệt công khai, chọn/đặt/checkout và truy cập booking qua Guest authority an toàn; email/phone/code không đủ quyền |
+| Customer | Public/booking capabilities và lịch sử thuộc account; xác thực không tự chứng minh ownership của Guest booking |
+| Staff | Admission khi có STAFF role và Staff–Cinema assignment; hỗ trợ booking, gửi lại vé, review cancellation tại cinema được giao |
+| Manager | Quyền vận hành cinema được giao, layout/seat state/pricing/showtime/turnaround; ghi verified refund completion; không tự có Staff admission |
+| Admin | Các quyền quản trị được UC cho phép; không bypass payment safety, lịch chồng, quota hoặc kiểm tra bằng chứng tài chính |
+| Payment Gateway (MoMo) | Nhận yêu cầu thanh toán, cung cấp verified notifications/status; browser return không là chứng cứ tài chính |
+| System Worker | Tác nhân thời gian/internal execution cho expiration/reconciliation/delivery; không là public user role |
+| Email provider (Brevo) | Vận chuyển email sau commit; hỗ trợ tích hợp, không sở hữu booking/verification outcome |
+| External AI provider | Sinh nội dung trong permitted context; không có quyền mutate business records |
 
-**Nhóm Admin/Staff**
+Các provider hỗ trợ không làm tăng số numbered UC. Backend/database là thành phần thực hiện hệ thống, không mô hình hóa thành human actor. Nhiều role có thể cùng một account nhưng authority và cinema assignments của từng role phải độc lập.
 
-| Use Case | Mô tả |
-|---|---|
-| Manage Movies | Thêm, sửa, ẩn hoặc cập nhật thông tin phim |
-| Manage Cinemas and Rooms | Quản lý rạp và phòng chiếu |
-| Manage Seats | Quản lý sơ đồ ghế và loại ghế |
-| Manage Showtimes | Tạo, cập nhật hoặc hủy suất chiếu |
-| Manage Bookings | Tra cứu và xử lý đơn đặt vé theo quyền hạn |
-| Validate Ticket | Kiểm tra tính hợp lệ của vé tại rạp |
-| Manage Users and Roles | Quản lý tài khoản và quyền truy cập |
-| View Reports | Xem báo cáo hoạt động và doanh thu |
+## Catalogue 28 use case
 
-### 1.4. Use Case Diagram
+| ID | Tên chuẩn | Domain | Actor / phạm vi | Kết quả chính | Component |
+|---|---|---|---|---|---|
+| UC-01 | Reserve Seats | D1 | Guest / Customer | Selection session; atomic pending booking and held seats | C08 |
+| UC-02 | Payment Webhook | D9 | Payment Gateway | Verified durable payment outcome/application | C09 |
+| UC-03 | Release Expired Bookings | D9 | System Worker | Payment-safe expiration/release | C08, C14 |
+| UC-04 | Payment Reconciliation | D9 | System Worker | Resolve uncertain outcomes; route review/refund | C09, C14 |
+| UC-04A | Refund | D9 | Manager / Admin; system workflow | Financial obligation and verified external completion | C10 |
+| UC-05 | Validate Ticket | D3 | Assigned Staff | Booking QR, partial/group admission, category quotas | C11 |
+| UC-06A | Browse Movies | D1 | Guest / Customer | Public catalogue/search/filter | C04 |
+| UC-06B | View Movie Details | D1 | Guest / Customer | Movie details and navigation to schedule | C04 |
+| UC-07 | Browse Showtimes | D1 | Guest / Customer | Movie/cinema/date schedule discovery | C06 |
+| UC-08A | Register Customer Account | D8 | Guest | Create permanent Customer membership | C03 |
+| UC-08B | Verify Email Address | D8 | Account holder / verification link holder | Verify/resend/change primary email safely | C03 |
+| UC-08C | Login | D8 | Account holder | Credentials, single session, confirmed replacement | C03 |
+| UC-08D | Logout | D8 | Authenticated user | Revoke current session | C03 |
+| UC-09 | Checkout and Payment | D1 | Guest / Customer | Contact/declarations, invoke reserve, initiate MoMo | C08, C09 |
+| UC-10 | Customer Booking Lifecycle | D2 | Guest / Customer with resource authority | Lookup/ticket/pending cancel/rescheduling request/withdrawal | C08, C10, C11 |
+| UC-11 | Chat with Promethe-Nous | D1 | Guest / Customer | Informational assistance only | C12 |
+| UC-12 | Manage Movie Catalog | D4 | Admin | Metadata, associations, movie lifecycle | C04 |
+| UC-13 | Manage Genres | D4 | Admin | Genre definitions and activation | C04 |
+| UC-14A | Manage Cinemas | D5 | Admin; scoped Manager; Staff read | Cinema metadata/state; Manager turnaround only | C05 |
+| UC-14B | Manage Screening Rooms | D5 | Admin; scoped Manager/Staff read | Room identity/state, parent cinema | C05 |
+| UC-15A | Configure Seat Layout | D5 | Admin / scoped Manager; Staff read | Physical labels/positions/type assignment | C05 |
+| UC-15B | Change Seat Operational Status | D5 | Admin / scoped Manager; Staff read | Active/out-of-service with obligation checks | C05 |
+| UC-15C | Manage Seat Types | D7 | Admin write; permitted operational read | Shared physical types/surcharges | C05 |
+| UC-16A | Manage Ticket Types | D7 | Admin write; permitted operational read | Exactly Adult/Discounted descriptions | C07 |
+| UC-16B | Configure Cinema Ticket Pricing | D7 | Admin / scoped Manager; Staff read | Cinema Adult/Discounted base prices | C07 |
+| UC-17 | Manage Showtimes and Schedules | D6 | Admin / scoped Manager; Staff read | Duration snapshots, overlap, reschedule, restricted cancel | C06 |
+| UC-18 | Manage User Accounts and Roles | D8 | Admin; scoped Manager Staff assignments | Roles, account lock/unlock, role-specific cinema assignments | C03 |
+| UC-19 | Manage Bookings and Tickets | D2 | Scoped Staff / Manager / Admin | Support, redelivery, cancellation review; restricted refund completion | C08, C10, C11 |
 
-Sơ đồ dưới đây thể hiện các Actor, các chức năng chính và những quan hệ `include` / `extend` cần thiết.
+## Functional domain
+
+| Domain | Tên | Số UC | Phân biệt |
+|---|---|---:|---|
+| D1 | Customer Booking and Payment | 6 | 01, 06A, 06B, 07, 09, 11 |
+| D2 | Customer Booking Management | 2 | 10, 19 |
+| D3 | Ticket Validation and Admission | 1 | 05 |
+| D4 | Movie Catalog Management | 2 | 12, 13 |
+| D5 | Cinema and Screening Room Setup | 4 | 14A, 14B, 15A, 15B |
+| D6 | Showtime and Schedule Management | 1 | 17 |
+| D7 | Ticket Types and Pricing Management | 3 | 15C, 16A, 16B |
+| D8 | User and Access Management | 5 | 08A, 08B, 08C, 08D, 18 |
+| D9 | Payment Exception and Recovery | 4 | 02, 03, 04, 04A |
+
+Tổng 28. Domain là nhóm chức năng, không là bảng database, project code hoặc service triển khai riêng.
+
+## Ma trận quyền vận hành
+
+Mọi quyền sau yêu cầu current active account/session; internal access yêu cầu verified email. “Assigned” kiểm tra đúng loại role–cinema assignment tại thời điểm protected commit.
+
+| Operation | Staff | Manager | Admin |
+|---|---|---|---|
+| Movie/genre write | Không | Không | Có |
+| Cinema identity/state | Không | Không | Có |
+| Cinema minimum turnaround | Read assigned | Write assigned | Có |
+| Room identity/state | Read assigned | Read assigned | Write |
+| Physical seat layout/state | Read assigned | Write assigned | Write |
+| Shared seat types/surcharges | Permitted read | Permitted read | Write |
+| Shared ticket categories | Permitted read | Permitted read | Permitted descriptive write |
+| Cinema base pricing | Read assigned | Write assigned | Write |
+| Showtime schedule | Read assigned | Write assigned | Write |
+| Booking support/ticket resend | Assigned | Assigned | Authorized system-wide |
+| Cancellation approve/reject | Assigned | Assigned | Authorized system-wide |
+| Record verified manual refund completion | Không | Assigned | Có |
+| Admission | STAFF + Staff assignment | Không qua MANAGER role | Không qua ADMIN role |
+| Grant/revoke internal roles; lock/unlock account | Không | Không | Có; bảo vệ last active Admin |
+| Staff–Cinema assignments | Không | Chỉ cinema được giao | Có |
+| Manager–Cinema assignments | Không | Không | Có |
+
+## Luồng xuyên use case
+
+### Account access — UC-08A/B/C/D, UC-18
+
+Registration tạo Customer membership, không cấp internal role và không tự đăng nhập. Verification email được queue trong phối hợp transaction rồi gửi sau commit. Customer có thể login trước verified email; internal access vẫn yêu cầu verified email. Primary email mới chỉ thay địa chỉ cũ sau xác minh thành công; giữ nguyên user ID/booking/history. Verification chống reuse/expiry/resend abuse theo DOCX (mặc định 24 giờ, resend ít nhất 60 giây, reservation tuyệt đối 72 giờ theo request gốc).
+
+Login hợp lệ và chưa có session active tạo session/token pair. Nếu đã active, trả conflict + replacement challenge và yêu cầu người dùng lựa chọn; cancel giữ session cũ. Confirm thay thế phải kiểm tra challenge còn gắn đúng expected session, rồi atomically revoke cũ/tạo mới. Refresh rotate token hash atomically trong cùng session; logout/account lock revoke. Role/scope thay đổi được kiểm tra hiện hành, không chờ JWT hết hạn.
+
+### Discovery, selection và reservation — UC-06A/B, UC-07, UC-01, UC-09
+
+1. Guest/Customer xem public movie (coming_soon/now_showing); detail ended vẫn có thể truy cập, archived không public.
+2. Chọn cinema/date/showtime còn bán. Lịch và seat map chỉ là snapshot đọc.
+3. Chọn Adult/Discounted quantities, tổng 1..configured maximum (mặc định 8). Ghế đầu tiên khởi động selection session năm phút; chưa booking/hold.
+4. Chọn physical seats distinct bằng tổng quantity. Không gán category từng ghế/người; không thu danh tính từng attendee.
+5. “Đặt vé” vào Checkout Step 1; nhập full name, phone, email, đồng ý terms/age declarations. Deadline không đổi.
+6. “Tiếp tục” invokes UC-01: kiểm quyền, session, current showtime/time, quantities/seats và accepted price. Price hoặc official start thay đổi không được áp dụng âm thầm.
+7. Atomically tạo pending booking, purchase snapshots và held seat allocations; all-or-nothing, cùng request key không tạo booking thứ hai. Deadline kế thừa selection.
+8. Checkout Step 2 hiển thị booking đã commit và cho khởi tạo payment.
+
+Movie Detail reload reset current selection theo navigation policy; Checkout Step 1/2 reload restore eligible existing state, không reset deadline. Deselect/reselect trong cùng session không gia hạn. Backend phải đối chiếu booking hiện tại khi replay, không trả pending giả cho booking đã expired.
 
 ```mermaid
-flowchart LR
-    Customer([Customer])
-    Staff([Staff])
-    Manager([Manager])
-    Admin([Admin])
-    Gateway([Payment Gateway])
-
-    subgraph System["Movie Theater Management and Online Ticket Booking System"]
-        Register([Register Account])
-        Login([Login])
-        Browse([Browse Movies])
-        Details([View Movie Details])
-        Showtimes([View Showtimes])
-        Seats([Select Seats])
-        Booking([Book Tickets])
-        CancelBooking([Cancel Booking])
-        Payment([Make Payment])
-        History([View Booking History])
-        Ticket([View Ticket])
-
-        Movies([Manage Movies])
-        Rooms([Manage Cinemas and Rooms])
-        ManageSeats([Manage Seats])
-        ManageShowtimes([Manage Showtimes])
-        ManageBookings([Manage Bookings])
-        Validate([Validate Ticket])
-        Users([Manage Users and Roles])
-        Reports([View Reports])
-
-        CheckAvailability([Check Seat Availability])
-        CreateBooking([Create Pending Booking])
-        ConfirmBooking([Confirm Booking])
-        ReleaseSeats([Release Held Seats])
-    end
-
-    Customer --- Register
-    Customer --- Login
-    Customer --- Browse
-    Customer --- Details
-    Customer --- Showtimes
-    Customer --- Seats
-    Customer --- Booking
-    Customer --- CancelBooking
-    Customer --- Payment
-    Customer --- History
-    Customer --- Ticket
-
-    Staff --- Login
-    Staff --- Validate
-    Staff --- ManageBookings
-
-    Manager --- Login
-    Manager --- Movies
-    Manager --- Rooms
-    Manager --- ManageSeats
-    Manager --- ManageShowtimes
-    Manager --- Reports
-
-    Admin --- Login
-    Admin --- Movies
-    Admin --- Rooms
-    Admin --- ManageSeats
-    Admin --- ManageShowtimes
-    Admin --- ManageBookings
-    Admin --- Users
-    Admin --- Reports
-
-    Gateway --- Payment
-
-    Booking -.->|include| CheckAvailability
-    Booking -.->|include| CreateBooking
-    CancelBooking -.->|include| ReleaseSeats
-    Payment -.->|successful and verified| ConfirmBooking
+flowchart TD
+    Select["Chọn ghế đầu tiên: bắt đầu 5 phút"] --> Edit["Selection chưa giữ ghế"]
+    Edit --> Contact["Checkout Step 1: contact và declarations"]
+    Contact --> Validate{"Reserve được kiểm tra lại"}
+    Validate -->|"Giá hoặc lịch đổi"| Accept["Yêu cầu chấp nhận lại, không gia hạn"]
+    Accept --> Contact
+    Validate -->|"Ghế conflict / hết hạn"| Reject["Không tạo partial hold"]
+    Validate -->|"Hợp lệ"| Commit["Atomic pending booking + held seats"]
+    Commit --> Pay["Checkout Step 2: khởi tạo MoMo"]
 ```
 
-**Lưu ý:** Sơ đồ trên là mô hình chức năng ở mức tổng quan. Booking chỉ giữ ghế và tạo trạng thái pending; Payment là giao dịch độc lập; Ticket chỉ được phát hành sau payment được xác minh thành công. Payment `failed`/`cancelled` **không** trực tiếp giải phóng ghế: booking vẫn `pending` nếu còn hạn và ghế vẫn `held` (khách có thể thử lại); ghế chỉ được giải phóng khi khách hủy booking pending hoặc worker hết hạn — hết hạn chỉ chuyển `expired` + `released` khi booking quá hạn và không còn payment `created`/`pending`/`unknown` (`database-design.md` mục 31.5/34.1, BR-BOOK-004). Payment pending/unknown không được giải phóng ghế hoặc cho phép bán xung đột. Nếu kết quả vẫn chưa rõ sau khi hết hạn, việc reconciliation nâng cao là **OUT OF SCOPE — DEMO**.
+### Payment confirmation và delivery — UC-09, UC-02
 
-### 1.5. Mô tả các Use Case quan trọng
+Persist stable payment attempt trước provider call; không giữ business lock trong lúc gọi MoMo. Initiated payment có deadline mười phút thay thế original selection deadline. Retry không tạo attempt mở thứ hai. Redirect không confirm booking. Verified webhook/reconciliation re-read dưới transaction; eligible application atomically ghi succeeded/applied, confirmed booking, sold allocations, một booking QR, notification request và mandatory audit. Email sau commit; Brevo failure không rollback booking. Success đến muộn/ineligible vẫn lưu evidence và route review/refund, không reclaim ghế.
 
-#### UC-01: Login
+### Expiration và reconciliation — UC-03, UC-04
 
-| Thuộc tính | Mô tả |
+Worker đọc candidates rồi lock/re-read state/time. Original selection deadline chỉ govern trước initiated payment. Grace mặc định mười giây sau payment deadline là verification buffer, không payment extension. Nếu chưa rõ outcome, giữ protection và reconcile; không force failed/release chỉ vì timer. Query provider ngoài transaction; mở transaction mới để áp dụng kết quả với state mới nhất. Inline cleanup chỉ release trường hợp đã xác định an toàn; không gọi provider trong reserve transaction. Crash/retry không tạo duplicate effect.
+
+### Ticket/admission — UC-10, UC-05
+
+Một booking QR đại diện toàn entitlement Adult/Discounted. Guest/owner truy cập qua authority riêng; Staff có role/scope mới quét được. Validation đọc QR/context, chưa tiêu quota. Confirmation kiểm current official start trong window [-5,+20] phút inclusive, age/Discounted eligibility và remaining per-category dưới transaction. Cho phép từng người/nhóm đến nhiều đợt; không vượt quota và replay cùng operation không tăng count. Account lock không tự invalidate vé đã trả tiền.
+
+### Pending cancellation, request review và refund — UC-10, UC-19, UC-04A
+
+Pending booking chỉ hủy rõ ràng trước committed payment initiation, sau warning; closing tab không hủy. Confirmed booking chỉ request khi current start khác purchased start (bất kỳ khác biệt, không minimum delta), request trước current start và chưa admission; không hủy một phần.
+
+| Request state | Booking/allocation/admission | Thao tác tiếp |
+|---|---|---|
+| pending_review | Confirmed, sold; admission còn được xét độc lập | Owner được withdraw; Staff/Manager/Admin scoped review; first successful admission auto reject |
+| approved_awaiting_refund | Confirmed, sold; admission blocked | Manager/Admin record verified external completion; không withdraw |
+| rejected | Booking giữ nguyên | Không tạo refund chỉ vì bị reject |
+| withdrawn | Booking giữ nguyên | Không tạo financial completion |
+| completed | Rescheduling refund succeeded; cancelled booking, QR voided, sold allocation released | Giữ history; không cấp lại entitlement |
+
+Refund status pending/unknown/failed/succeeded độc lập request state. Unknown/failed không làm approved request completed. Một payment tối đa một full refund trong MVP; partial/refund nhiều lần không thuộc baseline. Reconciliation-origin không cần Customer cancellation request, không tự chạy các hiệu ứng rescheduling-origin.
+
+Request hợp lệ đã nộp được giữ để review dù current start sau đó trở về purchased snapshot; yêu cầu mới không đủ điều kiện chỉ vì từng có thay đổi trước đây.
+
+### Cinema configuration và scheduling — UC-12..17
+
+Admin quản shared catalogue; Admin/scoped Manager quản các operation cinema được phép. Mặc định cinema turnaround 15 phút, shared cho rooms, không room override. Showtime lấy scheduled-duration snapshot; edit phim không đổi duration lịch đã tạo. Scheduling/rescheduling recheck overlap, turnaround, current room/cinema state và nghĩa vụ booking; bảo toàn purchased-start snapshots, admissions, financial snapshots và enqueue notifications cần thiết. UC-17 không tự hoàn tiền/cancel booking. Cancel showtime bị chặn khi có blocking booking/payment/refund obligations; không reactivate cancelled showtime trực tiếp trong MVP.
+
+### Operational support và informational AI — UC-19, UC-11
+
+Staff/Manager/Admin có operation-level support scope; không có force-confirm payment, sửa seat đã mua, reset admission hoặc arbitrary financial state. Resend dùng QR cũ và booking contact theo source. Manager/Admin mới được ghi verified refund completion.
+
+Promethe-Nous tra cứu permitted movie/showtime/pricing/guidance, nêu giới hạn nguồn, không biến hội thoại thành booking/payment/refund/admission command. Revenue công khai có nguồn khác báo cáo nội bộ; không suy doanh thu thành số lượt xem. History bounded backend memory theo SAD; clear/expiry/restart mất history, session revocation chặn access cũ. Không tự thêm RAG/pgvector/model-training vào baseline.
+
+## UML và cách đọc các hình
+
+Mermaid trên là flowchart nghiệp vụ, không phải UML Use-Case Diagram. Khi nộp UML, dùng các diagram D1–D9 và actor associations trong DOCX; các bước kỹ thuật không được biến thành numbered UC mới.
+
+| Quan hệ | Loại đúng |
 |---|---|
-| Use Case Name | Login |
-| Actor | Customer, Staff, Admin |
-| Preconditions | Người dùng đã có tài khoản hợp lệ |
-| Main Flow | 1. Người dùng nhập thông tin đăng nhập. 2. Frontend gửi yêu cầu đến API. 3. Backend kiểm tra thông tin xác thực. 4. Hệ thống trả về kết quả đăng nhập và thông tin quyền truy cập phù hợp. |
-| Alternative Flow | Người dùng đã đăng nhập có thể tiếp tục sử dụng phiên hiện tại nếu phiên còn hiệu lực. |
-| Exception Flow | Tài khoản hoặc mật khẩu không hợp lệ; tài khoản bị vô hiệu hóa; máy chủ gặp lỗi. Hệ thống trả về thông báo phù hợp mà không tiết lộ thông tin nhạy cảm. |
-| Postconditions | Đăng nhập thành công: người dùng được xác thực và có thể truy cập các chức năng theo quyền. Thất bại: không tạo phiên đăng nhập hợp lệ. |
+| UC-09 → UC-01 | `<<include>>` cho reservation tại transition Step 1 → Step 2 |
+| UC-06A → UC-06B → UC-07 | Navigation, không tự include/extend |
+| UC-12 ↔ UC-13 | Shared-data dependency |
+| UC-14A/14B/15A/15B | Independent management goals, shared cinema/room data |
+| UC-16A ↔ UC-16B | Shared category definitions, không include mỗi lần đổi giá |
+| UC-02/03/04/04A | Financial/lifecycle dependencies; không suy tất cả thành UML include |
+| UC-10 ↔ UC-19 | Customer và operational actor goals riêng |
 
-#### UC-02: Book Tickets
+## Bất biến và kiểm chứng dẫn xuất
 
-| Thuộc tính | Mô tả |
+| Tình huống | Kết quả phải bảo toàn |
 |---|---|
-| Use Case Name | Book Tickets |
-| Actor | Customer |
-| Preconditions | Khách hàng truy cập được hệ thống; suất chiếu còn hiệu lực và cho phép đặt vé. |
-| Main Flow | 1. Khách hàng chọn phim và suất chiếu. 2. Hệ thống hiển thị sơ đồ ghế. 3. Khách hàng chọn ghế. 4. Backend khóa/kiểm tra lại tình trạng ghế trong transaction. 5. Hệ thống tạo Booking pending và giữ toàn bộ ghế thành công trong cùng transaction. Countdown 5 phút bắt đầu từ thời điểm tạo booking. 6. Khách hàng tiếp tục Make Payment. |
-| Alternative Flow | Khách hàng thay đổi lựa chọn ghế trước khi tạo đơn; hệ thống cập nhật danh sách ghế được chọn nếu ghế vẫn còn khả dụng. Nếu khách đã bấm thanh toán nhưng muốn đổi ghế: dùng luồng "Hủy thanh toán / Đổi ghế" của UC-03A (cổng xác nhận chưa thu thì payment `cancelled`, booking `cancelled`, ghế `released` — đặt lại ngay). |
-| Exception Flow | Suất chiếu không còn khả dụng; ghế vừa được khách hàng khác đặt; đơn đặt vé không thể được tạo. Hệ thống thông báo lỗi và yêu cầu khách hàng chọn lại. |
-| Postconditions | Booking pending và các detail held được tạo; không có ghế nào được giữ một phần nếu có xung đột. Booking hết hạn hoặc bị khách hủy trước payment thì các ghế được release. Chưa phát hành Ticket khi payment chưa được xác nhận. |
+| Hai booking tranh một seat/showtime | Tối đa một active held/sold allocation |
+| Reserve fail giữa chừng | Không partial booking/hold |
+| Key lặp hoặc response mất | Cùng logical operation; current state được khôi phục |
+| Giá/schedule đổi cạnh tranh reserve | Không unaccepted financial total/official start |
+| Webhook vs expiration | Không release confirmed booking; không reclaim released seat |
+| Email failure | Committed financial/ticket state giữ nguyên |
+| Admission vs approval | Không đồng thời admit và approve trái điều kiện zero-admission |
+| Refresh/session replacement race | Một active session; stale challenge không revoke session mới |
+| Guest biết code/email khác | Không được đọc/chỉnh resource đó |
+| Refund unknown | Không đánh dấu completed/resolved |
 
-#### UC-03: Make Payment
+Đây là tiêu chí cần kiểm thử, không phải kết quả đã chạy.
 
-| Thuộc tính | Mô tả |
-|---|---|
-| Use Case Name | Make Payment |
-| Actor | Customer, Payment Gateway |
-| Preconditions | Có Booking pending hợp lệ; booking chưa hết hạn và còn các detail held. Không có customer cancellation sau payment trong demo. |
-| Main Flow | 1. Khách hàng chọn phương thức thanh toán. 2. Backend kiểm tra booking và số tiền snapshot. 3. Hệ thống tạo một Payment attempt có idempotency key. 4. Gateway xử lý giao dịch. 5. Backend xác minh callback/truy vấn gateway. 6. Nếu succeeded và còn đủ điều kiện, hệ thống confirm Booking, chuyển detail sang sold và phát hành Ticket trong cùng transaction. |
-| Alternative Flow | Kết quả chưa rõ chuyển Payment sang pending/unknown; hệ thống không tự tạo payment mới hoặc bán lại ghế. Callback lặp được nhận diện bằng event key. Reconciliation nâng cao cho late success sau khi ghế đã bán lại là **OUT OF SCOPE — DEMO**. |
-| Exception Flow | Thanh toán failed hoặc cancelled: không confirm booking và không phát hành Ticket; nếu booking còn hạn có thể thử lại. Booking hết hạn là một lifecycle event riêng, không phải Payment `expired`: khi đó Booking chuyển `expired` và ghế được release nếu không còn payment `created`, `pending` hoặc `unknown` cần giữ để xử lý. Sai chữ ký, sai số tiền hoặc sai tiền tệ không làm thay đổi booking. |
-| Postconditions | Thành công: Payment succeeded, Booking confirmed, detail sold và Ticket valid. Thất bại: Payment giữ lịch sử attempt, Booking không tự thành công. Payment success không đồng nghĩa bản thân nó là Ticket. |
+## Liên kết và chỗ cần đồng bộ
 
-#### UC-03A: Cancel Booking
-
-| Thuộc tính | Mô tả |
-|---|---|
-| Use Case Name | Cancel Booking |
-| Actor | Customer |
-| Preconditions | Customer đã đăng nhập và là chủ sở hữu Booking; Booking đang ở trạng thái `pending`, các detail liên quan đang `held`, và chưa có Payment `succeeded` được áp dụng. |
-| Main Flow | 1. Customer chọn hủy Booking. 2. Backend xác thực quyền sở hữu và khóa theo thứ tự `Showtime → Booking → Payment attempts` như luồng payment confirmation. 3. Backend đọc lại quyền sở hữu, Booking, Payment và detail sau khi lấy đủ khóa. 4. Nếu Booking vẫn `pending`, chưa có Payment `succeeded` được áp dụng và không có Payment `created`, `pending` hoặc `unknown`, hệ thống chuyển Booking sang `cancelled`, chuyển toàn bộ detail `held` sang `released`, ghi thời điểm/lý do và commit trong một transaction. **Hủy thanh toán để đổi ghế (cập nhật theo yêu cầu UX):** nếu có Payment `created`/`pending`/`unknown`, backend chủ động gọi Cancel/Query API của cổng (ngoài transaction); nếu cổng xác nhận chưa thu tiền, payment chuyển `cancelled` (kết quả từ cổng đã xác minh) rồi Booking `cancelled` + detail `released` — khách đổi ghế ngay không phải chờ hết hạn; nếu cổng báo đã thu hoặc kết quả không chắc chắn, từ chối hủy và giữ allocation. |
-| Alternative Flow | Nếu đã có Payment `created`, `pending` hoặc `unknown`, hệ thống từ chối cancellation, không đổi Payment status và không giải phóng ghế. Customer có thể thử lại sau khi Payment có kết quả chắc chắn. Nếu payment confirmation lấy khóa trước, cancellation chờ rồi đọc lại `confirmed`/`applied_at` và bị từ chối. |
-| Exception Flow | Booking không thuộc Customer, đã `confirmed`, `expired` hoặc đã `cancelled`; Booking đã được xử lý đồng thời; hoặc có detail không còn `held`. Hệ thống từ chối thao tác và không cập nhật một phần. |
-| Postconditions | Thành công: Booking `cancelled`, toàn bộ detail được `released`, không phát hành Ticket và ghế có thể được booking khác sử dụng sau commit. Thất bại: dữ liệu Booking và ghế giữ nguyên. |
-
-Concurrency details and the two execution-order simulations are documented in `database/database-design.md`, section 31.6.
-
-#### UC-04: Manage Showtimes
-
-| Thuộc tính | Mô tả |
-|---|---|
-| Use Case Name | Manage Showtimes |
-| Actor | Admin |
-| Preconditions | Admin đã đăng nhập và có quyền quản lý suất chiếu; phim và phòng chiếu cần thiết đã tồn tại. |
-| Main Flow | 1. Admin chọn chức năng quản lý suất chiếu. 2. Nhập phim, phòng chiếu, thời gian bắt đầu và các thông tin liên quan. 3. Backend kiểm tra dữ liệu đầu vào. 4. Hệ thống kiểm tra lịch phòng chiếu và các quy tắc nghiệp vụ. 5. Nếu hợp lệ, hệ thống lưu suất chiếu. |
-| Alternative Flow | Admin cập nhật một suất chiếu hiện có nếu thay đổi không vi phạm các ràng buộc nghiệp vụ. |
-| Exception Flow | Phòng chiếu bị trùng lịch; dữ liệu không hợp lệ; suất chiếu không thể thay đổi do đã có giao dịch liên quan. Hệ thống từ chối thao tác và trả về lý do. |
-| Postconditions | Suất chiếu được tạo hoặc cập nhật thành công, hoặc dữ liệu không thay đổi nếu thao tác thất bại. |
-
-#### UC-05: Validate Ticket
-
-| Thuộc tính | Mô tả |
-|---|---|
-| Use Case Name | Validate Ticket |
-| Actor | Staff |
-| Preconditions | Nhân viên đã đăng nhập, có quyền xác thực vé và có thông tin vé cần kiểm tra. |
-| Main Flow | 1. Nhân viên quét mã vé hoặc nhập mã vé. 2. Frontend gửi yêu cầu đến API. 3. Backend kiểm tra mã vé, Booking confirmed, detail sold, suất chiếu và trạng thái Ticket. 4. Nếu Ticket valid, backend cập nhật có điều kiện `valid → used` trong transaction và ghi thời gian/người soát. 5. Hệ thống trả kết quả xác thực. |
-| Alternative Flow | Nhân viên tra cứu thông tin vé theo mã khi thiết bị quét không hoạt động. |
-| Exception Flow | Mã vé không tồn tại, vé đã sử dụng, vé bị hủy hoặc vé không hợp lệ với quy tắc kiểm tra. Hệ thống từ chối xác thực. |
-| Postconditions | Ticket hợp lệ được đánh dấu used và không thể được chấp nhận lần hai. Vé đã used/voided hoặc không thuộc suất hợp lệ bị từ chối; customer cancellation sau thanh toán và refund không thuộc demo. |
+- [Architecture](architecture.md): component ownership, transaction and integration boundaries.
+- [Relational model](relational-model.md): logical persistent structures, keys, cardinality and proposed constraints.
+- `../requirements/use-cases.md`: bản Markdown phải đối chiếu lại DOCX; không ưu tiên một bản cũ hơn nguồn.
+- `../api/`: thêm refresh/replacement challenge, pending-request withdrawal và navigation restoration đúng nguồn. Không dùng bản API đề xuất trước đó để bỏ các hành vi DOCX/SAD đã chốt.
+- `../../database/`: cần cập nhật schema/migrations/seed theo mô hình mới; ba file này không thay đổi database thực tế.

@@ -1,393 +1,270 @@
-﻿﻿﻿# Business System Analysis
+# Business System Analysis — Promethe-Phos
 
-## 1. Giới thiệu
+Bản rà soát: 09/11/2026. Nguồn nghiệp vụ: **RUP Use-Case Specifications v2.4**, bản đính kèm `rup_ucspec-v2.4_final(5).docx`. Nguồn kiến trúc: **SAD v3.15**, bản đính kèm `rup_sad(1).docx`. Đường dẫn lưu DOCX dự kiến trong repository là `pa/PA3-Group15/`; cần đối chiếu file thực tế khi tích hợp.
 
-### 1.1. Mục đích tài liệu
+DOCX quyết định hành vi nghiệp vụ; SAD giải thích cách phối hợp component. Markdown/schema/API cũ không được dùng để ghi đè baseline. Tài liệu mô tả yêu cầu/thiết kế, **không xác nhận mã nguồn đã triển khai hoặc kiểm thử đạt**. Các mã R-xx, F-UC-xx và AC-R-xx dưới đây là mã truy vết nội bộ của bản Markdown này, không phải mã BR/FR/AC được trích nguyên văn từ DOCX.
 
-Tài liệu này phân tích nghiệp vụ của hệ thống quản lý rạp chiếu phim và đặt vé trực tuyến: xác định mục tiêu, phạm vi, actors, nghiệp vụ chính, yêu cầu chức năng (FR), quy tắc nghiệp vụ (BR), hành trình khách hàng/quản trị, yêu cầu phi chức năng (NFR), tiêu chí nghiệm thu (AC) và các vấn đề còn bỏ ngỏ. Tài liệu là cơ sở để thiết kế use case (`business-system-design.md`), thiết kế dữ liệu (`database/database-design.md`, `relational-model.md`) và xây dựng test case, không thay thế các tài liệu đó.
+## 1. Mục đích và vấn đề nghiệp vụ
 
-Phân công trách nhiệm giữa các tài liệu:
+Hệ thống hỗ trợ khách tìm phim/suất chiếu, chọn ghế, thanh toán và nhận vé; hỗ trợ nhân sự quản lý danh mục, lịch chiếu, admission và ngoại lệ thanh toán. Trọng tâm là không bán trùng ghế, không nhầm kết quả tài chính với quyền nhận vé, không nhận khách vượt entitlement và không cấp quyền vận hành vượt cinema assignment.
 
-| Tài liệu | Chịu trách nhiệm |
-|---|---|
-| `docs/requirements/business-system-analysis.md` (tài liệu này) | Mục tiêu nghiệp vụ, phạm vi, actors, yêu cầu chức năng/phi chức năng, quy tắc nghiệp vụ, tiêu chí nghiệm thu. |
-| `docs/analysis and design/business-system-design.md` | Use case, activity/sequence diagram, kiến trúc hệ thống. |
-| `database/database-design.md` | Mô hình dữ liệu khái niệm/logic, entity, ràng buộc, transaction. |
-| `docs/analysis and design/relational-model.md` | Relation, PK/FK, candidate key, ràng buộc quan hệ. |
-| `database/database-schema.md`, `database-schema.sql` | Schema vật lý, DDL. |
+Tài liệu này xác định phạm vi, actors, yêu cầu chức năng, quy tắc nghiệp vụ, mục tiêu chất lượng và tiêu chí kiểm chứng. [use-cases.md](use-cases.md) mô tả tương tác và ngoại lệ; [business-system-design.md](../analysis%20and%20design/business-system-design.md) mô tả luồng xuyên UC; [architecture.md](../analysis%20and%20design/architecture.md) mô tả C01–C16; mô hình quan hệ và API là thiết kế dẫn xuất.
 
-### 1.2. Bối cảnh và bài toán
+## 2. Phạm vi và trạng thái
 
-Rạp chiếu phim cần một ứng dụng web cho phép khách hàng tra cứu phim, xem lịch chiếu, chọn ghế, đặt và thanh toán vé trực tuyến; đồng thời cho phép nhân viên/quản trị vận hành danh mục phim, phòng chiếu, ghế, lịch chiếu, tra cứu booking/vé và soát vé. Bài toán cốt lõi là bảo đảm tính nhất quán của ghế khi nhiều khách cùng đặt, thời gian giữ ghế hợp lý, thanh toán qua cổng bên ngoài có kết quả không chắc chắn, và phân quyền đúng ranh giới giữa các vai trò.
+| Nội dung | Phạm vi yêu cầu | Trạng thái triển khai trong lần rà soát |
+|---|---|---|
+| 28 UC / chín domain | Bao gồm Guest/Customer, internal users và recovery workflows | Chưa kiểm tra repo thực tế |
+| Multi-cinema scope | Kiểm assignments theo role; seed một rạp không loại bỏ yêu cầu này | Chưa kiểm chứng |
+| Reservation, payment, ticket và admission | Theo các quy tắc R-01–R-17 | Chưa kiểm chứng end-to-end |
+| Confirmed cancellation | Chỉ qualifying rescheduling, review và withdrawal theo lifecycle | Không đồng nghĩa hủy tùy ý |
+| Refund demo | Quản lý nghĩa vụ, evidence và verified manual completion | Thực chuyển tiền bên ngoài ứng dụng |
+| MoMo | Provider định hướng cho demo | Người dùng cho biết chưa thử tích hợp; phải xác định mock hay sandbox khi chạy |
+| Brevo | Verification, ticket và transactional notifications | Người dùng báo đã gửi email qua API thành công; chưa chứng minh toàn bộ outbox/retry |
+| Local/cloud DB | PostgreSQL Docker local, Supabase PostgreSQL cloud | Không tự suy dùng Supabase Auth |
+| Hosting | Vercel frontend, Render backend theo lựa chọn của nhóm | Không xác nhận đã deploy; SAD Deployment/Implementation View thuộc PA4 |
+| Promethe-Nous | Informational-only | Không mở quyền ghi nghiệp vụ hoặc báo cáo nội bộ |
 
-### 1.3. Mục tiêu hệ thống
+Không mở rộng MVP thành loyalty, khuyến mãi phức tạp, partial refund, manual seat swap, force-confirm payment, xóa lịch sử, thêm ticket category thứ ba hoặc tự động chuyển tiền refund. Không dùng giới hạn demo để bỏ việc ghi nhận nghĩa vụ tài chính thật.
 
-- Cho phép khách hàng tự phục vụ từ tra cứu đến nhận vé mà không cần đến quầy.
-- Bảo đảm một ghế trong một suất chiếu không bao giờ được bán cho hai khách cùng lúc.
-- Ghi nhận đầy đủ lịch sử booking và payment attempt, kể cả các attempt thất bại hoặc chưa chắc chắn.
-- Cung cấp công cụ quản trị cho Staff/Manager/Admin theo đúng quyền hạn của từng vai trò.
+## 3. Actors và phân quyền
 
-### 1.4. Đối tượng đọc tài liệu
+Guest có public discovery và Guest Checkout; Customer có các chức năng đó cùng tài nguyên account thuộc quyền sở hữu. Staff, Manager và Admin là các role độc lập; một account nhiều role vẫn phải đáp ứng role và assignment của từng operation. Gateway/Email/AI provider là external system; System Worker là thực thi nội bộ theo thời gian, không là role đăng nhập công khai. Database/backend là thành phần hệ thống.
 
-Nhóm phát triển (backend, frontend, database), nhóm kiểm thử và giảng viên/người review dự án.
+Mọi quyền sau yêu cầu current active account/session; internal access yêu cầu verified email. “Assigned” kiểm tra đúng loại role–cinema assignment tại thời điểm protected commit.
 
-### 1.5. Thuật ngữ và viết tắt
+| Operation | Staff | Manager | Admin |
+|---|---|---|---|
+| Movie/genre write | Không | Không | Có |
+| Cinema identity/state | Không | Không | Có |
+| Cinema minimum turnaround | Read assigned | Write assigned | Có |
+| Room identity/state | Read assigned | Read assigned | Write |
+| Physical seat layout/state | Read assigned | Write assigned | Write |
+| Shared seat types/surcharges | Permitted read | Permitted read | Write |
+| Shared ticket categories | Permitted read | Permitted read | Permitted descriptive write |
+| Cinema base pricing | Read assigned | Write assigned | Write |
+| Showtime schedule | Read assigned | Write assigned | Write |
+| Booking support/ticket resend | Assigned | Assigned | Authorized system-wide |
+| Cancellation approve/reject | Assigned | Assigned | Authorized system-wide |
+| Record verified manual refund completion | Không | Assigned | Có |
+| Admission | STAFF + Staff assignment | Không qua MANAGER role | Không qua ADMIN role |
+| Grant/revoke internal roles; lock/unlock account | Không | Không | Có; bảo vệ last active Admin |
+| Staff–Cinema assignments | Không | Chỉ cinema được giao | Có |
+| Manager–Cinema assignments | Không | Không | Có |
 
-| Thuật ngữ | Ý nghĩa |
-|---|---|
-| Booking | Đơn đặt vé của khách hàng; trạng thái `pending`, `confirmed`, `expired`, `cancelled`. |
-| Booking Detail | Phân bổ một ghế trong một booking; trạng thái `held`, `sold`, `released`. |
-| Hold (giữ ghế) | Khoảng thời gian ghế được đặt chờ cho một booking pending. |
-| Payment Attempt | Một lần thử thanh toán của booking; trạng thái `created`, `pending`, `unknown`, `succeeded`, `failed`, `cancelled`. |
-| Ticket | Vé được phát hành sau khi booking được xác nhận; trạng thái `valid`, `used`, `voided`. |
-| Showtime (Suất chiếu) | Lượt chiếu một phim trong một phòng tại một khoảng thời gian. |
-| MVP/demo | Phạm vi tối thiểu được triển khai và demo hiện tại. |
-| FR / BR / NFR / AC / OQ | Yêu cầu chức năng / quy tắc nghiệp vụ / yêu cầu phi chức năng / tiêu chí nghiệm thu / câu hỏi mở. |
+## 4. Functional domains và catalogue
 
-## 2. Tổng quan hệ thống
-
-- **Loại hệ thống:** Web application (web bán vé xem phim trực tuyến kèm trang quản trị), theo kiến trúc được mô tả trong `docs/analysis and design/architecture.md`.
-- **Mục đích tổng quát:** Quản lý hoạt động của rạp chiếu phim và cho phép khách hàng đặt vé trực tuyến.
-- **Người dùng chính:** Customer (khách hàng), Staff (nhân viên rạp), Manager (quản lý vận hành), Admin (quản trị hệ thống).
-- **Hệ thống bên ngoài:** Payment Gateway — xử lý giao dịch thanh toán và trả kết quả về hệ thống.
-- **Năng lực nghiệp vụ chính:**
-  - Tra cứu phim/thể loại và lịch chiếu.
-  - Chọn ghế, tạo booking và giữ ghế có thời hạn.
-  - Thanh toán trực tuyến qua Payment Gateway và phát hành vé.
-  - Soát vé tại rạp.
-  - Quản lý phim, thể loại, rạp/phòng/ghế, suất chiếu.
-  - Quản lý tài khoản và phân quyền.
-  - Tra cứu booking/payment và xem báo cáo (phạm vi chi tiết xem mục 3 và OQ-04).
-
-## 3. Phạm vi và ràng buộc
-
-### 3.1. Quyết định phạm vi đã chốt
-
-Bảng dưới đây giữ nguyên các quyết định đã thống nhất trong `business-system-design.md` (mục 0) và `database-design.md`:
-
-Lưu ý về thời gian giữ ghế: "5 phút" ở các mục 3.1, 3.2, 3.5 là **thời hạn giữ ghế danh nghĩa** — tính từ thời điểm tạo booking, mốc này không thay đổi (BR-BOOK-004). **Thời điểm giải phóng ghế thực tế** có thể muộn hơn 5 phút: theo `database-design.md` mục 34.1, worker chỉ chuyển booking `expired` và detail `released` khi booking quá hạn **và** không còn payment attempt đang mở (`created`/`pending`/`unknown`). **Cửa sổ chờ đã chốt (OQ-07 — RESOLVED):** sau khi quá `expires_at` thêm một khoảng ân hạn (grace period, đề xuất 2–3 phút, giá trị chính xác là cấu hình triển khai), worker chủ động truy vấn trạng thái cổng (Query/Check Status API): nếu cổng xác nhận chưa thu tiền, payment chuyển `failed`/`cancelled` và booking chuyển `expired` + ghế `released` trong cùng transaction; nếu cổng không phản hồi xác đáng, payment giữ `unknown` và chuyển `reconciliation_status = 'needs_review'` — ghế giữ nguyên (ưu tiên an toàn tài chính), worker tiếp tục retry đối soát. Ghế không bao giờ bị giữ vô hạn: luồng cần người xử lý (needs_review) là ngoại lệ có giám sát, không phải trạng thái tự động vô hạn.
-
-| Trạng thái | Quyết định |
-|---|---|
-| **CONFIRMED — MVP/demo** | Một chi nhánh ban đầu; phim/thể loại, phòng/ghế, suất chiếu, đặt vé, giữ ghế 5 phút, thanh toán qua cổng, phát hành và soát vé, tài khoản và vai trò cơ bản. |
-| **CONFIRMED — booking** | Ghế được giữ khi booking pending tạo thành công, giữ 5 phút tính từ lúc tạo booking; hủy trước thanh toán giải phóng ghế. |
-| **CONFIRMED — bán vé** | Không áp dụng cutoff cố định 10/15/30 phút trước giờ chiếu; demo cho phép bán sát giờ bắt đầu. Mốc đóng bán cuối cùng (nếu có) còn phải nhóm chốt (OQ-02). |
-| **CONFIRMED — chính sách nền** | Không hủy booking sau thanh toán và không hoàn tiền trong demo. |
-| **PROPOSED** | `MANAGER` là actor quản trị vận hành với quyền quản lý phim, phòng/ghế, suất chiếu và xem báo cáo; phạm vi quyền chi tiết cần nhóm chốt (OQ-04). |
-| **OUT OF SCOPE — DEMO** | Hủy booking sau thanh toán bởi customer, refund, workflow hủy suất do rạp (thông báo/đổi lịch/hoàn tiền tự động), **workflow đối soát tài chính/hoàn tiền tự động cho payment thành công đến muộn sau khi ghế đã được bán lại** (lưu ý: *ghi nhận và bảo toàn kết quả* payment thành công muộn — không áp dụng, giữ `succeeded` + payment event để truy vết — *vẫn thuộc phạm vi*; chỉ phần xử lý tài chính tiếp theo là ngoài phạm vi, xem BR-PAY-007, OQ-07), thành viên/loyalty, khuyến mãi phức tạp, báo cáo phân tích nâng cao, phân quyền theo chi nhánh. |
-| **OPEN** | Cổng thanh toán cụ thể, mốc đóng bán cuối cùng, cửa sổ soát vé, điều kiện đủ quyền lợi của các loại vé giảm giá, ranh giới quyền Manager/Admin và Staff theo chi nhánh. |
-
-### 3.2. Nằm trong phạm vi MVP
-
-- Đăng ký, đăng nhập, tài khoản và vai trò (CUSTOMER, STAFF, MANAGER, ADMIN).
-- Quản lý phim, thể loại, rạp, phòng, sơ đồ ghế, loại ghế.
-- Quản lý suất chiếu và kiểm tra không chồng lịch phòng.
-- Chọn ghế, tạo booking giữ ghế 5 phút, hủy booking pending trước thanh toán.
-- Thanh toán qua Payment Gateway, phát hành vé khi payment thành công và được xác minh.
-- Soát vé tại rạp.
-- Tra cứu booking/vé/payment và báo cáo cơ bản (chi tiết quyền xem OQ-04).
-
-### 3.3. Nằm ngoài phạm vi demo
-
-- Hủy booking sau khi đã thanh toán và refund.
-- Workflow tự động khi rạp hủy suất chiếu (thông báo khách, đổi lịch, hoàn tiền).
-- Đối soát tài chính và hoàn tiền tự động cho payment thành công đến muộn sau khi ghế đã được bán lại (ghi nhận và bảo toàn kết quả thành công để truy vết vẫn nằm trong phạm vi — BR-PAY-007).
-- Thành viên/loyalty, khuyến mãi phức tạp, báo cáo phân tích nâng cao.
-- Phân quyền theo chi nhánh; vận hành nhiều chi nhánh (mô hình dữ liệu sẵn sàng nhưng demo chỉ seed một cinema).
-
-**Lưu ý:** các cấu trúc dữ liệu như `refund`, `payment_event`, nhiều `cinema` được giữ trong mô hình dữ liệu để sẵn sàng mở rộng; việc "có trong mô hình dữ liệu" không đồng nghĩa "đã triển khai chức năng".
-
-### 3.4. Giả định
-
-- Hệ thống vận hành với một payment gateway bên ngoài (cổng cụ thể chưa chốt — OQ-01).
-- Người dùng truy cập qua trình duyệt web trên máy tính và thiết bị di động.
-- Mốc thời gian lưu theo UTC, hiển thị theo `Asia/Ho_Chi_Minh` (theo `relational-model.md` mục 9.2).
-
-### 3.5. Ràng buộc
-
-- Chỉ một payment attempt đang mở (`created`/`pending`/`unknown`) cho mỗi booking tại một thời điểm.
-- Mỗi ghế trong một suất chỉ có tối đa một phân bổ hiệu lực (`held`/`sold`).
-- Thời hạn giữ ghế danh nghĩa là 5 phút kể từ khi tạo booking. Đây là mốc hết hạn danh nghĩa, không phải thời điểm giải phóng ghế bắt buộc: giải phóng (`expired`/`released`) được thực hiện bởi worker theo chính sách lifecycle của `database-design.md` mục 34.1 — booking quá hạn chỉ được chuyển `expired` và giải phóng ghế khi không còn payment attempt đang mở; nếu còn attempt, việc hết hạn/giải phóng bị trì hoãn (chi tiết BR-BOOK-004). **Grace Period (OQ-07 — RESOLVED):** trong khoảng châm chước đề xuất 2–3 phút sau khi quá hạn, worker chủ động truy vấn trạng thái cổng; nếu cổng xác nhận chưa thu tiền, payment chuyển `failed`/`cancelled` và booking/detail chuyển `expired`/`released` trong cùng transaction; nếu cổng không phản hồi xác đáng, giữ `unknown` + `needs_review` để giám sát (chi tiết FR-PAY-004, BR-BOOK-004).
-- Giao dịch với Payment Gateway phụ thuộc độ trễ và khả năng lặp callback của cổng; hệ thống phải xử lý idempotent.
-- Authorization phải được thực hiện ở backend; không dựa vào giao diện hay việc biết UUID/mã công khai.
-
-## 4. Stakeholders và Actors
-
-| Actor | Loại | Vai trò và trách nhiệm | Mục tiêu | Tương tác chính với hệ thống |
+| UC | Tên | Domain | Actor / phạm vi | Component liên quan |
 |---|---|---|---|---|
-| Customer | Người dùng | Khách hàng đặt vé | Mua vé nhanh, chọn được ghế mong muốn, nhận vé | Đăng ký/đăng nhập, xem phim/lịch chiếu, chọn ghế, đặt vé, hủy booking pending, thanh toán, xem vé và lịch sử |
-| Staff | Người dùng | Nhân viên rạp | Soát vé chính xác tại rạp | Đăng nhập, soát vé (Validate Ticket), tra cứu booking/vé |
-| Manager | Người dùng | Quản lý vận hành (**PROPOSED** — ranh giới quyền cần chốt, OQ-04) | Vận hành lịch chiếu và dữ liệu rạp | Đăng nhập, quản lý phim, phòng/ghế, suất chiếu, xem báo cáo |
-| Admin | Người dùng | Quản trị hệ thống | Bảo đảm hệ thống và dữ liệu đúng phép | Đăng nhập, toàn bộ chức năng quản trị, quản lý tài khoản và phân quyền |
-| Payment Gateway | Hệ thống bên ngoài | Xử lý giao dịch thanh toán | Hoàn tất giao dịch an toàn | Nhận yêu cầu thanh toán, trả kết quả (webhook/truy vấn), nhận yêu cầu đối soát |
+| UC-01 | Reserve Seats | D1 | Guest / Customer | C08 |
+| UC-02 | Payment Webhook | D9 | Payment Gateway | C09 |
+| UC-03 | Release Expired Bookings | D9 | System Worker | C08, C14 |
+| UC-04 | Payment Reconciliation | D9 | System Worker | C09, C14 |
+| UC-04A | Refund | D9 | Manager / Admin; system workflow | C10 |
+| UC-05 | Validate Ticket | D3 | Assigned Staff | C11 |
+| UC-06A | Browse Movies | D1 | Guest / Customer | C04 |
+| UC-06B | View Movie Details | D1 | Guest / Customer | C04 |
+| UC-07 | Browse Showtimes | D1 | Guest / Customer | C06 |
+| UC-08A | Register Customer Account | D8 | Guest | C03 |
+| UC-08B | Verify Email Address | D8 | Account holder / verification link holder | C03 |
+| UC-08C | Login | D8 | Account holder | C03 |
+| UC-08D | Logout | D8 | Authenticated user | C03 |
+| UC-09 | Checkout and Payment | D1 | Guest / Customer | C08, C09 |
+| UC-10 | Customer Booking Lifecycle | D2 | Guest / Customer with resource authority | C08, C10, C11 |
+| UC-11 | Chat with Promethe-Nous | D1 | Guest / Customer | C12 |
+| UC-12 | Manage Movie Catalog | D4 | Admin | C04 |
+| UC-13 | Manage Genres | D4 | Admin | C04 |
+| UC-14A | Manage Cinemas | D5 | Admin; scoped Manager; Staff read | C05 |
+| UC-14B | Manage Screening Rooms | D5 | Admin; scoped Manager/Staff read | C05 |
+| UC-15A | Configure Seat Layout | D5 | Admin / scoped Manager; Staff read | C05 |
+| UC-15B | Change Seat Operational Status | D5 | Admin / scoped Manager; Staff read | C05 |
+| UC-15C | Manage Seat Types | D7 | Admin write; permitted operational read | C05 |
+| UC-16A | Manage Ticket Types | D7 | Admin write; permitted operational read | C07 |
+| UC-16B | Configure Cinema Ticket Pricing | D7 | Admin / scoped Manager; Staff read | C07 |
+| UC-17 | Manage Showtimes and Schedules | D6 | Admin / scoped Manager; Staff read | C06 |
+| UC-18 | Manage User Accounts and Roles | D8 | Admin; scoped Manager Staff assignments | C03 |
+| UC-19 | Manage Bookings and Tickets | D2 | Scoped Staff / Manager / Admin | C08, C10, C11 |
 
-Ghi chú: Payment Gateway không phải người dùng trực tiếp. Ranh giới quyền đã xác nhận: Staff — soát vé và tra cứu booking/vé phục vụ soát vé; Admin — toàn quyền quản trị gồm user/role. Ranh giới quyền của Manager và các ranh giới chi tiết khác (quản lý payment, hủy booking, báo cáo) là **đề xuất, chưa chốt** — xem mục 8.5 (BR-AUTH-005) và OQ-04. Trừ khi có ghi chú PROPOSED/OPEN, các quyền nêu trong bảng trên phản ánh ranh giới đã thống nhất trong `business-system-design.md`.
+Domain counts: D1=6, D2=2, D3=1, D4=2, D5=4, D6=1, D7=3, D8=5, D9=4; tổng 28. Domain không ánh xạ một-một sang component, bảng DB hay service deploy.
 
-## 5. Nghiệp vụ chính
+## 5. Yêu cầu chức năng và truy vết
 
-| Nghiệp vụ | Mục tiêu | Actors | Kết quả mong muốn |
+Mỗi dòng là yêu cầu cấp mục tiêu, cần đọc cùng các R-xx liên quan và luồng/ngoại lệ trong use-cases.md. Không suy ra quyền CRUD chung từ tên “Manage”.
+
+| ID mới | Hệ thống phải hỗ trợ | Nguồn | Quy tắc chi phối |
 |---|---|---|---|
-| Duyệt phim và xem thông tin phim | Khách hàng tìm được phim | Customer | Danh sách/chi tiết phim chính xác theo trạng thái |
-| Xem lịch chiếu | Khách hàng chọn được suất phù hợp | Customer | Danh sách suất theo phim/ngày, chỉ suất còn bán |
-| Chọn ghế và đặt vé | Mua được ghế mong muốn, không bị xung đột | Customer | Booking pending được tạo, toàn bộ ghế được giữ, không giữ một phần |
-| Thanh toán và phát hành vé | Hoàn tất giao dịch và nhận vé | Customer, Payment Gateway | Payment đúng số tiền; khi thành công và đủ điều kiện, booking confirmed và vé được phát hành |
-| Lịch sử đặt vé và tra cứu vé | Khách hàng tra cứu được vé của mình | Customer | Chỉ thấy booking/vé của chính mình |
-| Quản lý phim và thể loại | Danh mục phim chính xác | Manager/Admin | Phim/thể loại được thêm, sửa, ngừng hiển thị an toàn |
-| Quản lý rạp, phòng và ghế | Sơ đồ ghế phản ánh đúng thực tế | Manager/Admin | Phòng/ghế được cấu hình; không phá vỡ dữ liệu đã có booking |
-| Quản lý suất chiếu | Lịch chiếu hợp lệ, không chồng phòng | Manager/Admin | Suất được tạo/sửa/hủy đúng quy tắc lịch |
-| Tra cứu booking/vé và soát vé | Vận hành tại rạp | Staff (soát vé), Manager/Admin (tra cứu) | Vé valid được soát một lần; booking tra cứu theo quyền |
-| Quản lý tài khoản và phân quyền | Truy cập đúng quyền | Admin | Role được cấp/thu hồi có kiểm soát |
-| Xem báo cáo và thống kê | Theo dõi hoạt động kinh doanh | Manager/Admin (phạm vi chi tiết OQ-04) | Số liệu cơ bản theo quyền |
+| F-UC-01 | Reserve Seats: Selection session; atomic pending booking and held seats; chỉ actor/phạm vi nêu ở catalogue | UC-01; SAD C08 | R-01, R-02, R-03, R-04, R-05, R-10 |
+| F-UC-02 | Payment Webhook: Verified durable payment outcome/application; chỉ actor/phạm vi nêu ở catalogue | UC-02; SAD C09 | R-07, R-08, R-09, R-10, R-11 |
+| F-UC-03 | Release Expired Bookings: Payment-safe expiration/release; chỉ actor/phạm vi nêu ở catalogue | UC-03; SAD C08, C14 | R-07, R-10, R-11 |
+| F-UC-04 | Payment Reconciliation: Resolve uncertain outcomes; route review/refund; chỉ actor/phạm vi nêu ở catalogue | UC-04; SAD C09, C14 | R-07, R-08, R-09, R-10, R-11, R-15 |
+| F-UC-04A | Refund: Financial obligation and verified external completion; chỉ actor/phạm vi nêu ở catalogue | UC-04A; SAD C10 | R-10, R-15, R-16 |
+| F-UC-05 | Validate Ticket: Booking QR, partial/group admission, category quotas; chỉ actor/phạm vi nêu ở catalogue | UC-05; SAD C11 | R-04, R-10, R-14, R-17 |
+| F-UC-06A | Browse Movies: Public catalogue/search/filter; chỉ actor/phạm vi nêu ở catalogue | UC-06A; SAD C04 | R-21 |
+| F-UC-06B | View Movie Details: Movie details and navigation to schedule; chỉ actor/phạm vi nêu ở catalogue | UC-06B; SAD C04 | R-21 |
+| F-UC-07 | Browse Showtimes: Movie/cinema/date schedule discovery; chỉ actor/phạm vi nêu ở catalogue | UC-07; SAD C06 |  |
+| F-UC-08A | Register Customer Account: Create permanent Customer membership; chỉ actor/phạm vi nêu ở catalogue | UC-08A; SAD C03 | R-20 |
+| F-UC-08B | Verify Email Address: Verify/resend/change primary email safely; chỉ actor/phạm vi nêu ở catalogue | UC-08B; SAD C03 | R-20 |
+| F-UC-08C | Login: Credentials, single session, confirmed replacement; chỉ actor/phạm vi nêu ở catalogue | UC-08C; SAD C03 | R-18, R-19 |
+| F-UC-08D | Logout: Revoke current session; chỉ actor/phạm vi nêu ở catalogue | UC-08D; SAD C03 | R-18, R-19 |
+| F-UC-09 | Checkout and Payment: Contact/declarations, invoke reserve, initiate MoMo; chỉ actor/phạm vi nêu ở catalogue | UC-09; SAD C08, C09 | R-01, R-02, R-03, R-04, R-05, R-06, R-07, R-08, R-09, R-10, R-12 |
+| F-UC-10 | Customer Booking Lifecycle: Lookup/ticket/pending cancel/rescheduling request/withdrawal; chỉ actor/phạm vi nêu ở catalogue | UC-10; SAD C08, C10, C11 | R-01, R-03, R-10, R-12, R-13, R-14, R-16 |
+| F-UC-11 | Chat with Promethe-Nous: Informational assistance only; chỉ actor/phạm vi nêu ở catalogue | UC-11; SAD C12 | R-26 |
+| F-UC-12 | Manage Movie Catalog: Metadata, associations, movie lifecycle; chỉ actor/phạm vi nêu ở catalogue | UC-12; SAD C04 | R-18, R-21 |
+| F-UC-13 | Manage Genres: Genre definitions and activation; chỉ actor/phạm vi nêu ở catalogue | UC-13; SAD C04 | R-18, R-21 |
+| F-UC-14A | Manage Cinemas: Cinema metadata/state; Manager turnaround only; chỉ actor/phạm vi nêu ở catalogue | UC-14A; SAD C05 | R-18, R-22 |
+| F-UC-14B | Manage Screening Rooms: Room identity/state, parent cinema; chỉ actor/phạm vi nêu ở catalogue | UC-14B; SAD C05 | R-18, R-22 |
+| F-UC-15A | Configure Seat Layout: Physical labels/positions/type assignment; chỉ actor/phạm vi nêu ở catalogue | UC-15A; SAD C05 | R-18, R-22 |
+| F-UC-15B | Change Seat Operational Status: Active/out-of-service with obligation checks; chỉ actor/phạm vi nêu ở catalogue | UC-15B; SAD C05 | R-18, R-22 |
+| F-UC-15C | Manage Seat Types: Shared physical types/surcharges; chỉ actor/phạm vi nêu ở catalogue | UC-15C; SAD C05 | R-05, R-18, R-23 |
+| F-UC-16A | Manage Ticket Types: Exactly Adult/Discounted descriptions; chỉ actor/phạm vi nêu ở catalogue | UC-16A; SAD C07 | R-04, R-18, R-23 |
+| F-UC-16B | Configure Cinema Ticket Pricing: Cinema Adult/Discounted base prices; chỉ actor/phạm vi nêu ở catalogue | UC-16B; SAD C07 | R-05, R-18, R-23 |
+| F-UC-17 | Manage Showtimes and Schedules: Duration snapshots, overlap, reschedule, restricted cancel; chỉ actor/phạm vi nêu ở catalogue | UC-17; SAD C06 | R-05, R-13, R-18, R-24 |
+| F-UC-18 | Manage User Accounts and Roles: Roles, account lock/unlock, role-specific cinema assignments; chỉ actor/phạm vi nêu ở catalogue | UC-18; SAD C03 | R-18, R-19, R-20, R-25 |
+| F-UC-19 | Manage Bookings and Tickets: Support, redelivery, cancellation review; restricted refund completion; chỉ actor/phạm vi nêu ở catalogue | UC-19; SAD C08, C10, C11 | R-01, R-10, R-13, R-14, R-15, R-16, R-17, R-18 |
 
-## 6. Miền nghiệp vụ và đối tượng dữ liệu khái niệm
+## 6. Quy tắc nghiệp vụ dùng chung
 
-Danh sách căn cứ mô hình miền của `database-design.md` (18 entity); đây là mức khái niệm — chi tiết khóa, ràng buộc và chuẩn hóa thuộc `relational-model.md`.
-
-Lưu ý đối chiếu số lượng: mô hình ở `database-design.md` gồm 18 entity, trong đó hai entity `MovieGenre` và `UserRole` là các bảng liên kết (junction) cho hai quan hệ nhiều–nhiều Movie–Genre và User–Role (mục 6 và mục 18 của `database-design.md`; tương ứng `movie_genre`, `user_role` trong `relational-model.md` mục 3.3/3.12 và `database-schema.md`). Bảng dưới đây liệt kê 16 đối tượng nghiệp vụ; hai bảng liên kết chỉ xuất hiện ở mức quan hệ/physical schema, không cần hàng riêng ở bảng miền khái niệm này.
-
-| Đối tượng | Ý nghĩa nghiệp vụ | Thông tin chính | Quan hệ khái niệm |
+| ID nội bộ | Chủ đề | Quy tắc | UC nguồn |
 |---|---|---|---|
-| Movie | Phim được chiếu tại rạp | Tiêu đề, mô tả, thời lượng, ngày phát hành, ngôn ngữ, độ tuổi, trạng thái (`coming_soon`, `now_showing`, `ended`, `archived`) | Một phim có nhiều thể loại và nhiều suất chiếu |
-| Genre | Thể loại phim | Mã, tên, mô tả, còn hoạt động | Gắn với nhiều phim qua quan hệ nhiều–nhiều |
-| Cinema | Chi nhánh/rạp vật lý | Mã, tên, địa chỉ, điện thoại, trạng thái | Chứa nhiều phòng; MVP chỉ seed một cinema |
-| CinemaRoom | Phòng chiếu trong rạp | Mã, tên, trạng thái (`active`, `maintenance`, `inactive`) | Thuộc một cinema; chứa nhiều ghế; tổ chức nhiều suất chiếu |
-| SeatType | Loại ghế (STANDARD, VIP, COUPLE...) | Mã, tên, sức chứa (`capacity_units`), phụ thu | Đặc trưng cho nhiều ghế; ghế Couple có `capacity_units = 2` |
-| Seat | Ghế vật lý trong phòng | Hàng, số ghế, loại ghế, trạng thái vật lý | Thuộc một phòng; được phân bổ trong booking detail |
-| TicketType | Loại vé và mức giảm giá | Mã, tên, mức giảm %, điều kiện áp dụng, còn hoạt động | Áp dụng cho booking detail; điều kiện áp dụng do backend xác minh |
-| Showtime | Suất chiếu | Phim, phòng, thời gian bắt đầu/kết thúc, thời điểm phòng rảnh, giá cơ sở, trạng thái | Một phim chiếu trong một phòng; có nhiều booking |
-| User (AppUser) | Tài khoản người dùng | Email, tên, trạng thái (`active`, `locked`, `deactivated`) | Có nhiều role; là chủ booking; có thể là người soát vé |
-| Role | Vai trò phân quyền | Mã (CUSTOMER, STAFF, MANAGER, ADMIN), còn hoạt động | Gán cho nhiều user qua quan hệ nhiều–nhiều |
-| Booking | Đơn đặt vé | Chủ đơn, suất, tổng tiền, thời hạn giữ, trạng thái, mã booking | Thuộc một user và một suất; gồm nhiều detail; có nhiều payment attempt |
-| BookingDetail | Phân bổ một ghế trong booking | Ghế, loại vé, snapshot giá, trạng thái phân bổ | Thuộc booking; gắn một ghế; phát hành đúng `capacity_units_snapshot` ticket |
-| Ticket | Vé đã phát hành | Mã vé, trạng thái (`valid`, `used`, `voided`), thời điểm phát hành/sử dụng | Phát hành từ một booking detail; được staff soát |
-| Payment | Lần thử thanh toán | Cổng, số tiền, tiền tệ, trạng thái, thời điểm xác minh/áp dụng | Thuộc một booking; có nhiều payment event |
-| PaymentEvent | Sự kiện callback/đối soát từ cổng | Nguồn, khóa sự kiện, loại, trạng thái xử lý | Ghi nhận sự kiện của một payment; phục vụ idempotency |
-| Refund | Yêu cầu hoàn tiền (**data-model readiness, ngoài phạm vi demo**) | Mã hoàn, số tiền, trạng thái | Gắn với một payment; chưa có workflow demo |
+| R-01 | Guest và ownership | Guest được checkout. Customer chỉ truy cập tài nguyên thuộc quyền sở hữu; Guest cần credential/proof do backend xác minh. Biết email, phone, booking code hoặc ticket code riêng lẻ không đủ quyền truy cập quản lý booking. QR đưa cho Staff phục vụ admission theo UC-05, không cấp quyền quản lý booking. | UC-01, UC-09, UC-10, UC-19 |
+| R-02 | Selection và reservation | Selection kéo dài 5 phút từ lần chọn ghế vật lý đầu tiên, do server xác định; chưa tạo booking hoặc hold. Thay quantities, bỏ rồi chọn lại ghế không reset timer. Chuyển Checkout Step 1 → Step 2 mới gọi UC-01, atomically tạo pending booking và held allocations, kế thừa deadline gốc. | UC-01, UC-09 |
+| R-03 | Reload và navigation | Reload Movie Detail reset lựa chọn theo navigation policy của UC; reload Checkout Step 1/2 phục hồi session/booking còn hợp lệ và không kéo dài deadline. Back/đóng tab không tự hủy booking hoặc payment. Backend quyết định kết quả sau mất response. | UC-01, UC-09, UC-10 |
+| R-04 | Quantities và ghế | Chỉ Adult và Discounted; tổng quantity từ 1 đến giới hạn cấu hình, mặc định 8. Không có giới hạn Discounted riêng. Các ghế vật lý distinct, cùng suất/phòng, số ghế bằng tổng quantity. Category ở cấp booking, không gán category từng ghế, không Couple/capacity-unit hoặc danh tính từng người tham dự. Discounted áp dụng sinh viên, giáo viên, người cao tuổi từ 60 theo kiểm tra eligibility của nguồn. | UC-01, UC-05, UC-09, UC-16A |
+| R-05 | Giá và snapshot | Tổng = AdultQty × AdultBasePrice(cinema) + DiscountedQty × DiscountedBasePrice(cinema) + tổng surcharge của từng physical seat. Backend tính và lưu giá đã chấp nhận, quantities, ghế và purchased-start snapshot. Giá/giờ chính thức thay đổi trước commit phải được xử lý rõ ràng, không âm thầm áp dụng; chấp nhận lại không reset timer. Giá cấu hình mới không hồi tố booking đã tạo. Base price 0 được phép; đường đi tổng booking bằng 0 cần làm rõ riêng, không tự áp chính sách cũ Option B hoặc tự confirm miễn phí. | UC-01, UC-09, UC-15C, UC-16B, UC-17 |
+| R-06 | Checkout contact | Step 1 yêu cầu full name, phone, email và acknowledgements về điều khoản/độ tuổi. Chọn phương thức MoMo không tự khởi tạo payment; phải có hành động xác nhận thanh toán. Không tạo booking thứ hai khi tải lại hoặc chuyển trang. | UC-09 |
+| R-07 | Payment deadline | MoMo initiation hợp lệ thiết lập cửa sổ thanh toán 10 phút thay cho selection deadline gốc theo workflow. Grace mặc định 10 giây, cấu hình được, dành cho xác minh; không phải quyền thanh toán thêm hoặc bằng chứng chưa thu tiền. Unresolved payment vẫn được bảo vệ và đối soát. | UC-02, UC-03, UC-04, UC-09 |
+| R-08 | Kết quả tài chính | Timeout, browser return, hết timer hoặc thiếu webhook không chứng minh thất bại. Phân biệt payment succeeded, payment applied, booking confirmed và ticket issued. Xác minh nguồn/chữ ký trước tác động nghiệp vụ; đối chiếu reference, amount, currency. Giao dịch đã xác minh thu tiền nhưng sai amount/currency phải bảo toàn bằng chứng và chuyển review, không áp dụng booking. | UC-02, UC-04, UC-09 |
+| R-09 | Atomic payment application | Khi đủ điều kiện hiện hành, payment application, booking confirmation, held→sold, một ticket/QR cấp booking, persisted notification request và audit bắt buộc commit nhất quán. Receipt hợp lệ được lưu bền vững trước ACK theo provider contract; xử lý event có thể ở transaction sau. Email gửi sau commit, lỗi email không đảo booking. | UC-02, UC-04, UC-09 |
+| R-10 | Concurrency và recovery | Không có hai active allocations cho cùng physical seat/showtime; reservation tất cả hoặc không có ghế. Idempotency gắn operation và authenticated/Guest identity, payload fingerprint. Retry không tạo booking/payment/ticket/refund/admission trùng. Không gọi provider khi giữ business locks; SAD phối hợp thứ tự Showtime → Booking → Payment attempts tại các workflow liên quan, rồi đọc lại state/time. Client mất response không đồng nghĩa rollback. | UC-01, UC-02, UC-03, UC-04, UC-04A, UC-05, UC-09, UC-10, UC-19 |
+| R-11 | Expiration | Worker chỉ expired/release sau khi đủ điều kiện thời gian và payment safety. Không release do timer UI; không giải phóng payment unknown khi chưa có kết luận hợp lệ. Late success không reclaim ghế hoặc tự phát vé cho booking không đủ điều kiện; tạo review/refund obligation. | UC-02, UC-03, UC-04 |
+| R-12 | Hủy pending | Chỉ hủy pending trước khi payment initiation được commit, qua cảnh báo và xác nhận rõ ràng; commit cancelled và held→released cùng nhau. Sau initiation không dùng Cancel/Query gateway làm lối tắt đổi ghế. Race initiation/cancel phải được phân xử atomically. | UC-09, UC-10 |
+| R-13 | Yêu cầu hủy confirmed | Chỉ do qualifying rescheduling: current official start khác purchased-start snapshot, trước giờ bắt đầu hiện hành, chưa có admissions; hủy toàn booking. Trạng thái request: pending_review, approved_awaiting_refund, rejected, withdrawn, completed. Chỉ pending_review được rút. Request đã nộp hợp lệ có thể tiếp tục review nếu giờ hiện hành quay về snapshot; không mở quyền tạo request mới khi hai giờ bằng nhau. | UC-10, UC-17, UC-19 |
+| R-14 | Review và admission | Pending review không chặn admission; admission đầu tiên tự reject pending request trong cùng transaction. Staff/Manager/Admin được review trong phạm vi hiện hành. Approved awaiting refund chặn admission nhưng booking vẫn confirmed, ghế vẫn sold cho tới refund completion hợp lệ. | UC-05, UC-10, UC-19 |
+| R-15 | Refund theo nguồn | Refund nghĩa vụ từ payment_reconciliation hoặc showtime_rescheduling; financial state pending/unknown/failed/succeeded, độc lập cancellation request. Demo thực chuyển tiền bên ngoài app; Manager được phân công hoặc Admin ghi completion sau kiểm tra payment, toàn bộ amount/currency, reference và evidence. Staff không có quyền completion. Không partial refund hoặc hoàn trùng; accepted/pending không phải completed. | UC-04, UC-04A, UC-19 |
+| R-16 | Refund completion effects | Rescheduling completion hợp lệ: refund succeeded + request completed + booking cancelled + ticket voided + sold allocations released + audit atomically. Reconciliation refund giải quyết nghĩa vụ tài chính theo hồ sơ, không mặc định có cùng các tác động hủy booking/giải phóng ghế. | UC-04A, UC-10, UC-19 |
+| R-17 | Admission | Một QR cấp booking, nhiều đợt admission theo Adult/Discounted quota còn lại. Validation là đọc, confirmation mới mutation. Chỉ STAFF role với Staff–Cinema assignment; Manager/Admin không kế thừa quyền. Kiểm tuổi/Discounted/cancellation và cửa sổ inclusive current start −5 phút đến +20 phút. Retry cùng admission operation không tăng count; request đồng thời không vượt quota. Khóa account không tự vô hiệu paid QR. | UC-05, UC-19 |
+| R-18 | Current authorization | Protected operation kiểm session, account state, current roles và đúng loại cinema assignment; internal access yêu cầu verified email. Không chờ access token hết hạn mới áp quyền hiện hành. Customer login không bắt email verified. Không gộp quyền role hoặc tự trao quyền viết từ actor association trên diagram. | UC-08C, UC-08D, UC-12, UC-13, UC-14A, UC-14B, UC-15A, UC-15B, UC-15C, UC-16A, UC-16B, UC-17, UC-18, UC-19 |
+| R-19 | Single active session | Login conflict phải yêu cầu lựa chọn thay phiên qua challenge ngắn hạn, single-use và bound expected session. Cancel giữ phiên cũ. Confirm thay atomically; stale challenge không revoke phiên mới hơn. SAD C03 dùng JWT access + hashed refresh token, rotation nguyên tử; refresh đã consumed bị từ chối. Logout/account lock revoke server session; unlock không hồi sinh phiên. | UC-08C, UC-08D, UC-18 |
+| R-20 | Verification email | Registration chỉ cấp permanent Customer membership, không tự login. Token verification unpredictable, hashed, single-use; mặc định 24 giờ. Resend tối thiểu 60 giây; pending email-change reservation tối đa 72 giờ từ original request; với email change, expiry=min(lastSent+validity,originalRequest+72h). Primary email của account đã đăng ký không bị giải phóng vì verification token hết hạn. Mỗi account tối đa một active pending email-change request; thay request phải kết thúc và giải phóng reservation cũ atomically. Sau absolute expiry, cùng account chờ 24 giờ trước khi reserve lại cùng target. Resend/replacement/cancel không bypass giới hạn. Primary email giữ nguyên tới verify thành công, user ID không đổi; email change cần reauthentication và báo email cũ sau thành công. | UC-08A, UC-08B, UC-18 |
+| R-21 | Danh mục và lịch sử | Public list coming_soon/now_showing; ended có thể xem detail trực tiếp, archived không public. UC-06A tìm title không phân biệt hoa thường, filter status/genre, sort release_date DESC rồi movie.id DESC (release_date null cuối), backend pagination mặc định 12. General catalogue không tự lọc cinema; cinema-specific chỉ gồm phim public có suất đang bán tại cinema đó. Admin write movies/genres; liên kết movie–genre thuộc UC-12. Genre inactive không xóa liên kết lịch sử nhưng không được chọn cho liên kết mới. Không hard-delete dữ liệu lịch sử tài chính/admission. | UC-06A, UC-06B, UC-12, UC-13 |
+| R-22 | Cinema và room | Admin quản lý cinema/room identity/state. Manager chỉ sửa cinema minimum turnaround thuộc assignment; mặc định 15 phút, cinema-level, không room override. Layout/seat operational state: Admin hoặc assigned Manager; Staff read-only. Thay đổi cấu hình phải kiểm dependencies/obligations và không tự hủy booking/refund. Structural layout bị khóa ở đúng room khi có unfinished showtime với pending/held hoặc confirmed/sold booking; unfinished showtime trống không tự khóa mọi sửa đổi, completed history không tự kích hoạt freeze nhưng phải được bảo toàn. Retirement không hard-delete seat hoặc tái dùng ID; display-only metadata chỉ được sửa nếu không ảnh hưởng identity/geometry/type/eligibility/pricing/history. | UC-14A, UC-14B, UC-15A, UC-15B |
+| R-23 | Pricing management | Admin sửa shared seat types/surcharges và thông tin mô tả ticket categories; đúng hai category bắt buộc, không thêm loại thứ ba/xóa/disable. Giá base theo cinema do Admin hoặc assigned Manager; Staff read-only. Cấu hình khác snapshot giá đã mua. | UC-15C, UC-16A, UC-16B |
+| R-24 | Showtime scheduling | Admin/assigned Manager lập lịch, Staff read. Kiểm room/cinema/movie eligibility, overlap và turnaround; snapshot duration khi tạo, sửa duration movie không đổi suất cũ. Reschedule có kiểm điều kiện, giữ purchased-start và queue thông báo. Cancel bị chặn khi còn hold/confirmed booking/payment/refund obligations chưa xử lý; không auto-cancel/refund hàng loạt. Cancelled showtime không trực tiếp reactivate trong MVP. | UC-17 |
+| R-25 | Account administration | Admin quản lý internal roles, lock/unlock, assignments; bảo vệ permanent Customer membership và last active Admin. Manager chỉ quản lý Staff–Cinema assignment trong cinema được giao, không grant role hoặc quản lý Manager assignment. Account lock không xóa giao dịch/paid ticket. | UC-18 |
+| R-26 | Informational AI | Promethe-Nous chỉ cung cấp thông tin từ nguồn được phép, phân biệt doanh thu/lượt xem và freshness. Không tạo/đổi booking/payment/ticket, không tự truy cập booking cá nhân hoặc báo cáo nội bộ. Theo SAD C12, history giới hạn trong backend memory, không PostgreSQL; clear/expiry/restart có thể mất, không truy cập history bằng session đã revoke. Nguồn ngoài, RAG/pgvector và model cụ thể không tự coi đã triển khai. | UC-11 |
 
-## 7. Yêu cầu chức năng
+## 7. Các luồng nghiệp vụ chính
 
-Định dạng mỗi yêu cầu: **FR-XXX-nnn** — mô tả; actor; hành vi kỳ vọng ("hệ thống shall..."); quy tắc liên quan; điều kiện kiểm tra được.
+| Luồng | Chuỗi hành vi | Kết quả/bất biến |
+|---|---|---|
+| Account access | Register → verification riêng → login → current authorization → logout | Không tự login sau register; explicit session replacement |
+| Discovery/reservation | Browse → detail/showtime → quantities/seats → Step 1 contact → Step 2 reservation | Selection chưa giữ ghế; booking kế thừa deadline |
+| Payment/ticket delivery | Explicit initiation → verified webhook/query → atomic apply → post-commit email | Một QR cấp booking, email failure không đảo payment |
+| Expiration/recovery | Deadline/grace → kiểm payment → release hoặc reconcile/review | Unknown không bị coi failed; không reclaim ghế |
+| Admission | Staff validate → kiểm khách/remaining quota → confirm batch | Validation không tiêu quota; confirmation idempotent |
+| Cancellation/refund | Pending pre-init cancel hoặc confirmed reschedule request → review → verified refund completion | Hai workflow độc lập, khác điều kiện và tác động |
+| Cinema preparation | Movies/genres → cinema/room/layout → pricing → showtimes | Đúng quyền; kiểm dependencies/overlap trước commit |
+| Operational support | Scoped lookup → resend/review/completion được phép | Không tạo quyền financial override/admission ngầm |
 
-### 7.1. Xác thực và quản lý tài khoản
+## 8. Đối tượng nghiệp vụ và nhất quán trạng thái
 
-- **FR-AUTH-001** — Đăng ký tài khoản. Actor: khách (chưa đăng nhập). Hệ thống shall cho phép đăng ký tài khoản và khi thành công cấp đúng role `CUSTOMER`, không cấp role khác.
-  Kiểm tra: tài khoản mới chỉ có role CUSTOMER.
-- **FR-AUTH-002** — Đăng nhập. Actor: mọi user. Khi thông tin xác thực hợp lệ và tài khoản `active`, hệ thống shall tạo phiên đăng nhập và trả về quyền truy cập theo role. Khi tài khoản `locked`/`deactivated` hoặc thông tin sai, hệ thống shall từ chối mà không tiết lộ thông tin nhạy cảm.
-  Kiểm tra: đăng nhập tài khoản locked bị từ chối với thông báo chung.
-- **FR-AUTH-003** — Xem và cập nhật hồ sơ cá nhân. Actor: user đã đăng nhập. Hệ thống shall chỉ cho phép user sửa hồ sơ của chính mình.
-  Kiểm tra: sửa hồ sơ của user khác bị từ chối.
-- **FR-AUTH-004** — Kiểm soát truy cập theo role. Hệ thống shall thực thi authorization ở backend dựa trên role hiệu lực và quyền sở hữu tài nguyên; thay đổi role có thể không phản ánh ngay vào access token đang hiệu lực (giới hạn MVP — BR-AUTH-004).
+Các nhóm khái niệm gồm account/session/role assignments, verification request, cinema/room/physical seat, movie/genre, category/cinema price, showtime, selection, booking/allocations/snapshots, payment/event, cancellation request/refund evidence, booking ticket/admission và notification/audit.
 
-### 7.2. Duyệt phim và lịch chiếu (khách hàng)
+Tên trạng thái dưới đây dùng diễn đạt lifecycle; tên bảng/cột/enum vật lý phải được kiểm chứng qua migrations/schema thực tế. Không tuyên bố schema hiện tại đã có các cấu trúc mới.
 
-- **FR-MOVIE-001** — Xem danh sách phim. Hệ thống shall hiển thị phim theo trạng thái (đang chiếu, sắp chiếu) với thông tin cơ bản.
-  Kiểm tra: phim `archived` không xuất hiện trong danh sách khách hàng.
-- **FR-MOVIE-002** — Xem chi tiết phim. Hệ thống shall hiển thị thông tin phim và các suất chiếu còn bán.
-- **FR-SHOW-001** — Xem lịch chiếu theo phim/ngày. Hệ thống shall hiển thị chỉ các suất `scheduled` còn bán (theo BR-ST-003: không `cancelled`, chưa quá hạn bán nếu có mốc). Đây là thông tin hiển thị phục vụ duyệt; điều kiện chốt cuối cùng khi tạo booking do backend kiểm tra lại (FR-BOOK-001, BR-BOOK-001).
-- **FR-SHOW-002** — Xem sơ đồ ghế của suất. Hệ thống shall hiển thị trạng thái ghế theo phân bổ hiện hành: khả dụng (chưa có phân bổ hiệu lực), đang giữ, đã bán; ghế bảo trì/ngừng hoạt động không chọn được. Sơ đồ hiển thị là thông tin phục vụ chọn ghế; tính khả dụng chốt cuối cùng do backend kiểm tra lại trong transaction tạo booking (FR-BOOK-001, BR-BOOK-002).
-  Kiểm tra: ghế đang giữ bởi booking khác hiển thị không chọn được.
+| Sự kiện | Booking / allocations | Payment / cancellation / ticket |
+|---|---|---|
+| First seat selection | Chưa booking/hold | Selection deadline gốc |
+| Step 1 → Step 2 thành công | pending / held | Giá và giờ mua được snapshot |
+| Payment initiation hợp lệ | Giữ pending/held | Payment window mới theo R-07; không cho pending cancel |
+| Verified eligible application | confirmed / sold | succeeded + applied; một booking ticket/QR |
+| Release đủ điều kiện | expired / released | Không phủ nhận kết quả tài chính đến muộn |
+| Explicit pre-init cancel | cancelled / released | Không tạo confirmed cancellation/refund |
+| Reschedule cancellation request | confirmed / sold | pending_review; admission chưa bị chặn |
+| First admission trong pending review | confirmed / sold | Tăng counts; request rejected |
+| Approve request | confirmed / sold | approved_awaiting_refund; chặn admission |
+| Verified rescheduling refund | cancelled / released | completed; refund succeeded; ticket voided |
+| Verified reconciliation refund | Theo tình trạng nghiệp vụ hiện hành | Resolve nghĩa vụ; không suy ra rescheduling effects |
 
-### 7.3. Đặt vé và giữ ghế
+Không dùng ticket valid→used một lần cho toàn bộ booking: một QR có remaining entitlements và admission batches. Không đưa refund_required vào cột trạng thái refund để thay financial state.
 
-- **FR-BOOK-001** — Tạo booking giữ ghế. Actor: Customer đã đăng nhập. Khi khách chọn ít nhất một ghế khả dụng trong suất còn bán, hệ thống shall trong một transaction **kiểm tra lại authoritative toàn bộ điều kiện**: suất còn bán theo BR-ST-003 (không `cancelled`, chưa quá `booking_closes_at` nếu có), toàn bộ ghế còn khả dụng — sau đó tạo booking `pending` với thời hạn giữ 5 phút và phân bổ `held` cho toàn bộ ghế đã chọn, hoặc từ chối toàn bộ nếu bất kỳ điều kiện nào không thỏa (không giữ một phần — BR-BOOK-001, BR-BOOK-002). Kết quả hiển thị trước đó (FR-SHOW-001/002) không thay thế kiểm tra này.
-  Kiểm tra: request chọn 1 ghế trùng + 1 ghế trống không giữ ghế nào.
-- **FR-BOOK-002** — Tính tiền khi tạo booking. Hệ thống shall tự tính giá từng ghế và tổng tiền từ giá hiện hành tại thời điểm tạo (BR-BOOK-005); client không được quyết định giá cuối hay mức giảm.
-  Kiểm tra: giá booking khớp tính toán backend từ giá cơ sở suất, phụ thu loại ghế và mức giảm loại vé.
-- **FR-BOOK-003** — Hủy booking pending. Actor: chủ booking. Khi booking còn `pending`, chưa có payment `succeeded` được áp dụng và không có payment `created`/`pending`/`unknown`, hệ thống shall chuyển booking sang `cancelled` và giải phóng toàn bộ ghế đang giữ trong một transaction (BR-BOOK-008). Các trường hợp khác (booking của người khác, đã `confirmed`/`expired`/`cancelled`) shall bị từ chối. **Nút "Hủy thanh toán / Đổi ghế" (cập nhật theo yêu cầu UX):** nếu booking có attempt `created`/`pending`/`unknown`, backend chủ động gọi Cancel/Query API của cổng (ngoài transaction): nếu cổng xác nhận chưa thu tiền, payment chuyển `cancelled` rồi booking `cancelled` + ghế `released` — khách đổi ghế ngay không phải chờ hết hạn; nếu cổng báo đã thu hoặc kết quả không chắc chắn, hủy bị từ chối và ghế giữ nguyên (chờ grace period/đối soát theo BR-BOOK-004). Lưu ý: trạng thái payment chỉ được chuyển từ kết quả cổng đã xác minh, không tự suy.
-  Kiểm tra: hủy booking có payment `pending` bị từ chối và ghế giữ nguyên.
-- **FR-BOOK-004** — Xem lịch sử đặt vé. Actor: Customer. Hệ thống shall hiển thị booking và vé của chính user với trạng thái hiện tại; không hiển thị booking của user khác (BR-AUTH-002).
+## 9. Yêu cầu phi chức năng và cách đánh giá
 
-### 7.4. Thanh toán
+Nguồn: Vision và SAD §2; các con số bên dưới là **mục tiêu kiểm chứng đề xuất**, không là số đo đã đạt. Khi lập test plan phải bổ sung tải, dữ liệu, thiết bị, latency, cách đo và tiêu chí percentile. Không tự công bố SLA/uptime chưa được duyệt.
 
-- **FR-PAY-001** — Tạo payment attempt. Actor: Customer (với booking pending của mình). Khi khách bắt đầu thanh toán cho booking pending còn hạn, hệ thống shall tạo payment attempt với số tiền và tiền tệ đúng bằng tổng tiền/tiền tệ của booking và có idempotency key; nếu đã có attempt `created`/`pending`/`unknown` thì không tạo attempt mở mới (BR-PAY-001, BR-PAY-002).
-  Kiểm tra: attempt thứ hai khi còn attempt mở bị từ chối.
-- **FR-PAY-002** — Nhận và xác minh kết quả thanh toán. Hệ thống shall xử lý sự kiện từ cổng theo bốn bước phân biệt: (1) tiếp nhận — lưu sự kiện bền vững trước (`received`), kể cả khi chưa xác minh, để không mất callback; (2) xác minh nguồn/chữ ký và đối chiếu định danh yêu cầu, số tiền, tiền tệ; (3) xử lý nghiệp vụ — chỉ sự kiện hợp lệ mới được ảnh hưởng trạng thái payment/booking/ghế/ticket; (4) đánh dấu xử lý thành công (`processed`) cùng transaction nghiệp vụ (BR-PAY-005, BR-PAY-006). Callback không hợp lệ (sai chữ ký/sai số tiền/sai tiền tệ) shall được ghi nhận nhưng không thay đổi bất kỳ trạng thái payment, booking, phân bổ ghế hay ticket nào (NFR-SEC-003).
-  Kiểm tra: callback sai chữ ký hoặc sai số tiền được lưu nhận nhưng trạng thái nghiệp vụ không thay đổi.
-- **FR-PAY-003** — Xử lý callback lặp idempotent. Hệ thống shall nhận diện callback trùng qua khóa sự kiện, chỉ xử lý nghiệp vụ một lần và không tạo thêm ticket (BR-PAY-006). Callback trùng của một sự kiện đã xử lý thành công được bỏ qua; callback trùng trong khi sự kiện gốc đang xử lý được tuần tự hóa, không gây cập nhật nghiệp vụ trùng; callback lặp của sự kiện hợp lệ không đảo ngược trạng thái payment đã áp dụng (BR-PAY-008).
-  Kiểm tra: gửi cùng callback hai lần chỉ tạo một kết quả xử lý nghiệp vụ.
-- **FR-PAY-004** — Xử lý kết quả chưa chắc chắn. Khi giao dịch timeout hoặc mất kết nối, hệ thống: (1) shall chuyển payment sang `pending`/`unknown`; (2) shall **không tự động retry** — không tạo attempt mở mới khi còn attempt chưa chắc chắn (BR-PAY-002), kết quả chỉ chốt sau khi đối soát với cổng (BR-PAY-003); (3) shall **không gia hạn giữ ghế theo ý muốn client** — hết hạn/giải phóng tuân theo chính sách lifecycle đã thống nhất trong `database-design.md` mục 34.1: worker chỉ chuyển booking `expired` + detail `released` khi quá hạn và không còn attempt đang mở (BR-BOOK-004), kèm Grace Period: worker chủ động truy vấn trạng thái giao dịch ở cổng trong khoảng châm chước 2–3 phút sau khi quá hạn và nếu cổng xác nhận chưa thu thì chuyển payment `failed` rồi giải phóng ghế (truy vấn chủ động của worker không phải retry tự động; trạng thái `failed` phải đến từ kết quả cổng đã xác minh); nếu attempt thành công trên booking đã hết hạn, áp dụng FR-PAY-005/BR-PAY-007: không tự chiếm lại ghế, không phát hành ticket. **Grace period đã chốt (OQ-07 — RESOLVED):** sau khi quá hạn thêm khoảng ân hạn (đề xuất 2–3 phút), worker chủ động truy vấn cổng; nếu cổng xác nhận chưa thu tiền thì ép payment `failed`/`cancelled` và giải phóng ghế trong cùng transaction; nếu không xác đáng thì giữ `unknown` + `needs_review` để giám sát.
-  Kiểm tra: payment `unknown` không cho retry tự động; booking quá hạn với attempt đang mở không được chuyển `expired`/`released` cho đến khi attempt chốt hoặc hết grace period; sau grace period nếu cổng báo chưa thu, ghế được giải phóng; payment thành công sau đó không tạo ticket và không chiếm lại ghế.
-- **FR-PAY-005** — Áp dụng payment và phát hành vé. Khi payment `succeeded` đã xác minh thỏa mọi điều kiện áp dụng (booking vẫn `pending`), hệ thống shall trong một transaction: đánh dấu payment được áp dụng, chuyển booking `pending -> confirmed`, chuyển toàn bộ detail `held -> sold` và tạo ticket; nếu booking không còn đủ điều kiện (đã `expired`/`cancelled` với ghế đã được giải phóng) thì shall không áp dụng, không xác nhận booking, không phát hành ticket, không chiếm lại ghế; giữ kết quả thành công nguyên trạng để đối soát (BR-PAY-004, BR-PAY-007). Kết quả tài chính thành công và việc xác nhận booking là hai kết quả độc lập.
-  Kiểm tra: payment thành công trên booking đã expired không confirm booking, không tạo ticket và không chiếm lại ghế đã giải phóng.
+| Nhóm | Yêu cầu | Kiểm chứng dự kiến |
+|---|---|---|
+| Usability | Luồng chính rõ, countdown đúng nguồn; desktop/mobile | Viewport 375/768/1280; mục tiêu ≥80% hoàn thành scenario, chưa đo |
+| Performance | Tra cứu/ghi dữ liệu phù hợp sử dụng tương tác | Mục tiêu p95 movie/showtime ≤2s, reservation ≤3s, validation ≤2s; chưa đo |
+| Concurrency | Không duplicate active seat/quota/financial effect | Race reservation, payment–expiration, cancellation–admission, concurrent refresh |
+| Security | Hash credentials/tokens; current authorization; không secret/PII thừa | Role/scope/ownership/revoked-session/invalid-signature negative tests |
+| Integrity | Atomic transitions và snapshots; bảo toàn lịch sử | Fault injection trước/sau commit; đối chiếu invariants |
+| Reliability | Durable payment receipt/outbox; retry idempotent | Restart worker, duplicate event, provider timeout, response lost |
+| Auditability | Actor, time, action, target, decision/evidence phù hợp | Review log/evidence; không lưu raw secret/verification token |
+| Maintainability | Component ownership và API contracts rõ | Review cross-component writes, dependency/transaction boundaries |
+| Informational AI | Không bịa dữ liệu thiếu, không thay đổi giao dịch | Câu hỏi thiếu nguồn, outdated schedule, yêu cầu vượt quyền |
 
-### 7.5. Vé
+## 10. Tiêu chí nghiệm thu có thể kiểm chứng
 
-- **FR-TICKET-001** — Xem vé. Actor: chủ booking đã confirmed. Hệ thống shall hiển thị vé (mã vé, ghế, suất) cho khách tra cứu.
-- **FR-TICKET-002** — Soát vé. Actor: Staff. Khi nhân viên quét/nhập mã vé, hệ thống shall kiểm tra mã vé, booking `confirmed`, detail `sold` và trạng thái vé; nếu vé `valid`, cập nhật có điều kiện `valid -> used` và ghi thời điểm/người soát (BR-BOOK-009). Vé đã `used`/`voided` shall bị từ chối.
-  Kiểm tra: soát cùng mã vé hai lần, lần hai bị từ chối.
+Mã dưới đây là acceptance checklist dẫn xuất, **chưa thực thi**. Không thay thế ≥15 test cases chi tiết của PA4. Mỗi test case phải bổ sung preconditions, dữ liệu, bước, expected/actual result và evidence.
 
-### 7.6. Quản trị nội dung và lịch chiếu
-
-- **FR-MGT-MOVIE-001** — Quản lý phim. Actor: Manager/Admin. Hệ thống shall cho phép thêm, sửa, cập nhật trạng thái phim; phim/thể loại đã được tham chiếu (suất chiếu, booking...) ưu tiên ngừng hoạt động thay vì xóa vật lý (nguyên tắc vòng đời danh mục — xem BR-ROOM-004 về khóa cấu trúc ghế và nguyên tắc ngừng hoạt động danh mục).
-- **FR-MGT-MOVIE-002** — Quản lý thể loại. Actor: Manager/Admin. Hệ thống shall cho phép quản lý thể loại; thể loại đang được phim tham chiếu không được xóa.
-- **FR-MGT-ROOM-001** — Quản lý phòng và ghế. Actor: Manager/Admin. Hệ thống shall cho phép cấu hình phòng và sơ đồ ghế theo BR-ROOM-001..004; khi phòng đã có suất được công bố, cấu trúc sơ đồ ghế không được thay đổi phá vỡ dữ liệu đã bán.
-- **FR-MGT-ST-001** — Tạo/sửa suất chiếu. Actor: Manager/Admin. Hệ thống shall chỉ tạo/sửa suất khi hợp lệ: phim và phòng tồn tại và khả dụng, thời gian hợp lệ (`starts_at < ends_at <= room_available_at`), không chồng khoảng chiếm dụng phòng với suất khác (trừ suất `cancelled`) (BR-ST-001..003).
-  Kiểm tra: tạo suất chồng lịch phòng bị từ chối với lý do rõ ràng.
-- **FR-MGT-ST-002** — Hủy suất chiếu. Actor: Manager/Admin. Khi hủy, hệ thống shall lưu trạng thái `cancelled`, thời điểm và lý do (BR-ST-004). Workflow tự động xử lý booking đã thanh toán khi rạp hủy suất không thuộc phạm vi demo; chính sách quyền lợi khách cần xác nhận (OQ-05).
-- **FR-MGT-ST-003** — Sửa suất đã có booking. Hệ thống shall không cho đổi phim/giờ/phòng của suất đã có booking `confirmed` trong MVP (BR-ST-005).
-
-### 7.7. Quản trị booking, payment, tài khoản
-
-- **FR-ADMIN-BOOK-001** — Tra cứu booking và vé. Actor: Staff/Manager/Admin theo quyền. Hệ thống shall cho phép tra cứu booking/vé theo mã hoặc thông tin khách, chỉ trong phạm vi quyền (OQ-04).
-- **FR-ADMIN-PAY-001** — Xem trạng thái payment. Actor: Manager/Admin (phạm vi OQ-04). Hệ thống shall hiển thị các attempt, trạng thái và kết quả đối soát của một booking. Thay đổi trạng thái thủ công phải tuân thủ BR-PAY-001..008.
-- **FR-ADMIN-USER-001** — Quản lý tài khoản và phân quyền. Actor: Admin. Hệ thống shall cho phép khóa/mở khóa tài khoản và cấp/thu hồi role có kiểm soát; đăng ký công khai không được cấp role quản trị (BR-AUTH-003).
-  Kiểm tra: chỉ Admin thao tác được quản lý user/role.
-- **FR-ADMIN-REPORT-001** — Xem báo cáo và thống kê. Actor: Manager/Admin (ranh giới PROPOSED — OQ-04). Hệ thống shall hiển thị báo cáo cơ bản (phạm vi chi tiết OQ-04; báo cáo phân tích nâng cao ngoài phạm vi demo).
-
-## 8. Quy tắc nghiệp vụ chi tiết
-
-### 8.1. Đặt vé và phân bổ ghế
-
-| ID | Quy tắc |
-|---|---|
-| BR-BOOK-001 | Booking chỉ được tạo khi: khách đã đăng nhập; suất chiếu còn bán theo vòng đời BR-ST-003 (đang `scheduled`, không `cancelled`, chưa quá `booking_closes_at` nếu có — OQ-02); ít nhất một ghế khả dụng được chọn. Đây là kiểm tra authoritative do backend thực hiện trong transaction tạo booking; hiển thị sơ đồ ghế/lịch chiếu cho khách (FR-SHOW-001/002) chỉ là thông tin phục vụ chọn, không thay thế kiểm tra này. |
-| BR-BOOK-002 | Tạo booking và toàn bộ phân bổ ghế là thao tác all-or-nothing trong một transaction: nếu một ghế trong lựa chọn bị xung đột, không ghế nào được giữ. |
-| BR-BOOK-003 | Ghế trong một suất có ba trạng thái phân bổ: khả dụng (chưa có phân bổ hiệu lực — trạng thái suy ra, không lưu), `held` (đang giữ cho booking pending), `sold` (đã bán cho booking confirmed). Trạng thái vật lý của ghế (`active`/`maintenance`/`inactive`) là thông tin độc lập. |
-| BR-BOOK-004 | Thời gian giữ ghế là 5 phút, tính từ thời điểm booking được tạo (CONFIRMED). Mốc 5 phút không được gia hạn kể cả khi booking còn payment `pending`/`unknown`. **Vòng đời booking và giải phóng ghế theo `database-design.md` (mục 34.1):** worker chỉ chuyển booking `expired` và các detail sang `released` khi booking quá hạn **và** không còn payment `created`/`pending`/`unknown` cần giữ để xử lý; nếu còn attempt đang mở, cả hai sự kiện được trì hoãn đến khi attempt chốt kết quả — đây là chính sách của nguồn, không phải gia hạn giữ ghế theo ý muốn client. **Cửa sổ chờ có giới hạn (OQ-07 — RESOLVED, Grace Period):** trong khoảng châm chước đề xuất 2–3 phút sau khi quá hạn, worker chủ động truy vấn trạng thái giao dịch ở cổng; nếu cổng xác nhận chưa thu tiền, payment chuyển `failed`/`cancelled` và booking/detail chuyển `expired`/`released` trong cùng transaction; nếu cổng không phản hồi xác đáng, payment giữ `unknown` + `reconciliation_status = 'needs_review'` — ghế giữ nguyên (ưu tiên an toàn tài chính), worker retry đối soát; luồng needs_review là ngoại lệ có giám sát, không phải giữ ghế tự động vô hạn. Giá trị grace period chính xác là cấu hình triển khai. |
-| BR-BOOK-005 | Giá được backend tính khi tạo booking: giá cơ sở suất × sức chứa loại ghế (ghế Couple nhân 2), cộng phụ thu loại ghế một lần, trừ giảm giá theo loại vé (chỉ tính trên phần giá cơ sở, làm tròn VND nguyên đồng). Client không gửi giá/mức giảm. Giá và tổng tiền chốt tại thời điểm tạo, không tính lại khi danh mục/giá thay đổi. **Quyết định OQ-06 (đã chốt — Option B):** một booking detail được phép có giá 0 (`unit_price >= 0`, ví dụ giảm 100% trên detail đó), nhưng `booking.total_amount > 0` và `payment.amount > 0` — booking gồm toàn vé giá 0 (tổng 0) bị chặn và booking miễn phí toàn bộ/luồng xác nhận không-thanh-toán/hệ thống khuyến mãi nằm ngoài phạm vi MVP. Hỗ trợ mức database cho detail giá 0 không đồng nghĩa triển khai luồng vé miễn phí. |
-| BR-BOOK-006 | Hai request đồng thời không thể giữ/bán cùng một ghế trong cùng suất: hệ thống tuần tự hóa qua transaction và từ chối phân bổ hiệu lực thứ hai. |
-| BR-BOOK-007 | Booking `pending` tương ứng mọi detail `held`; `confirmed` tương ứng `sold`; `expired`/`cancelled` tương ứng `released`. |
-| BR-BOOK-008 | Customer chỉ được hủy booking của chính mình khi booking `pending` và chưa có payment `succeeded` được áp dụng. Trường hợp đặc biệt (cập nhật — nút "Hủy thanh toán / Đổi ghế"): nếu có attempt `created`/`pending`/`unknown`, backend gọi Cancel/Query API của cổng (ngoài transaction); nếu cổng xác nhận chưa thu tiền, payment chuyển `cancelled` (kết quả từ cổng đã xác minh) rồi booking `cancelled` + ghế `released`; nếu cổng báo đã thu hoặc không chắc chắn, hủy bị từ chối. Không hủy một phần. Không có hủy booking `confirmed` sau thanh toán trong demo. |
-| BR-BOOK-009 | Mỗi booking detail phát hành đúng `capacity_units_snapshot` ticket (1 cho ghế thường, 2 cho ghế Couple — hai mã QR độc lập, mỗi người soát riêng; khách đi cùng đến trễ không bị chặn toàn bộ ghế đôi). Ticket chỉ được phát hành khi payment hợp lệ được áp dụng; số vé theo detail là bất biến nghiệp vụ do service phát hành idempotent (callback lặp không phát hành thừa). Mỗi ticket `valid` chỉ được soát thành công một lần (chuyển `used` có điều kiện). Cửa sổ soát vé chưa chốt (OQ-03). |
-| BR-BOOK-010 | Một booking có thể gồm nhiều booking detail với các loại vé khác nhau (mỗi ghế một loại vé trong MVP); không hỗ trợ tách thanh toán theo từng detail. |
-
-### 8.2. Phòng chiếu và ghế
-
-| ID | Quy tắc |
-|---|---|
-| BR-ROOM-001 | Cinema chứa nhiều CinemaRoom; phòng chứa nhiều ghế. Sức chứa phòng được suy ra từ ghế và `capacity_units` của loại ghế (ghế Couple tính 2 chỗ), không lưu trường sức chứa riêng dễ sai lệch. |
-| BR-ROOM-002 | Ghế được định vị bằng (hàng, số ghế) trong phòng; vị trí duy nhất trong phòng. Loại ghế xác định sức chứa và phụ thu. |
-| BR-ROOM-003 | Phòng có trạng thái `active`/`maintenance`/`inactive`; phòng bảo trì không tạo suất mới; thay đổi tình trạng bảo trì phải xử lý các suất và đơn bị ảnh hưởng trước. |
-| BR-ROOM-004 | Khi phòng đã có suất được công bố, cấu trúc sơ đồ ghế bị khóa (không thêm/xóa/chuyển ghế/đổi loại). Danh mục (phim, thể loại, loại ghế, loại vé) đã được sử dụng ưu tiên ngừng hoạt động thay vì xóa; dữ liệu booking/payment/ticket không bị xóa dây chuyền. |
-
-### 8.3. Suất chiếu
-
-| ID | Quy tắc |
-|---|---|
-| BR-ST-001 | Suất chiếu hợp lệ phải xác định được: phim, phòng, thời gian bắt đầu, thời gian kết thúc, thời điểm phòng rảnh — với `starts_at < ends_at <= room_available_at`; và giá cơ sở. |
-| BR-ST-002 | Hai suất trong cùng phòng không được chồng khoảng chiếm dụng `[starts_at, room_available_at)`, trừ suất đã `cancelled`. Ràng buộc được bảo vệ bằng exclusion constraint ở mức database; kiểm tra trước để báo lỗi thân thiện. |
-| BR-ST-003 | Vòng đời suất: `draft -> scheduled -> in_progress -> completed`; `draft`/`scheduled` có thể `cancelled`. Bán vé khi `scheduled` và chưa đóng bán. |
-| BR-ST-004 | Hủy suất phải lưu trạng thái `cancelled`, thời điểm và lý do. Suất đã hủy không chiếm lịch phòng. Khôi phục suất đã hủy phải kiểm tra lại xung đột lịch phòng. |
-| BR-ST-005 | Cho phép sửa giờ/phòng khi suất chưa có booking và không vi phạm lịch. Suất đã có booking `confirmed` không được đổi phim/giờ/phòng trong MVP. Workflow tự động thông báo/đổi lịch/hoàn tiền khi rạp hủy suất ngoài phạm vi demo; chính sách quyền lợi khách đã thanh toán cần chủ dự án xác nhận (OQ-05) — việc chưa triển khai workflow không có nghĩa là nghiệp vụ đã quyết định không hoàn tiền. |
-
-### 8.4. Thanh toán
-
-| ID | Quy tắc |
-|---|---|
-| BR-PAY-001 | Payment attempt được tạo với số tiền và tiền tệ đúng bằng tổng tiền/tiền tệ của booking tại thời điểm tạo; mọi attempt của cùng booking dùng cùng giá trị (booking bất biến sau tạo). |
-| BR-PAY-002 | Một booking không có nhiều attempt đang mở (`created`/`pending`/`unknown`) tại cùng thời điểm (bảo đảm bởi partial unique index). Retry phải chờ attempt cũ có kết quả chắc chắn. Attempt đang mở không tự chuyển thành `failed` chỉ vì booking hết hạn — kết quả của nó phải đến từ cổng (xem BR-PAY-003, BR-PAY-007). |
-| BR-PAY-003 | `unknown` biểu thị kết quả chưa xác định, không mặc nhiên là thất bại. Payment `pending`/`unknown` phải được đối soát với cổng trước khi được retry; kết quả chỉ chốt sau khi xác minh với cổng. Booking hết hạn không tự động coi payment `pending`/`unknown` là thất bại — kết quả tài chính và trạng thái booking là hai kết quả độc lập. |
-| BR-PAY-004 | Chỉ payment `succeeded`, đã xác minh (đúng định danh yêu cầu, số tiền, tiền tệ, nguồn/chữ ký) và booking còn đủ điều kiện (`pending`) mới được áp dụng: trong một transaction — đánh dấu áp dụng, booking `pending -> confirmed`, toàn bộ detail `held -> sold`, tạo ticket. Không áp dụng một phần. |
-| BR-PAY-005 | Phân biệt bốn khâu xử lý sự kiện: tiếp nhận (lưu bền vững, `received`) — xác minh nguồn/chữ ký — xử lý nghiệp vụ — đánh dấu `processed` cùng transaction nghiệp vụ. Callback không xác minh được không ảnh hưởng trạng thái payment/booking/ghế/ticket. Trạng thái payment là trạng thái nội bộ; trạng thái báo từ cổng chỉ là dữ liệu đầu vào qua payment event, phải qua xác minh mới ảnh hưởng trạng thái. Booking `expired` là sự kiện vòng đời của booking, không phải trạng thái payment. |
-| BR-PAY-006 | Callback lặp được nhận diện qua khóa `(payment, event_key)` và bỏ qua xử lý; callback trùng không tạo thêm ticket hay áp dụng payment lần hai. Hai worker không được đồng thời xử lý cùng một event gây cập nhật nghiệp vụ trùng; cập nhật nghiệp vụ và đánh dấu event `processed` nguyên tử trong cùng transaction xử lý. Việc lưu event ban đầu và xử lý nghiệp vụ không bắt buộc cùng một transaction (tách để retry bền vững). |
-| BR-PAY-007 | Payment `succeeded` đến muộn khi booking đã `expired`/`cancelled` hoặc không còn đủ điều kiện: không tự động áp dụng, không xác nhận booking, không phát hành ticket, không chiếm lại ghế đã giải phóng; kết quả thành công giữ nguyên trạng thái `succeeded` để đối soát. Xử lý tài chính tiếp theo (refund) ngoài phạm vi demo trừ khi nghiệp vụ quy định rõ. **Grace Period (OQ-07 — RESOLVED):** payment `unknown`/`pending` trên booking quá hạn bị worker truy vấn cổng chủ động trong khoảng châm chước 2–3 phút; nếu cổng xác nhận chưa thu thì payment chuyển `failed`/`cancelled` và ghế giải phóng — payment thành công muộn vẫn theo quy tắc không-áp-dụng này. |
-| BR-PAY-008 | Payment `failed`/`cancelled` không làm thay đổi booking; booking còn hạn có thể thử thanh toán lại. Không hạ trạng thái payment đã áp dụng thành `failed` chỉ vì callback đến muộn hoặc lặp. |
-
-**Phân biệt các nhóm trạng thái:** trạng thái booking (`pending`/`confirmed`/`expired`/`cancelled`), trạng thái phân bổ ghế trong suất (`held`/`sold`/`released`), trạng thái payment (`created`/`pending`/`unknown`/`succeeded`/`failed`/`cancelled`), trạng thái ticket (`valid`/`used`/`voided`) là bốn nhóm độc lập; payment `succeeded` không tự động là bằng chứng booking được xác nhận — cần đủ điều kiện áp dụng (BR-PAY-004).
-
-### 8.5. Phân quyền và quản trị
-
-| ID | Quy tắc |
-|---|---|
-| BR-AUTH-001 | Mọi thao tác quản trị yêu cầu phiên đăng nhập hợp lệ và role phù hợp; authorization thực hiện ở backend. |
-| BR-AUTH-002 | Customer chỉ truy cập/sửa/hủy được booking, vé và hồ sơ của chính mình; truy cập tài nguyên của người khác bị từ chối kể cả khi biết mã công khai. |
-| BR-AUTH-003 | Đăng ký công khai chỉ cấp role `CUSTOMER`; cấp/thu hồi role quản trị do backend kiểm soát (Admin). Role `inactive` không cấp quyền mới; tài khoản `locked`/`deactivated` không truy cập được. |
-| BR-AUTH-004 | Access token đã phát hành giữ hiệu lực đến hết hạn trừ khi có cơ chế thu hồi; thay đổi role có thể không phản ánh ngay vào token đang hiệu lực — giới hạn MVP được chấp nhận (không thu hồi token tức thời; role bị thu hồi còn hiệu lực cho đến khi token hết hạn). |
-| BR-AUTH-005 | Phân biệt quyền giữa Staff/Manager/Admin chưa chốt đầy đủ: Staff được xác nhận với nghiệp vụ soát vé và tra cứu; Manager (PROPOSED) quản lý phim/phòng/ghế/suất chiếu và xem báo cáo; Admin có toàn quyền gồm quản lý user/role. Ranh giới chi tiết (quản lý payment, hủy booking, báo cáo) là câu hỏi mở (OQ-04). |
-
-## 9. Hành trình nghiệp vụ của khách hàng
-
-**Luồng chính:** Home → Chi tiết phim → Chọn suất → Chọn ghế → Xác nhận đặt vé → Thanh toán → Kết quả thanh toán → Vé của tôi.
-
-1. Khách duyệt phim và chọn suất chiếu còn bán (FR-SHOW-001).
-2. Khách chọn ghế trên sơ đồ (FR-SHOW-002); ghế đang giữ/đã bán/bảo trì không chọn được.
-3. Khách xác nhận đặt vé; backend kiểm tra lại toàn bộ ghế, tạo booking `pending` và giữ ghế, countdown 5 phút bắt đầu (FR-BOOK-001).
-4. Khách thanh toán qua Payment Gateway (FR-PAY-001).
-5. Khi payment thành công và được xác minh, booking confirmed và vé được phát hành (FR-PAY-005); khách xem vé tại "Vé của tôi" (FR-TICKET-001).
-
-**Các tình huống thay thế và ngoại lệ:**
-
-| Tình huống | Kết quả mong đợi |
-|---|---|
-| Chưa đăng nhập khi đặt vé | Hệ thống yêu cầu đăng nhập trước khi tạo booking; duyệt phim/xem lịch vẫn khả dụng. |
-| Ghế vừa bị người khác giữ/bán | Backend từ chối toàn bộ lựa chọn (all-or-nothing), khách chọn lại ghế khác. |
-| Hết thời gian giữ ghế (5 phút) | Theo `database-design.md` mục 34.1: worker chỉ chuyển booking `expired` + detail `released` khi quá hạn và không còn attempt `created`/`pending`/`unknown`; nếu còn attempt đang mở, cả hai sự kiện trì hoãn (BR-BOOK-004). **Grace Period (OQ-07 — RESOLVED):** trong khoảng châm chước 2–3 phút sau khi quá hạn, worker truy vấn cổng; cổng xác nhận chưa thu thì payment `failed`/`cancelled` và ghế giải phóng; không xác đáng thì giữ `unknown` + `needs_review`. Không gia hạn giữ ghế theo ý muốn client. |
-| Payment thất bại hoặc hủy | Booking giữ nguyên `pending` nếu còn hạn, khách có thể thử lại (BR-PAY-008). |
-| Payment `unknown` (timeout) | Không tạo attempt mở mới, không bán lại ghế đang phân bổ; chờ đối soát với cổng (FR-PAY-004); không gia hạn giữ ghế. |
-| Callback lặp | Chỉ xử lý một lần, không tạo thêm ticket (FR-PAY-003). |
-| Payment thành công khi booking đã hết hạn/hủy | Không xác nhận booking, không phát hành ticket; giữ kết quả để đối soát (BR-PAY-007). |
-| Khách cố truy cập/hủy booking của người khác | Backend từ chối theo BR-AUTH-002, kể cả khi biết mã booking. |
-
-## 10. Hành trình nghiệp vụ quản trị
-
-Đường dẫn chung: Đăng nhập → Dashboard → các module quản trị theo quyền. CRUD không mặc nhiên có sẵn cho mọi role — quyền theo BR-AUTH-001..005 và OQ-04.
-
-| Module | Actor chịu trách nhiệm | Mục đích | Ràng buộc quan trọng |
+| ID | Tình huống | Kết quả mong đợi | Quy tắc |
 |---|---|---|---|
-| Xác thực quản trị | Staff/Manager/Admin | Đăng nhập vào khu vực quản trị | Chỉ role được cấp; tài khoản `locked` bị từ chối |
-| Dashboard | Manager/Admin | Tổng quan hoạt động | Phạm vi nội dung theo OQ-04 |
-| Quản lý phim/thể loại | Manager/Admin | Duy trì danh mục phim chính xác | Thay đổi không phá dữ liệu đã tham chiếu (FR-MGT-MOVIE-*) |
-| Quản lý phòng/ghế | Manager/Admin | Cấu hình rạp và sơ đồ ghế | Khóa sơ đồ khi phòng đã có suất công bố (BR-ROOM-004) |
-| Quản lý suất chiếu | Manager/Admin | Lập lịch chiếu | Không chồng lịch phòng (BR-ST-002); hạn chế sửa suất đã có booking (BR-ST-005) |
-| Tra cứu booking/vé | Staff/Manager/Admin | Hỗ trợ khách | Staff: soát vé + tra cứu; tra cứu sâu hơn theo OQ-04 |
-| Soát vé | Staff | Xác thực vé tại rạp | Vé chỉ soát được một lần (FR-TICKET-002) |
-| Xem payment | Manager/Admin (**PROPOSED** — OQ-04) | Kiểm tra trạng thái thanh toán | Chỉ xem và đối soát; không can thiệp trạng thái tùy tiện (BR-PAY-*); quyền xem payment chưa chốt |
-| Quản lý user/role | Admin | Kiểm soát truy cập | Đăng ký công khai không cấp role quản trị (BR-AUTH-003) |
-| Báo cáo/thống kê | Manager/Admin (**PROPOSED** — OQ-04) | Theo dõi kinh doanh | Báo cáo cơ bản trong MVP; nâng cao ngoài phạm vi; quyền chi tiết cần chốt |
+| AC-R-01 | Guest biết booking code của người khác, không có proof | Không truy cập/quản lý booking | R-01 |
+| AC-R-02 | Chọn ghế lúc t0, reserve lúc t0+4 phút | Deadline vẫn t0+5 phút; không được thêm 5 phút | R-02 |
+| AC-R-03 | Hai khách giữ cùng ghế; một request có ghế trống và ghế xung đột | Tối đa một allocation active; request thất bại không giữ một phần | R-10 |
+| AC-R-04 | Giá thay đổi trước reservation | Hiển thị giá mới và yêu cầu chấp nhận, không tự commit | R-05 |
+| AC-R-05 | Cùng idempotency identity/key retry sau mất response | Trả outcome durable, không tạo booking thứ hai | R-10 |
+| AC-R-06 | Hết MoMo window + grace nhưng provider vẫn unknown | Không tự failed/release; reconcile/review | R-07, R-11 |
+| AC-R-07 | Webhook hợp lệ lặp / out of order | Một application, một ticket; không downgrade thành công đã xác minh | R-08–R-10 |
+| AC-R-08 | Chữ ký sai hoặc tiền thu đã xác minh nhưng amount sai | Sai chữ ký không tác động; amount sai bảo toàn tài chính và review, không apply | R-08 |
+| AC-R-09 | Brevo lỗi sau payment commit | Booking/ticket còn hiệu lực; delivery retry có theo dõi | R-09 |
+| AC-R-10 | Pending cancel cạnh tranh payment initiation | Một transition hợp lệ; initiation thắng thì không cancel/release | R-12 |
+| AC-R-11 | Rescheduled confirmed booking, chưa admission, chưa giờ mới | Cho request; chỉ pending_review được withdrawal | R-13 |
+| AC-R-12 | First admission cạnh tranh approve cancellation | Không vừa admission sau approval vừa approve trên state lỗi; kiểm lại dưới transaction | R-14, R-17 |
+| AC-R-13 | Staff ghi refund completion / Manager ngoài scope | Từ chối; authorized completion đủ evidence mới commit | R-15 |
+| AC-R-14 | Refund completion hai lần hoặc hai nguồn nghĩa vụ | Không hoàn/tác động trùng; completion effects đúng origin | R-16 |
+| AC-R-15 | Hai batch admission tranh entitlement cuối cùng | Không vượt Adult/Discounted quota; replay không cộng lại | R-17 |
+| AC-R-16 | Admission tại đúng −5/+20 phút và ngoài hai biên | Hai biên hợp lệ nếu điều kiện khác thỏa; ngoài biên từ chối | R-17 |
+| AC-R-17 | Login conflict cancel / stale replacement challenge | Cancel giữ session; stale challenge không revoke phiên mới | R-19 |
+| AC-R-18 | Logout/lock/role hoặc assignment bị thu hồi | Request bảo vệ tiếp theo không dùng quyền cũ; unlock không phục hồi token | R-18, R-19 |
+| AC-R-19 | Resend sau 30s / request quá 72h / reuse token | Từ chối theo cooldown/expiry; không đổi primary email trái phép | R-20 |
+| AC-R-20 | Manager sửa movie/room identity; thêm ticket category thứ ba | Từ chối dù UI hoặc payload cho phép | R-21–R-23 |
+| AC-R-21 | Cancel showtime còn obligations / reactivate cancelled | Từ chối; không tự refund hoặc reset lifecycle | R-24 |
+| AC-R-22 | Xóa last active Admin hoặc grant role bằng Manager | Từ chối; giữ invariants quyền | R-25 |
+| AC-R-23 | Chatbot bị yêu cầu confirm payment/xem doanh thu nội bộ | Không mutate hoặc tiết lộ dữ liệu ngoài phạm vi | R-26 |
 
-Sơ đồ activity/sequence chi tiết và kiến trúc hệ thống thuộc `business-system-design.md` (use case UC-01..UC-05) và `docs/analysis and design/architecture.md`; tài liệu này không tái lập.
+## 11. Quyết định đã chốt và câu hỏi còn mở
 
-## 11. Yêu cầu phi chức năng
+**Đã chốt trong baseline:** Guest Checkout; 28 UC; hai category; default max 8; selection 5 phút; MoMo 10 phút + grace default 10 giây; admission −5/+20 phút; một QR/booking; cinema-scoped permissions; rescheduling cancellation/review/refund evidence. Không tiếp tục đánh dấu những nội dung này là OQ chưa quyết định.
 
-| ID | Nhóm | Yêu cầu | Kiểm tra |
+| ID mới | Cần làm rõ / kiểm chứng | Loại | Hướng xử lý |
 |---|---|---|---|
-| NFR-SEC-001 | Bảo mật | Mật khẩu chỉ lưu dạng hash do thư viện xác thực tạo; không ghi mật khẩu gốc hay secret/thẻ vào dữ liệu sự kiện thanh toán. | Review schema/log: không có plaintext mật khẩu hay dữ liệu thẻ. |
-| NFR-SEC-002 | Bảo mật | Mọi endpoint nhạy cảm kiểm tra xác thực và role ở backend. | Truy cập endpoint không đúng role bị từ chối (401/403). |
-| NFR-SEC-003 | Bảo mật | Callback từ cổng phải được xác minh nguồn/chữ ký trước khi ảnh hưởng trạng thái. | Callback sai chữ ký bị từ chối. |
-| NFR-INT-001 | Toàn vẹn dữ liệu | Giữ ghế, tổng tiền, áp dụng payment và phát hành vé tuân thủ BR-BOOK-001..010, BR-PAY-001..008. | Test các kịch bản xung đột trong mục 12. |
-| NFR-INT-002 | Toàn vẹn dữ liệu | Lịch sử booking/payment/ticket không bị mất khi xóa/ngừng hoạt động danh mục. | Ngừng hoạt động danh mục đã dùng, dữ liệu lịch sử còn nguyên. |
-| NFR-REL-001 | Độ tin cậy | Callback và kết quả chưa chắc chắn không làm mất trạng thái: sự kiện được lưu bền vững ngay khi tiếp nhận (`received`) trong transaction riêng; xử lý nghiệp vụ và đánh dấu `processed` cùng transaction; lỗi xử lý cho phép retry từ trạng thái `received`/`failed`. Callback không xác minh được được lưu nhưng không thay đổi trạng thái nghiệp vụ. | Crash giữa tiếp nhận và xử lý không mất callback và không tạo ticket trùng; callback sai chữ ký không đổi trạng thái. |
-| NFR-REL-002 | Độ tin cậy | Hai request đồng thời giữ cùng ghế: đúng một request thành công. | Test đồng thời theo mục 12. |
-| NFR-PERF-001 | Hiệu năng | Thời gian phản hồi tra cứu và đặt vé đạt mục tiêu đã chốt: **TBD (OQ-09)**. | Khi có mục tiêu: đo theo kịch bản chốt. |
-| NFR-AVAIL-001 | Khả dụng | Mức khả dụng mục tiêu: **TBD (OQ-09)**. | Khi có mục tiêu: đo theo kỳ chốt. |
-| NFR-USE-001 | Dễ dùng | Countdown giữ ghế hiển thị rõ cho khách trong lúc booking pending. Lưu ý: countdown chỉ là hiển thị cho người dùng — cơ chế bảo vệ toàn vẹn giữ ghế nằm ở backend/database (BR-BOOK-004, BR-BOOK-006), không phụ thuộc countdown trên Frontend. | Giao diện hiển thị đếm ngược 5 phút; thử gửi request giữ ghế sau khi countdown kết thúc không được chấp nhận ở backend. |
-| NFR-USE-002 | Phản hồi | Giao diện sử dụng được trên desktop và trình duyệt di động. | Kiểm tra bố cục trên hai loại thiết bị. |
-| NFR-MAINT-001 | Bảo trì/kiểm thử | Trạng thái và quy tắc nghiệp vụ tập trung ở backend, kiểm thử được độc lập với giao diện. | Các FR/BR mục 7–8 test được qua API không cần UI. |
-| NFR-SCALE-001 | Khả năng mở rộng | Mô hình dữ liệu sẵn sàng nhiều chi nhánh; hành vi đa chi nhánh không thuộc MVP. | Mô hình chấp nhận nhiều cinema; demo seed một cinema. |
+| Q-01 | Tổng booking bằng 0 khi base price được phép 0 | Nghiệp vụ/tích hợp | Xác nhận đường đi chính thức; không dùng lại Option B cũ hoặc tự bypass payment |
+| Q-02 | MoMo demo là mock hay sandbox, capability query/signature/ACK/idempotency | Implementation/integration | Ghi mode và evidence; không coi lựa chọn provider là đã tích hợp |
+| Q-03 | Endpoint, DTO, Guest credential transport, cookie/CSRF/CORS và config keys | Thiết kế triển khai | Chốt cùng API/C03; giữ session/ownership semantics của baseline |
+| Q-04 | Database schema/migrations/seed đã hỗ trợ baseline chưa | Kiểm chứng implementation | Audit schema thật với relational-model; không dùng schema cũ giới hạn UC |
+| Q-05 | Retry/backoff, lease/fencing, dead-letter/escalation thresholds | Vận hành | Chốt cấu hình, bounded retry và manual review; không tự release unknown |
+| Q-06 | AI provider/nguồn dữ liệu/quota và giới hạn memory history | Tích hợp | Chọn nguồn được phép; thiếu dữ liệu thì thông báo giới hạn |
+| Q-07 | Kết quả hiệu năng, concurrent load và uptime | Kiểm thử | Ghi test environment rồi đo; không báo targets là achieved |
 
-## 12. Tiêu chí nghiệm thu và kiểm chứng
+## 12. Chuyển đổi tham chiếu từ bản cũ
 
-Các tiêu chí rút ra từ FR/BR đã chốt; không giới thiệu chính sách mới.
+Bản cũ dùng FR-*/BR-*/AC-* nội bộ dễ nhầm với mã trong DOCX. Bản này giữ provenance qua UC/R mới thay vì gán lại một ID cũ cho nghĩa mới. Những tài liệu còn trỏ ID cũ cần cập nhật theo **ngữ nghĩa**, không search/replace hàng loạt. Mã BR trong DOCX vẫn tham chiếu trực tiếp DOCX nếu cần.
 
-- **AC-BOOK-001 (Đặt ghế khả dụng)** — Given: khách đã đăng nhập và chọn các ghế khả dụng trong suất còn bán, When: gửi yêu cầu tạo booking, Then: booking `pending` được tạo với countdown 5 phút, toàn bộ ghế `held`, tổng tiền đúng giá backend tính, chưa phát hành vé nào.
-- **AC-BOOK-002 (Chặn xung đột ghế)** — Given: hai khách đồng thời chọn cùng một ghế trong cùng suất, When: cả hai gửi yêu cầu tạo booking, Then: đúng một request thành công giữ ghế; request kia bị từ chối toàn bộ và không giữ ghế nào.
-- **AC-BOOK-003 (Hết hạn giữ ghế)** — Given: booking `pending` đã quá hạn giữ ghế (quá 5 phút danh nghĩa) và không còn payment `created`/`pending`/`unknown`, When: worker/quy trình hết hạn chạy (hoặc khách khác đặt cùng ghế), Then: booking chuyển `expired`, các detail chuyển `released`, ghế có thể được booking khác giữ. Given: booking đã quá hạn giữ ghế nhưng vẫn còn attempt đang mở, When: worker chạy trong grace period (đề xuất 2–3 phút, OQ-07 — RESOLVED), Then: worker chủ động truy vấn cổng; nếu cổng xác nhận chưa thu tiền, payment chuyển `failed`/`cancelled`, booking chuyển `expired` và detail `released` trong cùng transaction (ghế có thể được booking khác giữ); nếu cổng báo đã thu, áp dụng AC-PAY-004 (không xác nhận booking, không chiếm lại ghế, giữ `succeeded` để đối soát); nếu cổng không phản hồi xác đáng, payment giữ `unknown` + `reconciliation_status = 'needs_review'` — booking và ghế giữ nguyên, worker retry đối soát (luồng needs_review là ngoại lệ có giám sát). Lưu ý thuật ngữ: "quá hạn giữ ghế" (vượt mốc 5 phút danh nghĩa), "booking expired" (trạng thái booking sau khi worker xử lý) và "detail released" (trạng thái phân bổ ghế sau khi worker giải phóng) là ba khái niệm khác nhau — "quá hạn" không đồng nghĩa là đã `expired`/`released`; hai sự kiện sau chỉ xảy ra khi điều kiện hai phần của nguồn thỏa (hoặc grace period đã xử lý attempt).
-- **AC-BOOK-004 (Hủy booking hợp lệ)** — Given: booking `pending` không có payment nào đang mở, When: chủ booking hủy, Then: booking `cancelled`, toàn bộ ghế `released` trong cùng transaction.
-- **AC-BOOK-005 (Từ chối hủy không hợp lệ)** — Given: booking có payment `pending`/`unknown` và cổng xác nhận **đã thu tiền** hoặc kết quả không chắc chắn (hoặc người yêu cầu không phải chủ booking), When: yêu cầu hủy, Then: từ chối, trạng thái booking/payment/ghế không thay đổi.
-- **AC-BOOK-006 (Hủy thanh toán để đổi ghế)** — Given: booking `pending` có payment `pending`/`unknown` và cổng xác nhận chưa thu tiền (qua Cancel/Query API), When: khách chọn "Hủy thanh toán / Đổi ghế", Then: payment chuyển `cancelled`, booking `cancelled`, ghế `released` — khách đặt ghế mới ngay không phải chờ hết hạn.
-- **AC-PAY-001 (Thanh toán thành công)** — Given: booking `pending` còn hạn và payment `succeeded` đã xác minh đúng số tiền/tiền tệ, When: áp dụng, Then: payment được đánh dấu áp dụng, booking `confirmed`, toàn bộ detail `sold`, ticket `valid` — trong cùng transaction.
-- **AC-PAY-002 (Thanh toán thất bại)** — Given: payment `failed`/`cancelled`, When: kết quả được xác minh, Then: booking giữ `pending` nếu còn hạn, không phát hành ticket, khách có thể thử lại.
-- **AC-PAY-003 (Callback lặp)** — Given: payment đã được xử lý từ callback đầu tiên, When: cùng callback gửi lại, Then: callback trùng **không gây tác động nghiệp vụ lần hai** — không tạo thêm ticket, không áp dụng payment lần hai, trạng thái không bị đảo ngược; việc hệ thống có ghi nhận bản ghi sự kiện trùng để truy vết hay không là thiết kế riêng (không phải điều kiện nghiệp vụ của tiêu chí này).
-- **AC-PAY-005 (Callback không hợp lệ)** — Given: callback sai chữ ký/nguồn hoặc sai số tiền/tiền tệ, When: hệ thống tiếp nhận, Then: sự kiện được lưu để truy vết nhưng payment, booking, phân bổ ghế và ticket giữ nguyên trạng thái.
-- **AC-PAY-004 (Payment thành công muộn)** — Given: booking đã `expired` (ghế đã giải phóng hoặc bán cho booking khác) và payment `succeeded` đến sau đó, When: kết quả được xác minh, Then: booking không được xác nhận, không tạo ticket, không chiếm lại ghế; payment giữ `succeeded` để đối soát.
-- **AC-SEC-001 (Phân quyền role)** — Given: người dùng với role X, When: truy cập chức năng chỉ dành cho role Y, Then: hệ thống từ chối ở backend.
-- **AC-SEC-002 (Bảo vệ booking người khác)** — Given: khách A biết mã booking/vé của khách B, When: A truy cập hoặc thao tác, Then: từ chối theo quyền sở hữu.
-- **AC-SEC-003 (Tài khoản bị khóa / role bị thu hồi)** — Given: user có tài khoản `locked`/`deactivated` hoặc role đã bị thu hồi, When: user đăng nhập hoặc gọi API với phiên cũ, Then: đăng nhập bị từ chối; các thao tác đòi role bị từ chối ở backend theo BR-AUTH-003. Riêng với phiên/token cũ: theo BR-AUTH-004, trong MVP token đã phát hành còn hiệu lực đến hết hạn và role bị thu hồi có thể chưa được phản ánh ngay vào token đang hiệu lực — các thao tác bằng token cũ có thể tiếp tục được chấp nhận cho đến khi token hết hạn, trừ khi hệ thống có cơ chế kiểm tra quyền hiện hành hoặc thu hồi token tức thời (giới hạn này được ghi nhận là giới hạn MVP, không phải tiêu chí nghiệm thu bắt buộc).
-- **AC-ST-001 (Suất chồng lịch)** — Given: phòng đã có suất chiếm khoảng `[starts_at, room_available_at)`, When: tạo/sửa suất khác trong cùng phòng chồng khoảng này, Then: từ chối với lý do rõ ràng; suất `cancelled` không tính là chiếm lịch.
-- **AC-TICKET-001 (Soát vé một lần)** — Given: ticket `valid` của booking `confirmed`, When: staff soát lần một và lần hai, Then: lần một chuyển `used` thành công; lần hai bị từ chối.
+| Nhóm tham chiếu cũ | Thay đổi | Tham chiếu hiện hành |
+|---|---|---|
+| FR-AUTH-001/002/004; BR-AUTH-004/005 | Tách registration/verification/login/logout; bỏ JWT stale-rights allowance | UC-08A/B/C/D, UC-18; R-18–R-20, R-25 |
+| FR-AUTH-003 | Không mở rộng generic profile API chỉ từ mục cũ; email change theo UC-08B/18 | R-20; phần profile khác cần nguồn rõ |
+| FR-MOVIE/SHOW; FR-MGT-* | Giữ mục tiêu, sửa actor/scope/operation và tách đúng UC | UC-06A/B,07,12–17; R-21–R-24 |
+| FR-BOOK-001/002, BR-BOOK-004/005/009/010 | Bỏ timer từ createdAt, Couple, discount-percent/per-seat category, per-person QR | R-02–R-05, R-17 |
+| FR-BOOK-003/004, AC-BOOK-004..006 | Guest authority, pending pre-init cancellation và rescheduling cancellation riêng | UC-10,19; R-01, R-12–R-16 |
+| FR-PAY-*, BR-PAY-* | MoMo window/grace, verified truth vs application, refund obligation | UC-02/03/04/04A/09; R-07–R-16 |
+| FR-TICKET-002 và tiêu chí scan một lần | Booking QR, quota/batches, admission operation idempotency | UC-05; R-17 |
+| OQ-01/03/04/07/08 cũ | Provider định hướng, window, permission, grace, categories đã có baseline mới | Q-02 chỉ hỏi implementation; R-04/R-07/R-17/R-18 |
+| OQ-06 Option B | Không chuyển quyết định cũ thành constraint mới nếu chưa đối chiếu | Q-01 |
+| NFR-SCALE-001 | Không loại multi-cinema authorization khỏi MVP | R-18, ma trận quyền |
 
-## 13. Câu hỏi mở và quyết định cần chốt
+## 13. Revision note
 
-| ID | Vấn đề chưa chốt | Vì sao quan trọng | Tham chiếu | Trạng thái | Phương án đề xuất |
-|---|---|---|---|---|---|
-| OQ-01 | Cổng thanh toán cụ thể nào được sử dụng | Ảnh hưởng webhook, xác minh, đối soát | BR-PAY-*, `database-design.md` | OPEN | Chọn cổng hỗ trợ webhook + truy vấn trạng thái; giữ payment event trung gian cổng-độc lập |
-| OQ-02 | Mốc đóng bán cuối cùng (`booking_closes_at`) | Quyết định thời điểm ngừng bán vé | BR-BOOK-001, BR-ST-003 | OPEN | Hiện cho phép bán sát giờ; nếu chốt thì đặt `booking_closes_at` theo chính sách vận hành |
-| OQ-03 | Cửa sổ soát vé (thời hạn vé hợp lệ so với giờ chiếu) | Kiểm soát soát vé trước/sau giờ chiếu | BR-BOOK-009, `database-design.md` | OPEN | Đề xuất cho phép soát từ khi suất bắt đầu đến mốc nhóm chốt |
-| OQ-04 | Ranh giới quyền Manager/Admin/Staff (quản lý payment, hủy booking, tra cứu, báo cáo) | Tránh cấp thừa/thiếu quyền | BR-AUTH-005, mục 10 | OPEN (Manager là PROPOSED) | Manager: phim/phòng/ghế/suất/báo cáo; Admin: thêm user/role; chi tiết payment cần chốt |
-| OQ-05 | Chính sách quyền lợi khách đã thanh toán khi rạp hủy suất | Xác định nghĩa vụ hoàn tiền/đổi vé | BR-ST-005, `relational-model.md` mục 3.9/9.3 | OPEN | Cần quyết định nghiệp vụ; workflow demo chưa triển khai — chưa triển khai workflow không đồng nghĩa quyết định không hoàn tiền |
-| OQ-06 | Chính sách vé miễn phí / giảm giá 100% | Đã chốt bởi chủ dự án | BR-BOOK-005, FR-BOOK-002, FR-PAY-001, FR-PAY-005, `relational-model.md` mục 3.14, `database-design.md` mục 13/13.1 | **RESOLVED — Option B (APPROVED):** `booking_detail.unit_price >= 0` (detail giá 0 được phép); `booking.total_amount > 0` và `payment.amount > 0` (booking tổng 0 bị chặn ở mức database); booking miễn phí toàn bộ, luồng xác nhận không-thanh-toán và hệ thống quản lý khuyến mãi nằm ngoài phạm vi MVP; MVP không tạo payment transaction số tiền 0; backend tính và kiểm tra giá từ dữ liệu server, không tin giá/tổng do client gửi. Đã đồng bộ: `database-design.md` mục 13/13.1, `relational-model.md` mục 3.14/9.2/9.3/10, `database-schema.md` mục 1/3.14 | Cần nhóm chọn một phương án — **đã chọn: Option B** |
-| OQ-07 | Chính sách payment timeout và đối soát khoản thành công đến muộn; **cửa sổ chờ giải phóng ghế (Grace Period)** | Giải phóng ghế không bị treo vô hạn khi payment `unknown`/`pending` | BR-BOOK-004, BR-PAY-002, BR-PAY-003, BR-PAY-007, FR-PAY-004, AC-BOOK-003, `database-design.md` mục 34.1, UC-03 | **RESOLVED (chính sách grace period — APPROVED):** giữ nguyên điều kiện hai phần của nguồn (booking chỉ `expired` khi quá hạn và không còn attempt đang mở), kèm grace period: worker chủ động truy vấn trạng thái giao dịch ở cổng (Query/Check Status API) trong khoảng châm chước đề xuất 2–3 phút sau khi booking quá `expires_at`; nếu cổng xác nhận chưa thu tiền, payment chuyển `failed`/`cancelled` (kết quả từ cổng đã xác minh, không tự suy) và booking `expired` + detail `released` trong cùng transaction; nếu cổng không phản hồi xác đáng, payment giữ `unknown` + `reconciliation_status = 'needs_review'` — ghế giữ nguyên (ưu tiên an toàn tài chính), worker retry đối soát; luồng needs_review là ngoại lệ có giám sát, không phải giữ ghế tự động vô hạn. Giá trị grace period chính xác là cấu hình triển khai. Đã đồng bộ: FR-PAY-004, BR-BOOK-004, AC-BOOK-003, `database-schema.md` mục 4, `relational-model.md` mục 9.3/10 | Tùy chọn (B) "booking luôn expired đúng 5 phút" bị loại bỏ vì không phù hợp an toàn tài chính; workflow đối soát tài chính/hoàn tiền tự động vẫn ngoài phạm vi demo (BR-PAY-007) |
-| OQ-08 | Điều kiện đủ quyền lợi các loại vé giảm giá (trẻ em/sinh viên...) và cách bán ghế Couple trong UI | Backend cần kiểm tra điều kiện áp dụng | BR-BOOK-005, BR-BOOK-010 | OPEN | Backend xác minh (ví dụ xuất trình giấy tờ); Couple là một đơn vị bán không tách rời (một detail, hai ticket riêng — xem BR-BOOK-009) |
-| OQ-09 | Mục tiêu hiệu năng và khả dụng cụ thể (thời gian phản hồi, uptime, tải đồng thời) | NFR-PERF-001/NFR-AVAIL-001 cần số đo | Mục 11 | TBD | Đặt mục tiêu khi chốt môi trường triển khai |
-
-**Đã chốt (không liệt kê là câu hỏi mở):** giữ ghế 5 phút; hủy trước thanh toán giải phóng ghế; không hủy sau thanh toán/không refund trong demo; không cutoff cố định 10/15/30 phút; ghế Couple là một đơn vị bán (một detail, hai ticket riêng — mỗi người một mã, soát riêng, xem BR-BOOK-009); một booking nhiều loại vé (mỗi ghế một loại vé); trạng thái payment và vòng đời xử lý callback như mục 8.4.
+Reconciled the business scope with Use-Case Specifications v2.4 and SAD v3.15; replaced outdated booking timers, pricing, admission, session, permission, cancellation and refund assumptions; added traceable requirements, acceptance scenarios and implementation gaps. No implementation or test completion is asserted.

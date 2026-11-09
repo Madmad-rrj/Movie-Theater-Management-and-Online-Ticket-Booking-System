@@ -1,610 +1,332 @@
-# Local Development Setup
+# Local Development Setup — Promethe-Phos
 
-> Tài liệu này mô tả cách cài đặt, cấu hình và chạy toàn bộ dự án trên máy cá nhân.
-> Nó bao gồm: PostgreSQL (CIN-SUB-222), Backend ASP.NET Core (CIN-SUB-223),
-> Frontend React + Vite (CIN-SUB-224), Docker Compose (CIN-SUB-225),
-> biến môi trường (CIN-SUB-226) và hướng dẫn tổng hợp (CIN-SUB-227).
->
-> **Lưu ý trạng thái hiện tại (2026-10-23):** Backend và Frontend đang ở giai đoạn
-> khung dự án ban đầu (placeholder files, chưa có logic). `docker-compose.yml` hiện
-> còn trống. Tài liệu này mô tả thiết lập theo thiết kế dự kiến và ghi rõ phần nào
-> chưa thể thực hiện cho đến khi code được triển khai.
+Ngày rà soát: 09/11/2026. Phạm vi: PostgreSQL local (CIN-SUB-222), backend (223), frontend (224), Docker Compose (225), configuration (226), quy trình chạy và kiểm chứng (227).
 
-## Mục lục
+## 1. Phạm vi và mức độ xác minh
 
-1. [Yêu cầu phần mềm](#1-yêu-cầu-phần-mềm)
-2. [Clone repository](#2-clone-repository)
-3. [Cấu hình biến môi trường](#3-cấu-hình-biến-môi-trường)
-4. [PostgreSQL (CIN-SUB-222)](#4-postgresql-cin-sub-222)
-5. [Backend ASP.NET Core (CIN-SUB-223)](#5-backend-aspnet-core-cin-sub-223)
-6. [Frontend React + Vite (CIN-SUB-224)](#6-frontend-react--vite-cin-sub-224)
-7. [Docker Compose (CIN-SUB-225)](#7-docker-compose-cin-sub-225)
-8. [Biến môi trường chi tiết (CIN-SUB-226)](#8-biến-môi-trường-chi-tiết-cin-sub-226)
-9. [Khởi động nhanh (CIN-SUB-227)](#9-khởi-động-nhanh-cin-sub-227)
-10. [Xử lý lỗi thường gặp](#10-xử-lý-lỗi-thường-gặp)
-11. [Liên quan](#11-liên-quan)
+Hướng dẫn dành cho Windows PowerShell tại repository của nhóm. Các lệnh dưới đây là hướng dẫn cần thực hiện trên máy phát triển; **chưa được chạy trên repository hiện tại trong lần rà soát này**. Không suy ra code còn skeleton, Compose còn trống, seed idempotent hoặc endpoint đã chạy từ các mô tả cũ.
 
----
+| Nội dung | Căn cứ / trạng thái |
+|---|---|
+| Stack | React + Vite + TypeScript; ASP.NET Core Web API + Identity + EF Core/Npgsql + PostgreSQL theo SAD |
+| Local DB | PostgreSQL bằng Docker theo lựa chọn của nhóm; ví dụ bên dưới expose host port 5433 |
+| Cloud DB | Supabase PostgreSQL; không đồng nghĩa sử dụng Supabase Auth |
+| Email | Nhóm báo đã thử Brevo API và gửi thành công; chưa chứng minh app outbox/retry đã tích hợp |
+| Payment | MoMo hướng tới demo, chưa thử; phải ghi rõ mock hoặc sandbox khi chạy |
+| Hosting | Vercel frontend / Render backend là lựa chọn của nhóm; không xác nhận deployment hoạt động |
+| Phiên bản dependency | Phải đọc manifest/lockfile hiện tại; không mặc định .NET 8, Node 20 hay PostgreSQL 16 là yêu cầu đã chốt |
+| Database lifecycle | Phải chọn migration/script phù hợp code và baseline mới trước khi seed |
 
-## 1. Yêu cầu phần mềm
+Hướng dẫn thiết lập không thay thế [architecture.md](../analysis%20and%20design/architecture.md), [use-cases.md](../requirements/use-cases.md), hoặc SAD Deployment/Implementation View cần hoàn thiện ở PA4.
 
-| Phần mềm | Phiên bản tối thiểu | Mục đích | Bắt buộc |
-|---|---|---|---|
-| [.NET SDK](https://dotnet.microsoft.com/download) | .NET 8 | Build và chạy backend ASP.NET Core | ✅ Bắt buộc |
-| [Node.js](https://nodejs.org/) | 20 LTS | Build và chạy frontend React + Vite | ✅ Bắt buộc |
-| npm | Đi kèm Node.js 20 | Quản lý dependency frontend | ✅ Bắt buộc |
-| [Git](https://git-scm.com/) | 2.40+ | Clone và quản lý repository | ✅ Bắt buộc |
-| [Docker Desktop](https://www.docker.com/products/docker-desktop/) | 4.x | Chạy PostgreSQL (và các service) bằng container | Khuyến nghị (xem §4) |
-| PostgreSQL | 16+ | Database; thay thế Docker nếu đã cài local | Một trong hai |
-| [psql](https://www.postgresql.org/docs/current/app-psql.html) | Đi kèm PostgreSQL | Chạy script SQL (schema, seed) | Khuyến nghị |
+## 2. Kiểm tra repository và công cụ
 
-> **Kiểm tra phiên bản trước khi bắt đầu:**
-> ```bash
-> dotnet --version     # Cần >= 8.x
-> node --version       # Cần >= 20.x
-> npm --version
-> git --version
-> docker --version     # Nếu dùng Docker
-> ```
+Mở PowerShell, dùng các đường dẫn dự kiến sau; nếu repo đổi tên thư mục, điều chỉnh theo file thực tế. Không tạo project mới đè lên project đã có.
 
----
-
-## 2. Clone repository
-
-```bash
-git clone <REPO_URL>
-cd "Movie-Theater-Management-and-Online-Ticket-Booking-System"
+```powershell
+$cinemaRepo = 'D:\HCMUS\Nhập môn cnpm\Movie Theater Management and Online Ticket Booking System'
+Set-Location -LiteralPath $cinemaRepo
+$apiProject = Join-Path $cinemaRepo 'src/backend/CinemaTicketBooking.Api/CinemaTicketBooking.Api.csproj'
+$uiRoot = Join-Path $cinemaRepo 'src/frontend/cinema-ticket-booking-ui'
+Test-Path -LiteralPath $apiProject
+Test-Path -LiteralPath (Join-Path $uiRoot 'package.json')
+git status --short
+dotnet --list-sdks
+node --version
+npm --version
+docker version
+docker compose version
+Get-Content -LiteralPath $apiProject
+Get-Content -LiteralPath (Join-Path $uiRoot 'package.json')
 ```
 
-> **Lưu ý tên thư mục:** Thư mục được clone có thể có dấu gạch ngang hoặc khoảng trắng tùy
-> cách clone. Kiểm tra tên thực tế sau khi clone.
+Đọc `AGENTS.md`, `mandatory-instruction.md` và hướng dẫn repository trước khi sửa code. Nếu có `global.json`, dùng SDK theo version/roll-forward đã quy định. Đối chiếu `TargetFramework`, EF Core/Npgsql package versions, `package.json` engines, package-manager declaration, lockfile và các file pin Node nếu có. Không tự nâng dependency để làm lệnh mẫu chạy được.
 
----
+| Công cụ | Cách chọn |
+|---|---|
+| .NET SDK | Khớp global.json/TargetFramework và package compatibility |
+| Node/package manager | Khớp package.json và lockfile của repo; ví dụ npm bên dưới chỉ dùng khi repo dùng npm |
+| Docker Desktop / Engine | Docker daemon chạy, Linux containers và Compose v2 có sẵn |
+| PostgreSQL | Major version được nhóm chọn và tương thích migration/extensions; pin image, không dùng latest mơ hồ |
+| EF CLI | Ưu tiên local tool manifest; version tương thích EF Core của project |
 
-## 3. Cấu hình biến môi trường
+Nếu cần clone, lấy URL repository thật của nhóm. Tài liệu không đoán remote URL hoặc branch triển khai.
 
-### 3.1 File `.env` root (Backend connection string)
+## 3. Quy ước cấu hình và secret
 
-```bash
-# Từ root repository
-cp .env.example .env
-```
+### 3.1 Ba nơi đọc cấu hình khác nhau
 
-Sau đó mở `.env` và điền thông tin kết nối PostgreSQL:
-
-```ini
-# .env (root) — KHÔNG commit file này
-# Xem .env.example để biết format đầy đủ
-
-# Kết nối Supabase (cloud):
-ConnectionStrings__DefaultConnection=Host=<SUPABASE_HOST>;Port=5432;Database=postgres;Username=<USERNAME>;Password=<YOUR_PASSWORD>;SSL Mode=Require
-
-# Hoặc kết nối PostgreSQL local / Docker (xem §4):
-# ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=cinema_db;Username=cinema_user;Password=<LOCAL_PASSWORD>
-```
-
-> **Không commit file `.env` thật lên Git.** File `.gitignore` đã loại trừ `.env`.
-> File `.env.example` (không chứa mật khẩu thật) mới được commit.
-
-### 3.2 File `.env` frontend
-
-```bash
-# Từ root repository
-cp src/frontend/cinema-ticket-booking-ui/.env.example \
-   src/frontend/cinema-ticket-booking-ui/.env
-```
-
-Điền URL backend vào file `.env` của frontend:
-
-```ini
-# src/frontend/cinema-ticket-booking-ui/.env — KHÔNG commit
-# Xem .env.example để biết key cụ thể
-VITE_API_BASE_URL=http://localhost:5000
-```
-
-> **Lưu ý:** Key biến môi trường frontend Vite (`VITE_*`) sẽ được xác nhận khi
-> `src/frontend/cinema-ticket-booking-ui/.env.example` được điền đầy đủ bởi team.
-> Hiện tại file này đang trống (placeholder). Hỏi team để biết tên key chính xác trước
-> khi điền.
-
----
-
-## 4. PostgreSQL (CIN-SUB-222)
-
-### 4.1 Lựa chọn môi trường PostgreSQL
-
-Dự án hỗ trợ ba cách chạy PostgreSQL:
-
-| Phương án | Mô tả | Phù hợp khi |
+| Nơi | Cách nhận cấu hình | Lưu ý |
 |---|---|---|
-| **A — Supabase** (cloud) | Kết nối đến Supabase project của nhóm qua Session Pooler | Muốn dùng database chung của nhóm |
-| **B — Docker local** | Chạy container `postgres:16` trên máy local | Muốn database độc lập, không phụ thuộc mạng |
-| **C — PostgreSQL cài thẳng** | PostgreSQL cài trực tiếp trên máy | Đã cài PostgreSQL, muốn dùng luôn |
+| ASP.NET Core | Configuration providers trong Program.cs; mặc định có appsettings, development User Secrets, environment, command line | Không mặc định đọc file `.env` ở root |
+| Docker Compose | `.env`/`--env-file` phục vụ nội suy Compose; `environment`/service `env_file` truyền biến vào container | Không tự truyền các biến đó vào backend chạy bằng dotnet trên host |
+| Vite | env files trong env directory cấu hình, thường frontend root; `VITE_*` dùng phía browser | Giá trị VITE được công khai trong bundle, không chứa secret |
 
-### 4.2 Phương án A — Supabase (cloud)
+Với `WebApplication.CreateBuilder` mặc định, ưu tiên **application configuration** từ cao xuống thấp: command-line arguments → environment variables → User Secrets khi Development → appsettings.Development.json → appsettings.json → host fallback. Program.cs có thể thay đổi provider/thứ tự; phải kiểm tra thực tế. Đây không phải mô tả đầy đủ precedence của host bootstrap/launch profiles.
 
-1. Lấy thông tin kết nối từ Supabase Dashboard → Project Settings → Database → Session Pooler (IPv4).
-2. Điền vào `.env` root theo format ở §3.1.
-3. Đảm bảo Supabase project đã enable extension `btree_gist` (cần cho constraint `ex_showtime_room_time`):
-   ```sql
-   -- Chạy trong Supabase SQL Editor hoặc qua psql
-   CREATE EXTENSION IF NOT EXISTS btree_gist;
-   ```
+Nguồn: [Microsoft configuration](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/configuration/), [Docker interpolation](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/), [Vite env](https://vite.dev/guide/env-and-mode).
 
-### 4.3 Phương án B — Docker local
+### 3.2 Giá trị public và secret
 
-> **Trạng thái:** `docker-compose.yml` hiện còn trống (placeholder). Khi team hoàn thiện
-> file này, lệnh `docker compose up -d` sẽ khởi động PostgreSQL tự động. Dưới đây là
-> cấu hình dự kiến để tham khảo.
+Commit file mẫu chỉ có placeholders. Kiểm `.gitignore` thực tế thay vì giả định đã bỏ qua `.env`, `.env.local` hoặc `.env.docker.local`. Không đưa DB password, Brevo key, MoMo secret, JWT signing key, refresh/Guest credentials vào VITE variables, URL query hoặc log.
 
-Cấu hình dự kiến trong `docker-compose.yml` cho service PostgreSQL:
+User Secrets chỉ dành cho development, **không mã hóa như một secret vault**. Tránh đưa mật khẩu thật trực tiếp vào command history. Có thể dùng editor để điền User Secrets hoặc biến môi trường của tiến trình từ cơ chế secret local được nhóm chọn. Không in toàn bộ config/connection string để debug.
+
+| Nhóm cấu hình | Ví dụ tên key | Trạng thái |
+|---|---|---|
+| DB | `ConnectionStrings:DefaultConnection` / env `ConnectionStrings__DefaultConnection` | Chỉ dùng nếu Program.cs thực sự đọc key này |
+| Public API URL | `VITE_API_BASE_URL` | Đề xuất; phải khớp frontend API client |
+| Allowed origins | Tên option lấy từ code CORS thực tế | Không tự tạo key rồi coi middleware đã đọc |
+| JWT/session/refresh | Issuer/audience/signing material và lifetime theo C03 implementation | Key/lifetime cụ thể cần đối chiếu code, không đặt tùy ý trong tài liệu |
+| Brevo/MoMo | Server-side options theo adapter implementation | Không phải VITE; tách test và live credentials |
+| Workers | Interval/lease/retry/batch theo options thực tế | Không tự ghi một config key chưa được bind |
+
+## 4. PostgreSQL Docker local
+
+### 4.1 Ưu tiên cấu hình repository đã có
+
+Đọc Compose hiện tại và kiểm service/volume/ports trước. Nếu đã có PostgreSQL service đáp ứng nhu cầu, dùng file đó; không tạo instance trùng port hoặc trỏ nhầm database khác. Ví dụ dưới đây là **phương án dự kiến độc lập** khi repo chưa có cấu hình dùng được.
+
+Tạo `compose.local.example.yaml` với nội dung sau. PostgreSQL 16 ở đây chỉ là image mẫu có volume path tương ứng, không tuyên bố version hiện tại của dự án. Nếu nhóm chọn major khác, đối chiếu image documentation và kế hoạch migration/volume trước khi đổi.
 
 ```yaml
-# docker-compose.yml (cấu hình dự kiến — chưa chính thức)
 services:
   postgres:
     image: postgres:16
-    container_name: cinema_postgres
     environment:
-      POSTGRES_DB: cinema_db
-      POSTGRES_USER: cinema_user
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}   # đọc từ .env
+      POSTGRES_DB: cinema_local
+      POSTGRES_USER: cinema_local
+      POSTGRES_PASSWORD: ${CINEMA_LOCAL_DB_PASSWORD:?Set local database password}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data  # dữ liệu bền vững
+      - cinema_pg_local:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cinema_user -d cinema_db"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      test: ["CMD-SHELL", "pg_isready -U cinema_local -d cinema_local"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
 
 volumes:
-  postgres_data:
+  cinema_pg_local:
 ```
 
-Khi `docker-compose.yml` được hoàn thiện, khởi động PostgreSQL bằng:
+Trong `.env.docker.local` đặt `CINEMA_LOCAL_DB_PASSWORD` bằng mật khẩu local tự chọn, theo cú pháp Compose dotenv; không commit file này. Thêm ignore rule nếu chưa có. Không copy mẫu ghi đè secret file đang dùng.
 
-```bash
-docker compose up -d postgres
+```powershell
+Set-Location -LiteralPath $cinemaRepo
+docker compose --env-file .env.docker.local -f compose.local.example.yaml config --quiet
+docker compose --env-file .env.docker.local -f compose.local.example.yaml up -d postgres
+docker compose --env-file .env.docker.local -f compose.local.example.yaml ps
+docker compose --env-file .env.docker.local -f compose.local.example.yaml exec -T postgres pg_isready -U cinema_local -d cinema_local
 ```
 
-Kiểm tra container đang chạy:
-```bash
-docker ps
-docker compose logs postgres
+Không đưa output `docker compose config` đầy đủ lên issue vì có thể chứa secret đã nội suy. `pg_isready` chỉ kiểm readiness, không chứng minh backend đã authenticate hoặc schema đúng.
+
+Backend chạy trên Windows host dùng `Host=localhost;Port=5433`. Backend container trên cùng Compose network dùng service DNS `postgres` và port **5432**. Browser không dùng service DNS này. Không dùng volume chung với database khác.
+
+POSTGRES_* dùng cho initialization của data directory mới; đổi password trong env không tự đổi password của cluster đã tồn tại. Khi volume có dữ liệu, quản lý credential/migration có chủ đích; không xóa volume để “sửa nhanh”.
+
+### 4.2 Schema, migrations và seed
+
+**Trước khi ghi DB:** xác nhận đúng local database, đối chiếu migration/script với baseline mới (Guest selection, booking-level quantities/QR/admissions, cancellation/refund và outbox). SQL cũ có Couple/per-person ticket hoặc timer cũ không trở thành đúng chỉ vì chạy không lỗi.
+
+Chọn **một nguồn quản lý schema chính** cho database này:
+
+1. **EF migrations:** dùng migration đã review, phù hợp DbContext/provider hiện tại. Nếu có local tool manifest, chạy `dotnet tool restore`; không tự cài EF global latest. Kiểm migration list và generated SQL trước update. Không dùng EnsureCreated trên cùng DB rồi chạy migrations như chưa có schema.
+2. **SQL scripts:** dùng database-schema.sql đã review; kiểm destructive statements, constraints, schema version và tương thích DbContext. Không chạy thêm initial EF migration lên schema có sẵn mà chưa có kế hoạch baseline.
+
+Ví dụ EF, chỉ sau khi project và migrations đã tồn tại/được kiểm tra:
+
+```powershell
+Set-Location -LiteralPath $cinemaRepo
+# Thiết lập connection/User Secrets theo mục 5.1 trước khi gọi EF
+$env:ASPNETCORE_ENVIRONMENT = 'Development'
+$env:DOTNET_ENVIRONMENT = 'Development'
+# Chỉ dùng khi có .config/dotnet-tools.json chứa dotnet-ef tương thích
+dotnet tool restore
+dotnet ef migrations list --project $apiProject --startup-project $apiProject
+# Sau khi review migrations và xác nhận connection trỏ DB local:
+dotnet ef database update --project $apiProject --startup-project $apiProject
 ```
 
-Kết nối thử bằng psql:
-```bash
-psql -h localhost -p 5432 -U cinema_user -d cinema_db
+Nếu chưa có migrations/SQL phù hợp, ghi “blocked: schema chưa đồng bộ” và hoàn thiện trước; không tạo migration để che chênh lệch mô hình. Nếu có nhiều DbContext, chỉ rõ `--context` đúng tên đã kiểm tra.
+
+Seed phải đọc `database/seed-README.md` và SQL thực tế trước khi chạy. Không khẳng định seed idempotent; không truncate booking/payment/ticket/admission hoặc xóa showtimes để xử lý unique conflict. Dùng dữ liệu local biệt lập với cinema/room/seat, hai categories, prices, movie và showtime tương lai hợp lệ; account test phải được tạo qua Identity/seeder đúng hash và role assignments. Không đặt tài khoản production trong seed.
+
+### 4.3 Supabase là profile khác
+
+Khi cần cloud test, lấy host/port/username/TLS requirements từ project Supabase thật; direct và pooler có thể khác nhau. Không đoán pooler username/port từ ví dụ localhost. Kiểm Npgsql/provider compatibility, pooler mode và migration connection phù hợp. Không bật local worker hoặc chạy seed lên shared/cloud DB nếu chưa xác định phạm vi; không thay local default âm thầm bằng cloud connection.
+
+## 5. Backend ASP.NET Core
+
+### 5.1 Restore và cấu hình connection
+
+```powershell
+Set-Location -LiteralPath $cinemaRepo
+dotnet restore $apiProject
+dotnet build $apiProject --no-restore
 ```
 
-Connection string tương ứng trong `.env`:
-```ini
-ConnectionStrings__DefaultConnection=Host=localhost;Port=5432;Database=cinema_db;Username=cinema_user;Password=<LOCAL_PASSWORD>
+Đọc `Program.cs`, options binding và project `UserSecretsId`. Nếu chưa có UserSecretsId và nhóm chọn dùng User Secrets, `dotnet user-secrets init --project $apiProject` là thay đổi project cần lưu theo workflow repo. Sau đó dùng editor để thiết lập key thật mà backend đọc, ví dụ:
+
+```json
+{
+  "ConnectionStrings": {
+    "DefaultConnection": "Host=localhost;Port=5433;Database=cinema_local;Username=cinema_local;Password=<LOCAL_PASSWORD>"
+  }
+}
 ```
 
-> **Dữ liệu bền vững:** Volume `postgres_data` lưu dữ liệu ngay cả khi container bị
-> xóa và khởi động lại. Để reset hoàn toàn: `docker compose down -v`.
+Đây là placeholder, không phải credential chạy được. Backend phải đăng ký DbContext với Npgsql và đọc đúng configuration key; việc thêm JSON không tự cấu hình dependency injection. Môi trường Development phải được thiết lập trước khi chạy EF nếu cần User Secrets.
 
-### 4.4 Phương án C — PostgreSQL cài thẳng
+### 5.2 Chạy backend
 
-1. Tạo database và user:
-   ```sql
-   CREATE DATABASE cinema_db;
-   CREATE USER cinema_user WITH PASSWORD '<LOCAL_PASSWORD>';
-   GRANT ALL PRIVILEGES ON DATABASE cinema_db TO cinema_user;
-   ```
-2. Bật extension:
-   ```sql
-   \c cinema_db
-   CREATE EXTENSION IF NOT EXISTS btree_gist;
-   ```
-3. Điền connection string vào `.env` theo §4.3.
+Ưu tiên launch profile đã review trong `Properties/launchSettings.json`. Phương án explicit local URLs sau chỉ dùng khi app/Kestrel hỗ trợ cấu hình đó và certificate dev đã sẵn sàng:
 
-### 4.5 Khởi tạo schema và seed data
-
-Sau khi PostgreSQL chạy và kết nối được, chạy theo thứ tự:
-
-```bash
-# Bước 1: Tạo schema (chạy từ root repository)
-psql -h <HOST> -p <PORT> -U <USER> -d <DB> -v ON_ERROR_STOP=1 -f database/database-schema.sql
-
-# Bước 2: Seed dữ liệu demo
-psql -h <HOST> -p <PORT> -U <USER> -d <DB> -f database/seed-data.sql
+```powershell
+$env:ASPNETCORE_ENVIRONMENT = 'Development'
+$env:DOTNET_ENVIRONMENT = 'Development'
+dotnet dev-certs https --trust
+dotnet run --project $apiProject --no-launch-profile --urls "https://localhost:7001;http://localhost:5000"
 ```
 
-Ví dụ với Docker local:
-```bash
-psql -h localhost -p 5432 -U cinema_user -d cinema_db -v ON_ERROR_STOP=1 -f database/database-schema.sql
-psql -h localhost -p 5432 -U cinema_user -d cinema_db -f database/seed-data.sql
+Đọc dòng “Now listening on” để lấy URL thực tế. Kestrel/code config có thể thay đổi listener. Không tự khẳng định `/swagger`, `/health` hoặc endpoint API có tồn tại: đọc mapping trong code/OpenAPI đã triển khai. Build pass chỉ chứng minh compile, không chứng minh DB, authorization hoặc provider hoạt động.
+
+Session test phải kiểm server revocation, current roles/assignments, explicit session-replacement challenge và refresh rotation theo SAD C03. Không bỏ các kiểm tra đó vì JWT signature còn hợp lệ.
+
+## 6. Frontend React + Vite
+
+Mở terminal PowerShell khác; khai báo lại `$cinemaRepo`/`$uiRoot` từ mục 2 nếu dùng terminal mới.
+
+```powershell
+Set-Location -LiteralPath $uiRoot
+if (Test-Path -LiteralPath 'package-lock.json') {
+    npm ci
+} else {
+    # Chỉ khi repo dùng npm và chưa có lockfile; review lockfile phát sinh
+    npm install
+}
+npm run
 ```
 
-> Script `seed-data.sql` được thiết kế **idempotent** (chạy lại an toàn nhờ
-> `ON CONFLICT DO NOTHING`), ngoại trừ showtimes — xem `database/seed-README.md`
-> để biết chi tiết và lưu ý khi chạy lại.
+Nếu repo dùng pnpm/yarn, dùng đúng lockfile/package manager thay vì chạy npm tạo lockfile thứ hai. `npm ci` không tự sửa mismatch giữa package.json và lockfile; xử lý dependency theo workflow của nhóm.
 
----
+Tạo hoặc cập nhật `.env.local` phía frontend, không ghi đè file cũ. Ví dụ khi API client đọc đúng key này:
 
-## 5. Backend ASP.NET Core (CIN-SUB-223)
-
-### 5.1 Trạng thái hiện tại
-
-> Backend (`src/backend/CinemaTicketBooking.Api`) hiện là **khung dự án** (placeholder).
-> Các file `Program.cs`, `CinemaTicketBooking.Api.csproj`, `appsettings.Development.json`
-> và `Data/ApplicationDbContext.cs` đang trống. Chưa có Dockerfile riêng cho backend.
->
-> Hướng dẫn dưới đây mô tả cách chạy khi code được triển khai. Một số bước
-> (VD: `dotnet restore`, `dotnet run`) sẽ báo lỗi cho đến khi `.csproj` có nội dung.
-
-### 5.2 Chạy backend (khi code sẵn sàng)
-
-```bash
-cd src/backend/CinemaTicketBooking.Api
-dotnet restore
-dotnet run
+```dotenv
+VITE_API_BASE_URL=https://localhost:7001
 ```
 
-Backend sẽ lắng nghe trên port được cấu hình trong `appsettings.Development.json`
-(dự kiến HTTP `5000` hoặc HTTPS `7000` — xác nhận khi file được điền đầy đủ).
+Kiểm code nối URL có tự thêm `/api` hay không để tránh `/api/api`. Giá trị VITE là public build-time configuration; đổi env phải restart dev server hoặc rebuild production bundle.
 
-### 5.3 Cấu hình môi trường
+Nếu script `dev` chạy Vite và script `build` có trong package.json:
 
-ASP.NET Core đọc cấu hình theo thứ tự ưu tiên:
-1. Biến môi trường (bao gồm từ `.env` khi được load)
-2. `appsettings.Development.json` (khi `ASPNETCORE_ENVIRONMENT=Development`)
-3. `appsettings.json`
-4. .NET User Secrets (khuyến nghị cho development thay vì `.env`)
-
-**Cách dùng .NET User Secrets (thay thế an toàn cho `.env` với backend):**
-
-```bash
-cd src/backend/CinemaTicketBooking.Api
-dotnet user-secrets init
-dotnet user-secrets set "ConnectionStrings:DefaultConnection" "Host=...;..."
-```
-
-> User Secrets lưu local, không bao giờ được commit vào Git. Phù hợp cho môi trường
-> development cá nhân. Xem §8 để biết danh sách đầy đủ các biến.
-
-### 5.4 Migration EF Core
-
-> EF Core migration chưa được tạo (backend chưa có code). Schema hiện do `database-schema.sql`
-> định nghĩa. Khi migration được tạo:
-
-```bash
-# Cài EF tools nếu chưa có
-dotnet tool install --global dotnet-ef
-
-# Kiểm tra migration hiện có
-dotnet ef migrations list
-
-# Áp dụng migration
-dotnet ef database update
-```
-
-> **Ưu tiên:** Trong giai đoạn hiện tại, dùng `database/database-schema.sql` trực tiếp
-> (xem §4.5). Chuyển sang EF migration khi team thống nhất chiến lược migration.
-
-### 5.5 Containerize backend (dự kiến)
-
-> Docker hóa backend chưa được triển khai (chưa có Dockerfile). Cấu hình dự kiến:
-> backend cần đọc `ConnectionStrings__DefaultConnection` từ biến môi trường khi chạy
-> trong container. Sẽ bổ sung vào `docker-compose.yml` khi backend có Dockerfile.
-
----
-
-## 6. Frontend React + Vite (CIN-SUB-224)
-
-### 6.1 Trạng thái hiện tại
-
-> Frontend (`src/frontend/cinema-ticket-booking-ui`) hiện là **khung dự án** (placeholder).
-> Các file `package.json`, `vite.config.ts`, `tsconfig.json`, `index.html`, `src/App.tsx`,
-> `src/main.tsx` đang trống. Chưa có Dockerfile riêng cho frontend.
-
-### 6.2 Chạy frontend (khi code sẵn sàng)
-
-```bash
-cd src/frontend/cinema-ticket-booking-ui
-npm install
-npm run dev
-```
-
-Dev server Vite sẽ chạy trên `http://localhost:5173` (mặc định Vite).
-
-Mở địa chỉ trên trình duyệt để kiểm tra.
-
-### 6.3 Cấu hình API URL
-
-Frontend đọc URL backend từ biến môi trường Vite (prefix `VITE_`):
-
-- **Khi chạy local (không Docker):** Backend chạy trên `http://localhost:5000` (dự kiến).
-  Cấu hình trong `src/frontend/cinema-ticket-booking-ui/.env`:
-  ```ini
-  VITE_API_BASE_URL=http://localhost:5000
-  ```
-- **Khi chạy trong Docker:** URL phụ thuộc vào network Docker Compose; xem §7.
-
-> **Lưu ý CORS:** Backend phải cho phép origin của dev server (`http://localhost:5173`).
-> Cấu hình CORS sẽ được mô tả khi backend có code.
-
-### 6.4 Build production
-
-```bash
-cd src/frontend/cinema-ticket-booking-ui
+```powershell
+npm run dev -- --host localhost --port 5173 --strictPort
+# Chạy build ở terminal khác sau khi dependency/config hợp lệ:
 npm run build
 ```
 
-Kết quả build tĩnh xuất ra thư mục `dist/`. Có thể serve từ bất kỳ web server nào.
+Frontend render được không chứng minh backend integration. Mở Browser Network để kiểm URL, status và payload thật; không suy ra booking confirmed từ success-page navigation.
 
-### 6.5 Containerize frontend (dự kiến)
+## 7. Giao tiếp frontend/backend và authentication
 
-> Chưa có Dockerfile cho frontend. Cấu hình dự kiến: multi-stage build (Node build
-> stage → Nginx/serve stage), đọc `VITE_API_BASE_URL` khi build.
-> Sẽ bổ sung vào `docker-compose.yml` khi Dockerfile được tạo.
+| Hạng mục | Thiết lập cần kiểm |
+|---|---|
+| API URL | Browser truy cập được host/port; không dùng Docker service DNS trong VITE_API_BASE_URL |
+| CORS | Allowlist origin thật, ví dụ `http://localhost:5173`; đúng scheme/host/port, không wildcard với credentials |
+| Cookie/session | Nếu dùng cookie, client credentials và server cookie settings/CSRF protection phải tương thích; phương thức transport lấy từ implementation được chốt |
+| HTTPS | Certificate dev được tin cậy; Secure cookie/test cross-site phải chạy trong topology phù hợp; không tắt validation để che lỗi |
+| Guest proof | Truyền theo contract an toàn, không query-string/log plaintext; biết code/email không đủ ownership |
+| Errors | Dùng envelope/mã lỗi đúng contract đã triển khai, không tự biến 401/403/409 thành success |
+| Proxy | Nếu dùng Vite proxy, browser gọi relative `/api`; target do dev server truy cập, khác browser URL |
 
----
+API documents hiện là thiết kế Proposed nếu chưa có evidence implementation. Các draft cần đồng bộ explicit replacement challenge, refresh, withdrawal và lifecycle đầy đủ; không làm code yếu hơn SAD chỉ để khớp draft cũ.
 
-## 7. Docker Compose (CIN-SUB-225)
+## 8. Brevo, MoMo và background execution
 
-### 7.1 Trạng thái hiện tại
+### 8.1 Brevo
 
-> `docker-compose.yml` (root) hiện **trống** (placeholder 0 bytes).
-> Khi file được hoàn thiện, mục tiêu là khởi động tất cả service bằng một lệnh.
+API key chỉ nằm backend. Dùng sender đã được Brevo chấp nhận và người nhận test được nhóm kiểm soát. Không ghi quota “300/tháng” hoặc coi lần gửi thử là bằng chứng giới hạn gói hiện tại; kiểm dashboard khi lập kế hoạch test.
 
-### 7.2 Cấu trúc dự kiến
+Kiểm riêng ba tầng: API test độc lập đã được nhóm báo thành công; app tạo persisted notification request; worker gửi/retry và cập nhật delivery state. Queue request trong business transaction, gửi sau commit. Email lỗi không rollback confirmed booking. Tránh gửi hàng loạt khi seed/restart worker trên DB dùng chung.
 
-```yaml
-# docker-compose.yml — cấu trúc dự kiến (chưa chính thức, chờ team hoàn thiện)
-services:
-  postgres:
-    image: postgres:16
-    container_name: cinema_postgres
-    environment:
-      POSTGRES_DB: ${POSTGRES_DB:-cinema_db}
-      POSTGRES_USER: ${POSTGRES_USER:-cinema_user}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cinema_user} -d ${POSTGRES_DB:-cinema_db}"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+### 8.2 MoMo
 
-  backend:
-    build:
-      context: ./src/backend/CinemaTicketBooking.Api
-      dockerfile: Dockerfile                      # chưa tồn tại
-    container_name: cinema_backend
-    environment:
-      ASPNETCORE_ENVIRONMENT: Development
-      ConnectionStrings__DefaultConnection: >
-        Host=postgres;Port=5432;Database=${POSTGRES_DB:-cinema_db};
-        Username=${POSTGRES_USER:-cinema_user};Password=${POSTGRES_PASSWORD}
-    ports:
-      - "5000:5000"
-    depends_on:
-      postgres:
-        condition: service_healthy
-    # Không thể build cho đến khi Dockerfile backend tồn tại
+Chọn và ghi rõ mode trước test:
 
-  frontend:
-    build:
-      context: ./src/frontend/cinema-ticket-booking-ui
-      dockerfile: Dockerfile                      # chưa tồn tại
-      args:
-        VITE_API_BASE_URL: http://backend:5000    # internal Docker network
-    container_name: cinema_frontend
-    ports:
-      - "3000:80"                                 # hoặc port khác theo thỏa thuận team
-    depends_on:
-      - backend
-    # Không thể build cho đến khi Dockerfile frontend tồn tại
-
-volumes:
-  postgres_data:
-```
-
-### 7.3 Quan hệ phụ thuộc
-
-```
-postgres (health: pg_isready)
-    ↑
-backend (depends_on: postgres healthy)
-    ↑
-frontend (depends_on: backend)
-```
-
-### 7.4 Lệnh khi docker-compose.yml sẵn sàng
-
-```bash
-# Khởi động tất cả service
-docker compose up -d
-
-# Xem logs
-docker compose logs -f
-
-# Xem trạng thái container
-docker compose ps
-
-# Dừng tất cả
-docker compose down
-
-# Dừng và xóa volume (reset database)
-docker compose down -v
-```
-
-### 7.5 Các bước cần bổ sung trước khi Docker Compose hoạt động hoàn toàn
-
-- [ ] Điền nội dung `docker-compose.yml`
-- [ ] Tạo `Dockerfile` cho backend (`src/backend/CinemaTicketBooking.Api/Dockerfile`)
-- [ ] Tạo `Dockerfile` cho frontend (`src/frontend/cinema-ticket-booking-ui/Dockerfile`)
-- [ ] Thống nhất port mapping với team
-- [ ] Test `docker compose up -d` trên máy thực tế
-
-> **Hiện tại (2026-10-23):** Chỉ PostgreSQL là service có thể container hóa ngay
-> (image chuẩn, không cần build). Backend và Frontend cần Dockerfile trước.
-
----
-
-## 8. Biến môi trường chi tiết (CIN-SUB-226)
-
-### 8.1 Backend (root `.env` / User Secrets / biến môi trường)
-
-| Biến | Mục đích | Thành phần dùng | Giá trị ví dụ (an toàn) | Bắt buộc |
-|---|---|---|---|---|
-| `ConnectionStrings__DefaultConnection` | Connection string PostgreSQL (Supabase hoặc local) | Backend (EF Core / Npgsql) | `Host=localhost;Port=5432;Database=cinema_db;Username=cinema_user;Password=CHANGE_ME` | ✅ |
-| `ASPNETCORE_ENVIRONMENT` | Môi trường .NET (Development / Production) | Backend runtime | `Development` | Khuyến nghị |
-| `POSTGRES_PASSWORD` | Mật khẩu PostgreSQL (dùng với Docker Compose) | Docker Compose (postgres service) | `CHANGE_ME_LOCALLY` | ✅ khi dùng Docker |
-| `POSTGRES_DB` | Tên database PostgreSQL (Docker Compose) | Docker Compose | `cinema_db` | Tùy chọn (có default) |
-| `POSTGRES_USER` | Username PostgreSQL (Docker Compose) | Docker Compose | `cinema_user` | Tùy chọn (có default) |
-
-> **Biến chưa xác định:** Các biến cho JWT secret key, Payment Gateway API key,
-> Expiry Worker interval sẽ được bổ sung khi backend có code và team thống nhất.
-> Không bổ sung biến chưa được xác nhận vào `.env.example`.
-
-### 8.2 Frontend (`src/frontend/cinema-ticket-booking-ui/.env`)
-
-| Biến | Mục đích | Giá trị ví dụ | Bắt buộc |
-|---|---|---|---|
-| `VITE_API_BASE_URL` | URL gốc của Backend API | `http://localhost:5000` | ✅ (dự kiến) |
-
-> **Lưu ý:** Tên biến `VITE_API_BASE_URL` là dự kiến dựa trên convention Vite.
-> Tên thực tế sẽ được xác nhận khi `package.json` và `vite.config.ts` có nội dung.
-
-### 8.3 Quy tắc quản lý secrets
-
-1. **Không commit secrets:** File `.env` thật không được commit. Chỉ commit `.env.example`.
-2. **`.env.example`** chứa key và giá trị mẫu an toàn (placeholder như `YOUR_PASSWORD`).
-3. **User Secrets (.NET):** Khuyến nghị cho backend development local — không lưu trên disk có thể commit.
-4. **Không dùng giá trị development trong production:** Mật khẩu local không được đặt làm default trong production config.
-5. **Không log secrets:** Đảm bảo connection string không xuất hiện trong application log.
-
-### 8.4 Cập nhật `.env.example`
-
-File `.env.example` hiện tại (root) chứa:
-```ini
-# Connection String Supabase PostgreSQL (Session Pooler - IPv4 compatible)
-# Copy file nay thanh .env va dien DATABASE PASSWORD cua project Supabase.
-# Khong commit file .env chua mat khau that len Git.
-
-ConnectionStrings__DefaultConnection=Host=aws-0-ap-northeast-1.pooler.supabase.com;Port=5432;Database=postgres;Username=postgres.gochgvgokxsjjkojywcs;Password=YOUR_DATABASE_PASSWORD;SSL Mode=Require
-```
-
-> Cần bổ sung vào `.env.example` khi các biến mới được xác nhận:
-> - `POSTGRES_PASSWORD`, `POSTGRES_DB`, `POSTGRES_USER` (cho Docker local)
-> - Các biến JWT, Payment Gateway key (khi backend có code)
-
----
-
-## 9. Khởi động nhanh (CIN-SUB-227)
-
-### 9.1 Prerequisites checklist
-
-Trước khi bắt đầu, xác nhận:
-
-- [ ] .NET SDK 8+ đã cài: `dotnet --version`
-- [ ] Node.js 20 LTS đã cài: `node --version`
-- [ ] Git đã cài: `git --version`
-- [ ] (Tùy chọn) Docker Desktop đang chạy: `docker info`
-- [ ] Đã có thông tin kết nối PostgreSQL (Supabase hoặc local)
-
-### 9.2 Luồng thiết lập lần đầu
-
-```bash
-# Bước 1: Clone repository
-git clone <REPO_URL>
-cd "Movie-Theater-Management-and-Online-Ticket-Booking-System"
-
-# Bước 2: Cấu hình biến môi trường
-cp .env.example .env
-# → Mở .env, điền mật khẩu PostgreSQL thật
-
-cp src/frontend/cinema-ticket-booking-ui/.env.example \
-   src/frontend/cinema-ticket-booking-ui/.env
-# → Điền VITE_API_BASE_URL khi key được xác nhận
-
-# Bước 3: Khởi tạo database schema và seed data
-# (Thay <...> bằng thông tin kết nối thực tế)
-psql -h <HOST> -p <PORT> -U <USER> -d <DB> -v ON_ERROR_STOP=1 -f database/database-schema.sql
-psql -h <HOST> -p <PORT> -U <USER> -d <DB> -f database/seed-data.sql
-
-# Bước 4: Chạy backend
-cd src/backend/CinemaTicketBooking.Api
-dotnet restore && dotnet run
-# Để lại terminal này chạy; mở terminal mới
-
-# Bước 5: Chạy frontend
-cd src/frontend/cinema-ticket-booking-ui
-npm install && npm run dev
-```
-
-> **Lưu ý:** Bước 4 và 5 sẽ báo lỗi cho đến khi backend/frontend có code thực.
-> Giai đoạn hiện tại chỉ Bước 1-3 (database) có thể thực hiện được.
-
-### 9.3 Luồng một lệnh (khi Docker Compose hoàn thiện)
-
-Khi `docker-compose.yml` được điền đầy đủ và Dockerfile của backend/frontend đã có:
-
-```bash
-# Từ root repository
-docker compose up -d
-```
-
-Theo dõi logs:
-```bash
-docker compose logs -f
-```
-
-### 9.4 Kiểm tra hoạt động
-
-1. **Database:** Kết nối thử bằng `psql` hoặc client GUI — xem các bảng đã được tạo.
-2. **Backend:** Truy cập Swagger UI hoặc gọi `GET http://localhost:5000/api/movies`.
-3. **Frontend:** Mở `http://localhost:5173` — trang Home tải và hiển thị danh sách phim từ backend.
-4. **Seed data:** Kiểm tra có 6 phim, 2 phòng chiếu, 82 ghế và 48 suất chiếu (theo `database/seed-README.md`).
-
-### 9.5 Dừng môi trường
-
-```bash
-# Dừng backend (Ctrl+C trong terminal đang chạy dotnet run)
-# Dừng frontend (Ctrl+C trong terminal đang chạy npm run dev)
-
-# Hoặc dừng Docker services
-docker compose down        # giữ volume (dữ liệu)
-docker compose down -v     # xóa cả volume (reset hoàn toàn)
-```
-
----
-
-## 10. Xử lý lỗi thường gặp
-
-| Lỗi / Triệu chứng | Nguyên nhân thường gặp | Cách xử lý |
+| Mode | Mục đích | Không được kết luận |
 |---|---|---|
-| `psql: FATAL: password authentication failed` | Sai mật khẩu trong connection string | Kiểm tra `.env` — đối chiếu với Supabase Dashboard hoặc cấu hình local |
-| `psql: could not connect to server` | Host/port sai, PostgreSQL chưa chạy | Kiểm tra `docker ps`; kiểm tra HOST trong `.env` |
-| `ERROR: extension "btree_gist" is not available` | Extension chưa được enable | Chạy `CREATE EXTENSION IF NOT EXISTS btree_gist;` trong database trước khi chạy schema |
-| `dotnet restore` lỗi (file not found) | `CinemaTicketBooking.Api.csproj` trống | Backend chưa có code — chờ team triển khai |
-| `npm install` lỗi (không có package.json) | `package.json` trống | Frontend chưa có code — chờ team triển khai |
-| Frontend không gọi được backend | CORS chưa cấu hình, sai URL | Kiểm tra `VITE_API_BASE_URL` trong `.env` frontend; kiểm tra CORS backend |
-| Port 5432 bị chiếm | PostgreSQL local đang chạy trên cùng port | Dừng PostgreSQL local hoặc đổi port Docker mapping (`"5433:5432"`) |
-| Port 5000/7000 bị chiếm | Ứng dụng khác hoặc backend đang chạy | Dừng process cũ; đổi port trong `launchSettings.json` |
-| Port 5173 bị chiếm | Vite dev server khác đang chạy | Đổi port trong `vite.config.ts` hoặc dùng `--port` flag |
-| Seed lỗi duplicate showtimes | Chạy seed lần 2 sau khi đã có showtimes | Xem `database/seed-README.md` — cần clear showtimes trước khi chạy lại |
-| `dotnet ef` không tìm thấy | Thiếu EF tools | `dotnet tool install --global dotnet-ef` |
-| `Cannot open database` / SSL error với Supabase | Thiếu `SSL Mode=Require` trong connection string | Thêm `SSL Mode=Require` vào connection string Supabase |
+| Mock adapter local | Kiểm workflow/state/idempotency bằng dữ liệu giả có kiểm soát | Không phải MoMo sandbox đã tích hợp |
+| MoMo sandbox | Kiểm contract/signature/callback/query với test account/config thật | Không chứng minh live payments |
 
----
+Mock chỉ bật theo Development/test configuration được kiểm soát; không thêm public “mark paid” endpoint hoặc bỏ chữ ký webhook để demo. Chọn MoMo trên UI không tự tạo payment; chỉ explicit confirmation mới initiation. Window 10 phút và grace default 10 giây phải khớp nguồn, không giữ cấu hình cũ 2–3 phút.
 
-## 11. Liên quan
+Provider bên ngoài không gọi callback vào `localhost` của developer. Sandbox cần callback HTTPS reachable do nhóm cấu hình trên môi trường test hoặc tunnel phù hợp; return URL và webhook URL là hai vai trò khác nhau. Sau khi chốt provider contract, kiểm raw payload/signature, verified reference/amount/currency, durable receipt và ACK. Không công bố đã thử MoMo nếu chỉ dùng mock.
 
-- **Schema và seed:** `database/database-schema.sql`, `database/seed-data.sql`, `database/seed-README.md`
-- **Thiết kế database:** `database/database-design.md`, `database/database-schema.md`
-- **Kiến trúc hệ thống:** `docs/analysis and design/architecture.md`
-- **Mẫu biến môi trường:** `.env.example` (root), `src/frontend/cinema-ticket-booking-ui/.env.example`
-- **Docker Compose:** `docker-compose.yml` (root — hiện trống, chờ hoàn thiện)
-- **Git workflow:** `docs/management/git-workflow.md`
-- **Cấu trúc dự án:** `PROJECT_STRUCTURE.md`
+### 8.3 Workers và AI
+
+Theo SAD, C14 có thể chạy BackgroundService trong backend modular monolith, không bắt buộc một microservice hay public worker endpoint. Cần kiểm đăng ký worker, options, durable claims/lease/fencing và shutdown/retry trong code. Hai instance local cùng DB không được xử lý tài chính/admission trùng.
+
+Promethe-Nous informational-only. Bounded history ở backend memory theo C12; không yêu cầu pgvector/RAG hoặc persistence hội thoại khi nguồn chưa chốt. Nếu chưa cấu hình provider, hiển thị trạng thái chưa khả dụng thay vì trả dữ liệu bịa.
+
+## 9. Trình tự khởi động và bằng chứng cần ghi
+
+1. Kiểm branch, manifest, tool versions, configuration keys và database đích.
+2. Start PostgreSQL, kiểm readiness và connection từ backend.
+3. Review/apply nguồn schema đã chọn; seed local dữ liệu phù hợp baseline.
+4. Build/start backend, ghi actual URL và endpoint đang có; kiểm worker/provider mode.
+5. Install/start frontend, kiểm API URL và CORS/auth transport.
+6. Chạy smoke tests dưới đây, lưu actual result/evidence theo từng mục. Mục chưa implement ghi **Not implemented/Blocked**, không ghi Pass.
+
+| Kiểm tra | Kết quả mong đợi |
+|---|---|
+| Public movie/showtime read | Frontend đọc dữ liệu backend thật, empty/error state đúng |
+| Account/session | Customer chưa verify vẫn login theo policy; internal operation cần verify; logout/replacement/current rights đúng |
+| Guest/Customer reservation | Guest proof/ownership đúng; selection không hold; Step 1→2 commit đủ seats và deadline gốc |
+| Retry/seat race | Không duplicate booking; không bán trùng hoặc giữ một phần |
+| Payment mode | Ghi rõ mock/sandbox; redirect không confirm; duplicate event không issue thêm QR |
+| Email after commit | Delivery lỗi không đảo booking; retry có theo dõi |
+| Admission | Một booking QR, category quotas, −5/+20 phút, đúng Staff assignment |
+| Cancellation/refund | Pre-init cancel riêng; review/withdrawal/approval/completion effects đúng origin |
+| Authorization | Manager không sửa movies/room identity; Staff không refund completion; không cross-cinema write |
+| Recovery | Restart worker hoặc mất response không tạo tác động trùng |
+
+Mỗi evidence ghi commit, môi trường, tool versions, mode provider, seed/test data, timestamp, expected/actual và trace ID đã lọc. Không chụp/copy secret, raw verification links hoặc Guest credentials.
+
+## 10. Troubleshooting và dừng môi trường
+
+| Triệu chứng | Kiểm tra / cách xử lý |
+|---|---|
+| DB connection refused | Docker daemon, service status, port mapping 5433 host/5432 container; tránh nhầm localhost trong container |
+| Password authentication failed | Backend config provider ưu tiên, password thực trong cluster cũ; env đổi không reset volume credential |
+| Backend không đọc `.env` | Kiểm configuration providers; dùng User Secrets/env của process đúng key, không giả có dotenv loader |
+| EF relation missing/already exists | Kiểm database/schema/migration history và SQL-vs-EF baseline; không drop DB để che mismatch |
+| dotnet-ef thiếu/incompatible | Local tool manifest và version EF packages; không cài latest mù |
+| Frontend gọi sai endpoint | Inspect Network, API base URL, `/api` prefix, restart Vite sau env change |
+| CORS/cookie lỗi | Origin chính xác, credentials policy, scheme/certificate, cookie SameSite/Secure và CSRF design |
+| Port 5173 bận | strictPort báo lỗi; dừng process đúng hoặc đổi port cùng CORS, không tự dùng origin mới chưa allow |
+| Webhook không đến | localhost không public; kiểm reachable callback URL và sandbox registration |
+| Unknown payment | Đọc reconciliation/evidence; không mark failed/release thủ công |
+| Worker không xử lý | Registration, options, queue state, lease expiry/fencing, logs đã lọc; không chạy nhiều process vô kiểm soát |
+
+Dừng frontend/backend bằng Ctrl+C trong terminal tương ứng. Dừng Compose mẫu mà giữ volume:
+
+```powershell
+Set-Location -LiteralPath $cinemaRepo
+docker compose --env-file .env.docker.local -f compose.local.example.yaml down
+```
+
+Không thêm `-v` vào routine shutdown; thao tác đó xóa named volume. Reset dữ liệu là thao tác riêng, cần xác định database/backup và mục tiêu, không phải bước bắt buộc mỗi lần chạy.
+
+## 11. Tài liệu tham chiếu và revision note
+
+- [Requirements](../requirements/business-system-analysis.md), [Use cases](../requirements/use-cases.md), [Architecture](../analysis%20and%20design/architecture.md).
+- [API contract](../api/api-contract.md), [Endpoint catalogue](../api/api-endpoints.md), [DTO specification](../api/dto-specification.md).
+- [Database design](../../database/database-design.md), [Schema](../../database/database-schema.md), [Seed guide](../../database/seed-README.md): phải kiểm phiên bản thực tế trước khi chạy.
+- [Microsoft Configuration](https://learn.microsoft.com/en-us/aspnet/core/fundamentals/configuration/), [User Secrets](https://learn.microsoft.com/en-us/aspnet/core/security/app-secrets/).
+- [Docker Compose interpolation](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/), [PostgreSQL official image](https://hub.docker.com/_/postgres), [EF migrations](https://learn.microsoft.com/en-us/ef/core/managing-schemas/migrations/).
+- [Vite environment](https://vite.dev/guide/env-and-mode).
+
+Rewrote local setup around manifest-driven dependency selection, isolated Docker PostgreSQL, explicit ASP.NET/Vite/Compose configuration boundaries, reviewed schema initialization, and separate mock/sandbox integration evidence. Removed stale implementation claims and aligned smoke checks with the revised use-case and architecture baseline. Commands and end-to-end behavior remain unverified in the current repository.

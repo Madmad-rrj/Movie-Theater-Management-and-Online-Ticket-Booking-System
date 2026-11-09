@@ -1,436 +1,309 @@
-# Architecture — Movie Theater Management and Online Ticket Booking System
+# System Architecture
 
-> Tài liệu này mô tả kiến trúc của hệ thống MVP/demo. Nó căn cứ vào yêu cầu đã chốt trong
-> `docs/requirements/business-system-analysis.md` (FR/BR/AC), use case trong
-> `business-system-design.md`, mô hình dữ liệu trong `relational-model.md` và schema vật lý
-> trong `database/database-schema.sql`. Tài liệu này **không** tái lập chi tiết nghiệp vụ hay
-> ràng buộc dữ liệu — chỉ mô tả cách các thành phần kiến trúc phối hợp để thực hiện chúng.
+## Purpose and Source Baseline
 
-## 1. Tổng quan kiến trúc
+This document is a concise implementation-oriented summary of the Software Architecture Document (SAD) for **Promethe-Phos — Movie Theater Management and Online Ticket Booking System**.
 
-Hệ thống là một **web application** gồm các phần chính:
+The source baseline is:
 
-- **Frontend SPA** (React + Vite + TypeScript) — giao diện cho Customer và khu vực quản trị cho Staff/Manager/Admin.
-- **Backend API** (ASP.NET Core Web API) — nắm giữ toàn bộ business logic, authentication/authorization, và là **bộ phận duy nhất** truy cập database.
-- **Database** (PostgreSQL, chạy trên Supabase) — nguồn sự thật duy nhất (single source of truth) về phim, suất chiếu, ghế, booking, payment, vé.
-- **Payment Gateway** (bên ngoài, cổng cụ thể chưa chốt — OQ-01) — xử lý giao dịch thanh toán, trả kết quả qua webhook và Query API.
-- **Expiry Worker** (background job trong backend) — xử lý vòng đời booking hết hạn và grace period theo BR-BOOK-004 / OQ-07.
+- `pa/PA3-Group15/rup_sad.docx`
+- SAD revision **3.15**; the initial 1.0 revision is not the current document version
+- Use-Case Specifications **v2.4**, `rup_ucspec-v2.4_final(5).docx` supplied for this review; corresponding repository baseline must be checked by content/version
+- Review date: 9 November 2026
 
-Nguyên tắc kiến trúc cốt lõi: **mọi quyết định nghiệp vụ và kiểm tra tính toàn vẹn ghế đều nằm ở Backend + Database**. Frontend chỉ hiển thị thông tin phục vụ chọn ghế (FR-SHOW-002) và không bao giờ được tin là điều kiện cuối cùng — backend luôn kiểm tra lại authoritative trong transaction (FR-BOOK-001, BR-BOOK-002).
+The SAD is the authoritative source for the designed architecture, component boundaries, collaborations, data ownership, and processing rules. This file intentionally does not reproduce the complete SAD, class diagrams, or every basic and alternative use-case flow. The SAD must be consulted for detailed class/interface contracts and full flow definitions.
 
-## 2. Kiến trúc hệ thống
+This revision reviews supplied documents, not the live repository or deployed services. Implementation status must be verified separately from the design. `Designed` means described by the SAD; `Implemented` means supported by repository evidence; `Planned` means an intended organization or implementation not yet present; and `Unconfirmed` means that the available evidence is insufficient.
 
-```text
-Customer / Staff / Manager / Admin
-        ↓ (HTTPS, trình duyệt web)
-Frontend SPA — React + Vite + TS
-        ↓ (REST + JSON, kèm JWT)
-ASP.NET Core Web API
-   ├── Controllers (API layer)
-   ├── Services (business logic)
-   ├── Domain / Entities
-   ├── Infrastructure (EF Core + Npgsql)
-   ├── Auth (JWT + role-based authorization)
-   └── Expiry Worker (background job)
-        ↓ (EF Core → Npgsql)
-PostgreSQL (Supabase)
-        ↑ webhook / Query API
-Payment Gateway (hệ thống bên ngoài)
-```
+## System Scope and Architectural Drivers
 
-## 3. Các thành phần hệ thống
+The architecture covers the 28 use cases grouped into nine functional domains:
 
-| Thành phần | Trách nhiệm | Ghi chú |
+| Domain | Name | Scope |
 |---|---|---|
-| **Frontend SPA** | Duyệt phim, xem lịch chiếu, sơ đồ ghế, tạo booking, thanh toán, xem vé; khu vực quản trị | Không chứa business logic; countdown giữ ghế chỉ là hiển thị (NFR-USE-001) |
-| **Backend API** | Xử lý mọi request, kiểm tra quyền sở hữu (BR-AUTH-002), tính giá (BR-BOOK-005), điều phối transaction | Authorization luôn ở backend (NFR-SEC-002) |
-| **Business Logic (Services)** | BookTickets, CancelBooking, PaymentApplication, TicketIssuance, ShowtimeManagement, ExpiryWorker | Không đặt logic trong Controller |
-| **Database (PostgreSQL)** | Toàn vẹn dữ liệu: exclusion constraint chống chồng lịch (`ex_showtime_room_time`), partial unique index chặn đặt trùng ghế (`ux_booking_detail_active_seat`), transaction | Là lớp phòng thủ cuối cùng (BR-BOOK-006, BR-ST-002) |
-| **Authentication** | Đăng ký/đăng nhập, JWT, hash mật khẩu | Đăng ký công khai chỉ cấp CUSTOMER (BR-AUTH-003) |
-| **Payment Gateway Adapter** | Đóng gói cổng thanh toán sau một interface trung gian-cổng-độc lập (tạo attempt, verify callback, Query/Cancel API) | Cho phép đổi cổng mà không đụng business logic |
-| **Expiry Worker** | Chuyển booking quá hạn `expired` + ghế `released` khi không còn payment attempt đang mở; grace period truy vấn cổng (OQ-07 — chính sách đã chốt, **số liệu 2–3 phút là đề xuất, chưa chốt — OQ-UC-03**) | Chạy nền, không phải request từ client |
+| D1 | Customer Booking and Payment | Movie discovery, showtime browsing, reservation, checkout, payment initiation, and chatbot assistance |
+| D2 | Customer Booking Management | Customer booking/ticket access, cancellation requests, and authorized operational support |
+| D3 | Ticket Validation and Admission | Booking-level QR validation and controlled admission recording |
+| D4 | Movie Catalog Management | Movie information, genre definitions, and movie-genre associations |
+| D5 | Cinema and Screening Room Setup | Cinemas, rooms, physical seat layouts, and operational seat status |
+| D6 | Showtime and Schedule Management | Showtime creation, maintenance, conflict prevention, and controlled rescheduling |
+| D7 | Ticket Types and Pricing Management | Seat types, ticket categories, surcharges, and cinema-specific base prices |
+| D8 | User and Access Management | Registration, verification, authentication, logout, roles, and cinema assignments |
+| D9 | Payment Exception and Recovery | Payment webhooks, expiration, reconciliation, and refunds |
 
-## 4. Frontend Architecture
+The main customer capabilities are movie and showtime discovery, selection-session management, checkout, guest or customer booking, payment, ticket retrieval, admission, and informational Promethe-Nous assistance. Operational capabilities cover catalog, cinema, seating, showtime, pricing, account, booking, ticket, cancellation, refund, and admission administration.
 
-Tổ chức theo phân loại dự kiến trong `PROJECT_STRUCTURE.md`:
+The principal architectural drivers are:
 
-- **Pages**: `MovieList`, `MovieDetail` (kèm showtimes), `SeatSelection`, `Checkout` (booking pending + countdown 5 phút), `PaymentResult`, `MyTickets`, `MyBookings`, cùng nhóm admin: `ManageMovies`, `ManageRooms/Seats`, `ManageShowtimes`, `BookingLookup`, `TicketValidation`, `ManageUsers`.
-- **Components**: ghế grid (phân biệt STANDARD/VIP/COUPLE — Couple là một đơn vị bán, một detail hai ticket: BR-BOOK-009), countdown timer, QR vé, toast/thông báo lỗi.
-- **Services / API Client**: một module `apiClient` tập trung — tự gắn JWT, chuẩn hóa lỗi, không gọi thẳng URL rải rác.
-- **State Management**: React Context cho auth state (token, roles) và state chọn ghế cục bộ trong trang đặt vé; không dùng state library nặng trong MVP.
-- **Routing**: protected route theo role — route quản trị chặn trước khi chưa đúng role, nhưng backend vẫn kiểm tra lại (frontend check chỉ là UX).
-- **Authentication State**: JWT lưu phía client, gửi kèm header `Authorization: Bearer`. Token hết hạn → redirect đăng nhập.
+- concurrent seat selection and reservation without duplicate allocation;
+- atomic booking, payment, ticket, notification-request, and audit changes;
+- payment safety across browser redirects, webhooks, deadlines, grace periods, reconciliation, retries, and uncertain outcomes;
+- backend authorization, current role/cinema-scope checks, guest access rules, and session management;
+- booking-level QR admission with remaining-entitlement accounting;
+- email delivery after commit with retry and recovery;
+- auditable business changes without exposing unnecessary sensitive data.
 
-**Ràng buộc với backend:** frontend không truy cập database trực tiếp, không tự tính giá (client gửi danh sách ghế + loại vé; giá do backend tính — FR-BOOK-002).
+The quantitative targets stated in the SAD are design and verification targets. They are not measured performance results.
 
-## 5. Backend Architecture
+## Architectural Style and Technology Stack
 
-Single project `CinemaTicketBooking.Api` tổ chức theo layer trong nội bộ (MVP không tách thành nhiều project):
+### Layered Modular Monolith
 
-- **Controllers**: mỏng — parse request, gọi service, trả response; không chứa logic nghiệp vụ.
-- **Services** (Application layer):
-  - `BookingService` — tạo booking all-or-nothing (BR-BOOK-002), tính giá (BR-BOOK-005), hủy pending (FR-BOOK-003).
-  - `PaymentService` — tạo attempt (BR-PAY-001/002), xử lý callback 4 khâu: tiếp nhận → xác minh → nghiệp vụ → đánh dấu `processed` (BR-PAY-005/006), áp dụng payment + phát hành vé (BR-PAY-004).
-  - `TicketService` — phát hành đúng `capacity_units_snapshot` ticket (Couple = 2 mã: BR-BOOK-009), soát vé một lần (FR-TICKET-002).
-  - `ShowtimeService` / catalog services — quản trị theo BR-ST-001..005, BR-ROOM-001..004.
-  - `ExpiryWorker` — lifecycle booking (BR-BOOK-004, `database-design.md` mục 34.1).
-- **Domain / Entities**: ánh xạ 1-1 với 18 relation trong `relational-model.md` (`Movie`, `Genre`, `Cinema`, `CinemaRoom`, `Seat`, `SeatType`, `TicketType`, `Showtime`, `AppUser`, `Role`, `Booking`, `BookingDetail`, `Ticket`, `Payment`, `PaymentEvent`, `Refund`, `MovieGenre`, `UserRole`).
-- **Infrastructure / EF Core**: `ApplicationDbContext` + Fluent API khớp schema; các ràng buộc EF không sinh được (exclusion constraint, partial unique index) được tạo bằng SQL script như `database-schema.sql`.
-- **Authentication**: JWT bearer; role hiệu lực đọc từ `user_role` khi đăng nhập.
+The system has a React frontend separated from an ASP.NET Core backend through an HTTP API. The backend is a **layered modular monolith**: business components have explicit logical responsibilities and interfaces, but they operate inside one backend application rather than as independently deployed services.
 
-## 6. Database Architecture
+Logical layers and business modules are separate concepts. The presentation/API boundary, application coordination, domain policies, and infrastructure mechanisms form layers; C01–C16 are logical components that may span or collaborate across those layers. The functional domains D1–D9 do not map one-to-one to C01–C16.
 
-```text
-ASP.NET Core
-      ↓
-EF Core (Npgsql provider)
-      ↓
-Npgsql driver
-      ↓
-PostgreSQL (Supabase — session pooler)
-```
+Backend components primarily collaborate through C# interfaces and dependency injection. Cross-component workflows have an explicit coordinator, and high-level services must not form circular dependencies.
 
-- Kết nối qua connection string trong `.env` / user-secrets; **không hard-code secret** (NFR-SEC-001).
-- Transaction do EF Core quản lý (`BeginTransaction`); các luồng all-or-nothing (tạo booking, áp dụng payment) chạy trong **một transaction**.
-- **Nguồn sự thật schema:** `database-schema.sql` là nguồn vật lý ban đầu; EF Core Fluent API phải khớp với nó. Các ràng buộc EF migration không sinh được (exclusion constraint, partial unique index) luôn tạo bằng SQL — không mô tả một constraint là "có trong database" nếu chỉ tồn tại trong tài liệu. Hiện trạng: **chưa có code backend và chưa có migration nào** — mọi ràng buộc đang sống trong SQL script.
-- **Lớp bảo vệ dữ liệu cứng** do database giữ, backend chỉ thêm kiểm tra thân thiện trước:
-  - `ex_showtime_room_time` — chống chồng lịch phòng (BR-ST-002);
-  - `ux_booking_detail_active_seat` — một ghế tối đa một phân bổ `held`/`sold` mỗi suất (BR-BOOK-006);
-  - `uq_payment_open_booking` — tối đa một payment attempt đang mở mỗi booking (BR-PAY-002);
-  - `ux_payment_applied_booking` — tối đa MỘT payment được áp dụng cho mỗi booking (`WHERE applied_at IS NOT NULL`). Phân biệt với `uq_payment_open_booking`: index này chỉ chặn *retry song song*, index kia chặn *áp dụng hai lần*. Cổng có thể thu tiền hai lần từ hai attempt khác nhau — cả hai được lưu `succeeded`, chỉ một áp dụng (database-design.md §15.2);
-  - FK ghép (`booking(id, showtime_id, cinema_room_id)`…) bảo đảm ghế thuộc đúng phòng của suất.
-- Mọi cột thời gian lưu UTC; hiển thị theo `Asia/Ho_Chi_Minh` (relational-model.md mục 9.2).
+### Technology Stack
 
-## 7. Authentication & Authorization Architecture
-
-```text
-Login (email + password)
-   → Backend xác minh hash, kiểm tra status `active` (locked/deactivated bị từ chối, thông báo chung — FR-AUTH-002)
-   → Đọc roles hiệu lực từ user_role/role
-   → Ký JWT (subject, roles, hạn)
-   → Frontend lưu token, gửi kèm mỗi request
-   → Backend: [Authorize(Roles = ...)] + kiểm tra quyền sở hữu tài nguyên trong service (BR-AUTH-002)
-```
-
-- Đăng ký công khai → chỉ role `CUSTOMER` (BR-AUTH-003).
-- Token không thu hồi tức thời trong MVP; role thay đổi có thể không phản ánh ngay vào token đang hiệu lực — giới hạn MVP chấp nhận (BR-AUTH-004).
-- Mật khẩu chỉ lưu dạng hash do thư viện xác thực tạo (NFR-SEC-001).
-
-## 8. External Services
-
-| Dịch vụ | Vai trò | Cách tích hợp |
+| Technology or integration | Responsibility | Source / status |
 |---|---|---|
-| **Payment Gateway** (cổng chưa chốt — OQ-01) | Xử lý thanh toán, gửi webhook, trả kết quả Query/Cancel | Qua `IPaymentGatewayAdapter`: `CreatePayment`, `VerifyCallback`, `QueryStatus`, `CancelPayment` |
-| Email/SMTP | (Không thuộc MVP) | Không tích hợp trong demo |
+| React / Vite / TypeScript | Browser application and build tooling | Selected design; runtime/version not verified in this review |
+| ASP.NET Core Web API / C# | HTTP boundary and modular backend | Selected design; implementation not audited here |
+| ASP.NET Core Identity | Passwords, email verification, roles, account integration | Designed in C03; no parallel custom password store |
+| JWT access / rotating refresh tokens | Server-session-bound authentication | Designed in C03, including replacement challenges |
+| EF Core / Npgsql / PostgreSQL | Persistence, constraints and coordinated transactions | Selected design; migrations and live schema require separate verification |
+| Docker PostgreSQL | Local database environment | User-reported development choice; Compose readiness not verified |
+| Supabase PostgreSQL | Hosted database | User-selected target; not a decision to replace Identity with Supabase Auth |
+| Vercel / Render | Frontend / backend hosting targets | User-selected targets; live deployment and PA4 topology not verified |
+| MoMo | Payment adapter | Intended demo integration; user reports not yet tested |
+| Brevo HTTPS API | Verification and ticket email transport | User reports a successful API send experiment; end-to-end outbox integration remains unverified |
+| External AI provider | Informational assistant | Boundary designed; provider/model/source contracts still to be selected |
 
-Không dùng AI service trong phạm vi demo. Callback phải xác minh chữ ký/nguồn trước khi ảnh hưởng trạng thái (NFR-SEC-003); sự kiện luôn lưu bền vững trước (`received`) để không mất callback (NFR-REL-001).
+Runtime/package versions must be recorded from actual project manifests during implementation; this review does not infer them from document names.
 
-## 9. Communication
+## Architecture Overview
 
-- **Frontend → Backend**: REST + JSON qua HTTPS, JWT bearer.
-- **Backend → PostgreSQL**: EF Core (Npgsql), transaction cho các luồng đa bước.
-- **Backend → Payment Gateway**: HTTP (tạo attempt, truy vấn, cancel) — gọi **ngoài** transaction DB; kết quả chỉ chốt sau xác minh.
-- **Payment Gateway → Backend**: webhook → endpoint callback lưu event trước, xử lý nghiệp vụ sau (BR-PAY-005); idempotent theo `(payment_id, event_key)` (BR-PAY-006).
-
-## 10. Deployment Architecture
-
-Môi trường **demo**:
-
-```text
-Browser (Customer/Staff/Manager/Admin)
-   ↓
-Frontend: development dùng Vite dev server (HTTP); production build tĩnh,
-HTTPS do môi trường triển khai cấu hình (chưa định nghĩa)
-   ↓
-ASP.NET Core Web API (Kestrel, chạy local / Docker)
-   ↓
-PostgreSQL trên Supabase (host: aws-0-ap-northeast-1.pooler.supabase.com)
-```
-
-- `docker-compose.yml` dùng cho môi trường phát triển/demo; connection string cung cấp qua biến môi trường (`.env`, không commit secret).
-- Frontend build tĩnh, có thể host riêng hoặc serve từ backend trong demo.
-- Một chi nhánh (`CINEMA_HCM_01`) được seed qua `database/seed-data.sql`; mô hình dữ liệu sẵn sàng nhiều chi nhánh nhưng demo chỉ một (NFR-SCALE-001).
-
-## 11. Project Structure
-
-```text
-/frontend   → src/frontend/cinema-ticket-booking-ui    (React + Vite + TS)
-/backend    → src/backend/CinemaTicketBooking.Api     (ASP.NET Core Web API)
-/database   → database/                               (schema SQL, seed, tài liệu DB)
-/docs       → docs/                                   (requirements, analysis & design, test)
-```
-
-Cấu trúc chi tiết từng thư mục xem `PROJECT_STRUCTURE.md`.
-
-## 12. Architecture Principles
-
-1. **Frontend không truy cập database trực tiếp**; chỉ giao tiếp với backend qua API.
-2. **Business logic không đặt trong Controller** — controller mỏng, service giữ logic; logic test được qua API không cần UI (NFR-MAINT-001).
-3. **Database là lớp bảo vệ cuối cùng**: ràng buộc ghế, lịch chiếu, payment attempt được bảo vệ bằng constraint/index ở database; backend kiểm tra lại để báo lỗi thân thiện.
-4. **Kiểm tra authoritative trong transaction**: hiển thị sơ đồ ghế/lịch chiếu cho client không bao giờ là điều kiện chốt (FR-BOOK-001).
-5. **Không tin dữ liệu do client gửi**: giá, mức giảm, trạng thái luôn do backend tính/xác minh (FR-BOOK-002, NFR-SEC-002).
-6. **Authorization ở backend**, dựa trên role + quyền sở hữu tài nguyên; không dựa vào việc "biết" mã công khai (BR-AUTH-001/002).
-7. **Idempotency cho mọi luồng thanh toán**: callback lặp chỉ xử lý một lần; payment áp dụng all-or-nothing (BR-PAY-004/006/008).
-8. **Kết quả tài chính và trạng thái booking là hai kết quả độc lập** (BR-PAY-007) — payment thành công muộn không chiếm lại ghế.
-9. **Secrets không hard-code**; cấu hình qua biến môi trường / user-secrets (NFR-SEC-001).
-10. **Trách nhiệm module rõ ràng** — mỗi service một nghiệp vụ; thay đổi cổng thanh toán chỉ đụng adapter, không đụng business logic.
-11. **Data-model readiness ≠ triển khai**: các bảng `refund`, nhiều cinema có trong mô hình để mở rộng nhưng không có chức năng trong demo (mục 3.3 của business-system-analysis).
-
-## 12a. Anti-Abuse / Seat-Hoarding Protection (PROPOSED — cần Product Owner duyệt)
-
-> **Tình trạng:** tài liệu nghiệp vụ hiện tại KHÔNG định nghĩa yêu cầu giới hạn booking/ghế.
-> Toàn bộ nội dung dưới đây là **đề xuất kỹ thuật, chưa được nhóm chấp thuận**, các con số
-> chỉ dùng cho demo/benchmark — không phải quyết định nghiệp vụ (tham khảo audit R2).
-
-Rủi ro: hệ thống cho phép bán sát giờ (không cutoff — OQ-02 OPEN) và giữ ghế 5 phút;
-một tài khoản/bot có thể lặp lại tạo booking pending để triệt tiêu sức chứa luân phiên.
-Hiện trạng code: **chưa có bất kỳ cơ chế rate limiting nào** (backend chưa có code).
-
-**Phân biệt hai loại giới hạn:** giới hạn tốc độ request (rate limiting — chặn request,
-không bảo vệ tài nguyên) và giới hạn tài nguyên đang giữ (quota held — bảo vệ ghế).
-Cần cả hai; rate limiting một mình không chống được hoarding vì request hợp lệ vẫn
-mở khe mới sau khi booking cũ hết hạn.
-
-| Lớp | Cơ chế | Nơi thực thi | Giá trị đề xuất (chưa chốt) |
-|---|---|---|---|
-| L1 | Tối đa N booking `pending` đang mở / user | Service, trong transaction tạo booking | N = 2 |
-| L2 | Tối đa M ghế `held` / user (tổng các booking pending) | Service, trong transaction | M = 6 |
-| L3 | Rate limit endpoint tạo booking | ASP.NET Core rate limiting middleware (built-in) | 10 req/phút/user |
-| L4 | Hạn chế mềm theo IP | Middleware | Không dùng IP làm danh tính duy nhất (NAT/chung IP) |
-| L5 | Giám sát hành vi bất thường | Log + metrics | Nhận diện tài khoản lặp mẫu hủy/giữ |
-
-**Tính nguyên tử của quota (điểm tuần tự hóa theo user):** kiểm tra L1/L2 bằng
-`COUNT(*)` không khóa là KHÔNG an toàn — hai request đồng thời (kể cả hai suất khác
-nhau, kể cả user chưa có booking nào để khóa) đều thấy quota còn trống và cùng vượt.
-Cần một điểm tuần tự hóa ổn định theo user tồn tại độc lập với booking:
-
-- **Phương án A — khóa dòng `app_user` của user** (`SELECT ... FROM app_user WHERE
-  id = :uid FOR UPDATE`) trước khi kiểm quota. Đơn giản, luôn tồn tại. **Nhưng**:
-  phá vỡ thứ tự khóa chung `Showtime → Booking → Payment` (§13) — nếu luồng khác
-  giữ khóa theo thứ tự cũ và sau đó chạm user, có chu trình chờ → deadlock. Nếu
-  chọn phương án này, thứ tự khóa chung phải được thiết kế lại và đồng bộ toàn bộ
-  luồng (UC-01..05) — **thay đổi protocol đã chốt, cần phê duyệt riêng**.
-- **Phương án B (đề xuất mặc định) — giữ nguyên protocol `Showtime → Booking →
-  Payment`, thêm khóa trên booking pending của user khi có, và chặn cạnh tranh
-  quota bằng ràng buộc vật lý:** thêm một bảng/nhãn đếm đơn giản hoặc dựa vào
-  kiểm tra L1/L2 sau khi đã giữ khóa Showtime (nội bộ hóa xung đột vào cùng suất)
-  kết hợp phần dư thừa được chấp nhận ở mức demo: hai request khác suất vẫn có
-  thể vượt quota trong cửa sổ rất hẹp — được phát hiện bởi giám sát (L5) và chấp
-  nhận như giới hạn MVP đã ghi nhận. Không dùng COUNT(*) không khóa làm cơ chế
-  duy nhất.
-- **Phương án C — advisory lock per user** (`pg_advisory_xact_lock(hash(uid))`)
-  lấy trong transaction trước khi kiểm quota; không phá thứ tự khóa bảng vì
-  advisory lock là namespace riêng. Điểm tuần tự hóa ổn định kể cả khi user chưa
-  có booking. **Cần benchmark và phê duyệt trước khi triển khai.**
-
-**Frontend:** nhận 429/quota error → hiển thị thông báo rõ + thời gian chờ,
-không retry tự động.
-
-**Test bắt buộc trước khi coi L1/L2 là hiệu lực:** N request đồng thời cùng user
-(1 booking pending sẵn) → đúng một request vượt; N request đồng thời user chưa có
-booking → không vượt quá N quota; hai request khác suất cùng user → hành vi theo
-phương án được duyệt (A/B/C).
-
-## 13. Concurrency & Seat Integrity Architecture
-
-Mục này đặc thù cho bài toán đặt vé — điểm rủi ro trung tâm của hệ thống.
-Mọi luồng chạm booking/detail/payment đều theo protocol khóa chung
-(`database-design.md` §31.1): **READ COMMITTED + khóa tường minh theo thứ tự cố định
-`Showtime → Booking → Payment attempts → Event`**, đọc lại trạng thái sau khi có đủ
-khóa, **không** dùng kết quả đọc trước khóa, **không** dùng SKIP LOCKED trên booking
-rồi quay lại khóa Showtime (đảo thứ tự → deadlock). Các luồng áp dụng: tạo booking
-(UC-01, kèm dọn dẹp inline), webhook/reconcile worker (UC-02), expiry worker (UC-03),
-đối soát (UC-04), soát vé (UC-05 — khóa Ticket thay Payment).
-
-```text
-Hai request giữ cùng ghế đồng thời
-   → Backend: mở transaction, khóa theo thứ tự cố định
-     (Showtime → Booking → Payment, theo UC-03A)
-   → Đọc lại trạng thái (clock_timestamp thực từ DB): suất còn bán? ghế còn trống?
-   → INSERT booking + booking_detail (held)
-   → COMMIT
-   → Nếu chạm ux_booking_detail_active_seat → vi phạm duy nhất → ROLLBACK toàn bộ
-     (all-or-nothing: không giữ một phần — BR-BOOK-002)
-```
-
-- **Thứ tự khóa cố định** để tránh deadlock: `Showtime → Booking → Payment`
-  (đồng bộ cả hai luồng tạo-booking, xác nhận-payment, hủy-booking — UC-03A).
-- Worker hết hạn và luồng áp dụng payment cũng đi qua cùng thứ tự khóa, đọc lại
-  trạng thái trước khi ghi (BR-BOOK-004, BR-PAY-004).
-
-**Ràng buộc bất di bất dịch — KHÔNG gọi HTTP đến Payment Gateway khi đang giữ khóa
-database:** mọi thao tác cần kết quả cổng (Query Status, Cancel) phải **tách hai
-transaction** theo UC-03 A1b: (1) transaction đọc trạng thái, thu thập payment cần
-truy vấn, kết thúc KHÔNG giữ khóa; (2) gọi cổng ngoài transaction; (3) transaction
-mới ghi kết quả — đọc lại toàn bộ điều kiện hai phần trước khi ghi, vì trạng thái
-có thể đã đổi giữa hai transaction. Chỉ dùng khóa/transaction không đủ để kết luận
-an toàn: phải kiểm chứng từng interleaving (mô phỏng trong `database-design.md`
-§31.6 Scenario A/B) và test theo Verification Plan.
-
-## 14. Background Worker / Lifecycle Architecture
-
-`ExpiryWorker` (ví dụ: `BackgroundService` định kỳ quét — chu kỳ 15–30s là cấu hình
-triển khai, `database-design.md` §27.2):
-
-```text
-Chu kỳ quét:
-1. Quét danh sách booking ứng viên qua ix_booking_expiry — KHÔNG khóa ở bước quét.
-2. Transaction: khóa Showtime → Booking → Payment attempts, đọc clock_timestamp()
-   và ĐỌC LẠI toàn bộ trạng thái sau khóa.
-3. Quyết định theo bảng UC-03:
-   ├── Không attempt mở (chỉ failed/cancelled) → booking expired + detail released
-   │     trong transaction này.
-   ├── Còn attempt mở, CHƯA quá grace period (số liệu 2–3 phút là ĐỀ XUẤT,
-   │     chưa chốt — OQ-UC-03) → bỏ qua, ghế giữ nguyên.
-   └── Quá grace period → KẾT THÚC transaction hiện tại (chỉ thu thập payment cần
-         tra cứu), gọi Query Status NGOÀI transaction, vào TRANSACTION MỚI ghi kết
-         quả sau khi đọc lại điều kiện:
-         - Cổng xác nhận chưa thu → payment failed/cancelled (kết quả từ cổng đã
-           xác minh) + booking expired + detail released (một transaction).
-         - Cổng báo đã thu → nhánh late-success: giữ succeeded,
-           reconciliation_status = refund_required/needs_review; KHÔNG áp dụng,
-           KHÔNG phát vé, KHÔNG reclaim ghế (BR-PAY-007).
-         - Cổng không xác đáng → giữ unknown + needs_review, ghế giữ nguyên,
-           retry lần sau (ngoại lệ có giám sát, không giữ vô hạn tự động).
-4. Payment succeeded đến muộn trên booking đã expired/cancelled:
-   KHÔNG áp dụng, KHÔNG phát hành ticket, KHÔNG chiếm lại ghế;
-   giữ succeeded + reconciliation_status để đối soát (BR-PAY-007).
-   refund_required KHÔNG đồng nghĩa tiền đã hoàn — hoàn tiền là UC-04A,
-   ngoài phạm vi demo.
-```
-
-## 15. Architecture Diagram (tổng quan)
+### Overview Diagram
 
 ```mermaid
-flowchart TB
-    subgraph Clients["Người dùng (Browser)"]
-        C([Customer])
-        S([Staff])
-        M([Manager / Admin])
-    end
-
-    subgraph Frontend["Frontend SPA (React + Vite + TS)"]
-        UI_CUSTOMER["Trang khách hàng: phim / suất / ghế / thanh toán / vé"]
-        UI_ADMIN["Khu vực quản trị: phim / phòng / suất / booking / soát vé / user"]
-    end
-
-    subgraph Backend["ASP.NET Core Web API"]
-        AUTH["Auth (JWT + Roles)"]
-        CTLS["Controllers"]
-        SVCS["Services: Booking / Payment / Ticket / Showtime / Admin"]
-        ADAPTER["IPaymentGatewayAdapter"]
-        WORKER["Expiry Worker (BackgroundService)"]
-    end
-
-    subgraph DB["PostgreSQL (Supabase)"]
-        TABLES["18 relations + constraints:
-        ex_showtime_room_time · ux_booking_detail_active_seat
-        uq_payment_open_booking · composite FKs"]
-    end
-
-    GW["Payment Gateway (bên ngoài, OQ-01)"]
-
-    C --> UI_CUSTOMER
-    S --> UI_ADMIN
-    M --> UI_ADMIN
-    UI_CUSTOMER -- "REST + JWT" --> CTLS
-    UI_ADMIN -- "REST + JWT" --> CTLS
-    CTLS --> AUTH
-    CTLS --> SVCS
-    SVCS -- "EF Core / Npgsql" --> TABLES
-    SVCS --> ADAPTER
-    ADAPTER -- "Create / Query / Cancel" --> GW
-    GW -- "Webhook (verify chữ ký)" --> CTLS
-    WORKER --> SVCS
+flowchart TD
+    Browser["C01 Browser application"] -->|"HTTPS JSON"| API["C02 API boundary"]
+    API --> Identity["C03 Identity and access"]
+    API --> Business["C04–C12 Application and domain services"]
+    Worker["C14 Background processing"] --> Business
+    Business --> Persist["C13 Persistence and transactions"]
+    Identity --> Persist
+    Persist --> DB[("PostgreSQL")]
+    Business --> Audit["C16 Mandatory audit"]
+    Audit --> Persist
+    Business --> Notice["C15 Durable notification requests"]
+    Worker --> Notice
+    Notice -->|"After commit"| Brevo["Brevo"]
+    Business -->|"C09 adapter, outside locks"| MoMo["MoMo"]
+    MoMo -->|"Verified webhook"| API
+    Business -->|"C12 permitted context"| AI["AI provider"]
 ```
 
-## 16. Rủi ro kiến trúc và giới hạn đã ghi nhận
 
-Cột "Trạng thái": **CONFIRMED** (quyết định đã chốt) / **PROPOSED** (đề xuất, chưa được duyệt) / **OPEN** (chờ quyết định) / **chưa triển khai** (chỉ có trong tài liệu).
+This is a logical architecture diagram, not a deployment diagram. C04–C12 are grouped for readability; the catalogue below retains individual responsibilities. C03 is shown separately for access control. They are not sixteen applications, servers, or microservices. The frontend never accesses PostgreSQL directly and never receives provider secrets.
 
-| Rủi ro / giới hạn | Trạng thái | Đánh giá | Biện pháp |
-|---|---|---|---|
-| Token không thu hồi tức thời khi role thay đổi | CONFIRMED (giới hạn MVP) | Chấp nhận (BR-AUTH-004) | Hạn token ngắn; nâng cấp sau |
-| Cổng thanh toán chưa chốt | OPEN (OQ-01) | Ảnh hưởng adapter, xác minh callback | Adapter trung gian-cổng-độc lập; giữ `payment_event` |
-| Worker grace period phụ thuộc phản hồi cổng | CONFIRMED (chính sách OQ-07); số liệu OPEN (OQ-UC-03) | Ghế có thể giữ lâu hơn 5 phút khi needs_review | Needs_review có giám sát, không giữ vô hạn tự động |
-| Race worker/webhook | Đã thiết kế (database-design §31.6); **chưa có code, chưa được test** | An toàn thiết kế, chưa được chứng minh runtime | Verification Plan (mục 17) |
-| Seat hoarding / thiếu rate limiting | **PROPOSED** (mục 12a) — chưa được duyệt, chưa có code | Rủi ro thực vì bán sát giờ + giữ 5 phút | L1–L5 sau khi Product Owner duyệt phương án A/B/C |
-| Database bottleneck khi tranh chấp ghế | Cần benchmark | Chưa có số liệu; protocol S→B→P tuần tự hóa theo suất là thiết kế chủ ý | Giữ protocol; đo throughput/p95/p99/lock waits trước khi tối ưu (mục 17, TP-6) |
-| Phát hành vé Couple thiếu/vượt số vé | Đã thiết kế (đếm-vé-chèn-thiếu trong transaction); **chưa test** | DB không có unique theo `booking_detail_id` (chủ ý) → đúng đắn phụ thuộc service | Test TP-5a/b sau khi có code |
-| `refund_required` ≠ đã hoàn tiền | CONFIRMED (UC-04A ngoài phạm vi demo) | Chỉ là nhãn cần hoàn; tiền hoàn khi refund `succeeded` | Phân biệt rõ trong UI/logic |
-| Sức chứa suy từ ghế + capacity_units | CONFIRMED (BR-ROOM-001) | Đúng thiết kế | Backend tính khi tạo booking; Couple = 1 detail / 2 ticket |
-| Chỉ 1 cinema trong demo | CONFIRMED | Sẵn sàng mở rộng (NFR-SCALE-001) | Schema hỗ trợ nhiều cinema |
-| Schema drift SQL ↔ EF | **Rủi ro mới ghi nhận** | Chưa có code/migration; ràng buộc đặc biệt chỉ tồn tại trong SQL script | Mục 6: SQL là nguồn; migration không đụng exclusion/partial index; CI so sánh schema |
+### Layer Responsibilities
 
-## 17. Verification Plan
+| Layer | Responsibility |
+|---|---|
+| Presentation | Render customer and operational screens, collect input, maintain local UI state, and display server decisions |
+| API boundary | Authenticate requests, apply endpoint-level access requirements, validate transport data, invoke the responsible application service, and return responses |
+| Application coordination | Coordinate use-case workflows across components and define transaction boundaries |
+| Domain rules | Enforce booking, payment, admission, authorization, scheduling, pricing, cancellation, and refund policies |
+| Infrastructure | Persist data, enforce database constraints, call MoMo/Brevo/AI adapters, run background work, and record audit information |
 
-> Tất cả các test dưới đây **chưa được chạy** — backend chưa có code. Đây là kế hoạch
-> bắt buộc thực hiện khi triển khai; nguồn: database-design §31.9, use-cases.md
-> (AC-UC01..05), business-system-analysis (AC-BOOK/PAY/SEC/ST/TICKET).
+## Component Catalogue
 
-| ID | Kịch bản | Kết quả bắt buộc | Nguồn |
-|---|---|---|---|
-| TP-1a | Worker release commit trước, webhook success sau | `succeeded` + `refund_required`; không vé; không reclaim ghế | AC-PAY-004 |
-| TP-1b | Webhook apply commit trước, worker vào sau | Worker bỏ qua booking `confirmed` | AC-UC03-06 |
-| TP-1c | Success đến trong cửa sổ worker đang gọi Query ngoài transaction | Một kết quả duy nhất; không hạ succeeded; không double-apply | §31.4 update có điều kiện |
-| TP-1d | Grace period 3 nhánh: cổng chưa thu → release; đã thu → late-success; không phản hồi → `unknown` + `needs_review` | Theo bảng UC-03 | AC-UC03-03/04/05 |
-| TP-2a | Webhook trùng cùng `event_key` | Chỉ một tác động nghiệp vụ | AC-UC02-02 |
-| TP-2b | Hai event khác `event_key` cùng giao dịch | Không double-issue | UC-02 A2 |
-| TP-2c | Event sai chữ ký / sai tiền | Lưu event; không đổi trạng thái nghiệp vụ | AC-UC02-03/05 |
-| TP-3a | 2 request đồng thời cùng ghế | Đúng một thành công | AC-BOOK-002 |
-| TP-3b | 1 ghế trùng + 1 trống | Không giữ một phần | AC-UC01-05 |
-| TP-4a | N request đồng thời cùng user (đã có 1 pending) | Đúng theo quota L1, không vượt | Mục 12a test |
-| TP-4b | N request đồng thời user chưa có booking | Không vượt quota (tùy phương án A/B/C được duyệt) | Mục 12a test |
-| TP-5a | Couple: phát hành 2 ticket; callback lặp | `COUNT(ticket) == capacity_units_snapshot`; không phát thừa | AC-UC02-06 |
-| TP-5b | Commit thành công + response mất, retry | ACK idempotent; không tạo vé thứ hai | UC-05 A7, UC-02 A2 |
-| TP-6 | Load: 100 user tranh cùng ghế / 100 user ghế khác nhau / 10 suất song song | Thu thập throughput, p95/p99, lock waits, deadlocks — thiết lập baseline trước khi tối ưu | OQ-09 |
-| TP-7 | Đo thời gian giữ khóa khi gọi cổng treo (nếu vi phạm "không gọi trong transaction") | Phát hiện vi phạm ràng buộc mục 13 | UC-01 AC-08 |
+| ID | Component | Main Responsibilities | Key Interfaces or Collaborations | Data Ownership |
+|---|---|---|---|---|
+| C01 | Web Application | Customer and operational UI, navigation, selection-session display, checkout, ticket display, protected actions | C02 API; session and navigation state; C11 ticket validation views | Owns presentation state only; no business or database ownership |
+| C02 | Backend API | HTTP boundary, request authorization, controller-to-service coordination, response mapping | C03–C12 through interfaces and DI | Owns API coordination, not domain records |
+| C03 | Identity and Access | Registration, email verification, login, refresh, logout, account state, roles, cinema assignments, active sessions | ASP.NET Core Identity; C15 verification email; C16 audit | Owns identity, account, role, assignment, and session records |
+| C04 | Movie Catalogue | Public movie browsing/details, movie and genre administration, associations | C02; C06 showtimes; C12 informational context; C16 audit | Owns movie, genre, and movie-genre information |
+| C05 | Cinema and Seating | Cinema/room setup, physical seats, operational status, seat types, surcharges | C06 scheduling; C07 pricing; C08 availability; C16 audit | Owns cinema, room, seat, and seat-type configuration |
+| C06 | Showtime Scheduling | Screening creation, conflict checks, maintenance, rescheduling, screening context | C04 movie data; C05 room data; C08 booking impact; C11 admission context; C16 audit | Owns showtime and scheduling state |
+| C07 | Ticket Pricing | Ticket categories, cinema base prices, quotation and price revalidation using C05-owned seat-type surcharges | C05 seat types; C08 checkout/reservation; C16 audit | Owns pricing configuration and quotation rules; C08 owns accepted booking snapshots |
+| C08 | Booking and Checkout | Selection restoration, reservation, booking lifecycle, checkout, payment initiation coordination, expiration/cancellation effects | C05 availability; C06 screening; C07 quotation; C09 payment; C10 cancellation; C11 tickets; C15 notifications; C16 audit | Owns booking, booking allocations, checkout state, and accepted price snapshots |
+| C09 | Payment Processing | Payment initiation, webhook verification, outcome processing, reconciliation, unresolved outcomes | MoMo adapter; C08 booking confirmation; C10 refund obligations; C13 transactions; C16 audit | Owns payment attempts, events, processing state, and payment evidence |
+| C10 | Cancellation and Refund | Pending cancellation, review, refund obligation, external refund completion evidence | C08 booking effects; C09 payment outcomes; C11 ticket invalidation; C16 audit | Owns cancellation requests, refund obligations, decisions, and completion evidence |
+| C11 | Ticketing and Admission | Booking-level ticket and QR issuance, retrieval/resend, validation, admission counts, invalidation | C08 booking; C06 screening; C10 refund; C15 email; C16 audit | Owns ticket, QR/admission entitlement, and admission records |
+| C12 | Promethe-Nous | Informational movie, recommendation, showtime, price, booking, and procedure assistance | C04/C06/C07 read context; external AI adapter | Owns bounded conversation session state in backend memory; it cannot change booking/payment/refund |
+| C13 | Persistence and Transactions | Repository/unit-of-work mechanisms, EF Core transaction coordination, constraints, durable notification/audit storage | All owning components; PostgreSQL through Npgsql | Owns persistence mechanisms, not business decisions or all domain ownership |
+| C14 | Background Processing | Worker scheduling and coordination for expiration, reconciliation, and notification delivery | C08, C09, C15; durable work stores | Owns execution/claim state only; business state remains with owning components |
+| C15 | Notification Delivery | Email request persistence, post-commit delivery, retry/resend, provider interaction | C03/C08/C11 producers; Brevo adapter; C14 worker | Owns notification requests, attempts, claims, and delivery state |
+| C16 | Audit Logging | Mandatory business audit records, actor/time/context validation, immutable audit persistence | All privileged/business-changing components; C13 transaction mechanisms | Owns audit records; diagnostic logs do not replace mandatory audit |
 
-## 18. Trạng thái triển khai (Implementation Status)
+## Communication and Dependency Rules
 
-> Cập nhật: 2026-10-23. Mục này phân biệt rõ **kiến trúc đã thiết kế** (các mục 1–17)
-> với **trạng thái triển khai thực tế hiện tại** của repository.
+### Frontend and API Communication
 
-### 18.1 Tổng quan trạng thái
+C01 communicates with C02 using HTTPS and JSON. C01 displays server-authoritative results and does not access the database, calculate authoritative prices, grant permissions, confirm payment, or decide seat availability.
 
-| Thành phần | Trạng thái | Ghi chú |
+### Internal Component Communication
+
+C02 invokes application services. C03–C12 collaborate through explicit interfaces and dependency injection. A component that owns a business rule remains responsible for that rule; C13 supplies persistence and transaction mechanisms rather than duplicating business decisions.
+
+Cross-component workflows must have a clear coordinator. High-level components must avoid circular dependencies. C14 coordinates calls to owning components and does not copy their expiration, payment, notification, or reconciliation rules.
+
+### External Service Communication
+
+MoMo is called through the payment adapter. Brevo is called through the email sender after the delivery request has committed. Promethe-Nous uses an external AI provider through an adapter and only supplies bounded, permitted informational context.
+
+External calls must not occur while business locks are held when the SAD flow requires a lock-free provider call. After an external result returns, the owning component reloads and revalidates current state before applying it.
+
+### Dependency Direction and Coordination
+
+API and presentation code depend on application contracts, not on database details. Domain-owning components depend on C13 mechanisms and relevant read contracts. Provider-specific details remain behind adapters. No provider secret is exposed to C01 or stored in this document.
+
+## Critical Business Flows
+
+### Account Registration and Access
+
+Registration and verification begin at C01 and C02; C03 manages the account and verification state. Registration/verification do not implicitly replace an authenticated session. C03 queues verification through C15 and commits the account change with the delivery request. Login uses current account state, role, cinema assignment, and session rules; logout revokes the authenticated session. Protected operations recheck current backend permissions rather than trusting stale client state.
+
+### Movie Discovery and Seat Reservation
+
+The user browses C04 movies, C06 showtimes, and C05 seat context. The first seat selection starts a server-controlled **selection session**; it is not a booking and does not hold a seat. At Checkout Step 2, C08 revalidates the selection, C07 quotation, C06 screening, and C05 availability, then atomically creates a pending booking, held allocations, and accepted price snapshots. The selection deadline is inherited when progressing from Step 1 to Step 2; it does not automatically restart as a new full hold period.
+
+### Payment Confirmation and Ticket Delivery
+
+C08 coordinates checkout, C09 owns the persisted payment attempt and calls MoMo outside the lock-holding business transaction. A browser redirect is not payment proof. A webhook or reconciliation result is verified by C09, then C08 applies an eligible success atomically: payment outcome, booking confirmation, sold allocations, booking-level ticket/QR, notification request, and audit record. C15 sends email after commit; delivery failure does not reverse a confirmed booking.
+
+### Booking Expiration and Payment Reconciliation
+
+C14 asks C08/C09 to process due bookings. Payment deadline, grace period, and reconciliation are distinct. Expiration releases held allocations only when current payment state and protection rules permit it. An unresolved or late result is reconciled by C09; a successful result is applied only if the booking is still eligible. An outcome that cannot be applied becomes a refund obligation or review state rather than reclaiming seats already allocated elsewhere.
+
+### Ticket Retrieval and Admission
+
+C08 supplies booking context to C11; C10 supplies applicable cancellation/refund restrictions. C11 issues one booking-level QR and tracks remaining admission entitlements. Staff with the required cinema assignment validate the QR, current showtime/admission window, booking and ticket state, age/discount eligibility, and requested admission counts. Admission may be recorded in multiple visits while quota remains. Refund completion can invalidate the ticket and release the applicable sold allocations.
+
+### Cancellation and Refund Handling
+
+Explicit pending cancellation is allowed only before committed payment initiation; closing a browser tab is not cancellation. The operation revalidates ownership/Guest authority, pending state and payment safety before releasing held allocations. A confirmed-booking cancellation request caused by qualifying rescheduling is reviewed through C10 and UC-19 operational support. A pending review does not itself block admission; the first successful admission rejects it. Once approved, admission is blocked while awaiting refund completion. External monetary refund execution is outside the demo scope; authorized personnel record the externally completed refund and evidence, For a showtime-rescheduling-origin refund, C10, C08, and C11 then atomically complete the request, cancel the booking, invalidate its QR and release sold allocations. A payment-reconciliation-origin refund resolves its financial obligation without automatically applying those rescheduling transitions or reclaiming released seats.
+
+## Data Ownership, Transactions and Concurrency
+
+### Data Ownership
+
+Each business component owns its domain state and policies as shown in the catalogue. C13 owns persistence mechanisms and transaction coordination, not every business decision. C15 owns delivery requests and attempts; C16 owns audit records; C14 owns worker execution/claim state.
+
+### Atomic Business Operations
+
+The SAD requires all-or-nothing behavior for reservation creation, payment application, booking confirmation, ticket issuance, notification-request creation, cancellation/refund effects, admission recording, and mandatory audit changes where those effects belong to one business transition.
+
+### Locking and Concurrency Protection
+
+The design protects against duplicate seat allocation, stale schedule changes, duplicate payment application, concurrent cancellation/admission conflicts, and repeated worker execution. Where applicable, the baseline lock order is Showtime → Booking → Payment attempts. Additional locks for identity, pricing, cancellation, admission and worker claims must be ordered consistently in the implementation protocol. No external network call is made while business locks are held. SQL isolation levels, index definitions and EF Core mappings remain physical implementation decisions; logical constraints are proposed in relational-model.md.
+
+### Idempotency and Retry
+
+Webhook, reconciliation, reservation, notification, refund, and worker operations use stable keys or current-state checks where specified. The system must not blindly retry when a commit outcome is unknown. A retry reloads state and applies the owning component's idempotency rules.
+
+### Authoritative Time and Price Snapshots
+
+Backend time controls deadlines, payment windows, grace periods, admission windows, and expiration. A price accepted during reservation is stored as a booking snapshot. Later pricing or seat-type changes do not silently change an accepted booking.
+
+## Security and Access Control
+
+### Authentication and Session Management
+
+C03 uses ASP.NET Core Identity for account, password, verification, role, and account-state management. The SAD also defines JWT access/refresh tokens bound to a server-side authenticated session. Where the SAD requires one active authenticated session, session replacement/revocation is handled by C03 rather than by client state.
+
+### Roles and Cinema Scope
+
+The backend checks current roles, account status, and cinema assignments for every protected operation. Manager/Admin authority does not automatically grant Staff admission authority. Cinema-scoped operations are checked against the current assignment; a client-provided role or cinema identifier is not trusted.
+
+### Guest Booking and Ticket Access
+
+Guest access is limited to the permitted booking and ticket lifecycle rules. A booking identifier alone is not sufficient authorization. C02/C08/C11 validate the allowed ownership or guest proof, current booking state, screening context, and operation-specific rules.
+
+### Secrets and Sensitive Data
+
+Provider credentials and signing secrets remain server-side configuration. They are not embedded in C01, committed to documentation, or exposed in API responses. Audit and notification payload policies must avoid unnecessary sensitive data.
+
+## Background Processing, Notifications and Audit
+
+### Background Processing
+
+C14 schedules and coordinates durable work for expiration, payment reconciliation, and notification delivery. It invokes C08, C09, and C15; it does not duplicate their business rules. Worker execution state and durable work are separate from booking/payment business state. Restart recovery reclaims due or expired processing claims according to the owning component's rules.
+
+### Transactional Email Delivery
+
+C15 stores delivery requests and attempts, sends after the business transaction commits, and supports retry/resend. Brevo failure does not undo a confirmed booking, issued ticket, or completed business transition. C14 drives due delivery work.
+
+### Audit Logging
+
+C16 records mandatory business audit events with actor, time, operation, and permitted contextual data. Owning components commit the audit entry with the corresponding state transition where required. Diagnostic logs do not replace mandatory audit records. Audit records are protected from accidental mutation and repeated processing.
+
+## External Integrations and Boundaries
+
+### MoMo Payment Gateway
+
+MoMo is the intended external payment gateway. C09 owns payment verification and outcome processing; the adapter owns provider-specific request, callback, and query details. Browser navigation is not authoritative evidence. External calls occur outside lock-holding transactions when required, followed by state reload and revalidation.
+
+### Brevo Transactional Email
+
+Brevo is the intended transactional email provider. C15 owns delivery requests, attempts, retry, and resend; Brevo only transports the message. Provider failure is represented as delivery failure and does not reverse committed business state.
+
+### Promethe-Nous and AI Provider
+
+C12 supports informational questions, recommendations, showtimes, prices, and booking guidance. It does not create or change bookings, payment, admission, or refunds. Conversation history is bounded backend memory for the session as described by the SAD; this summary does not claim PostgreSQL persistence for that history. Provider identity, detailed source selection, and operational limits remain unconfirmed where the SAD leaves them open.
+
+## Deployment and Implementation Status
+
+### Deployment View Status
+
+The SAD explicitly reserves **Deployment** and **Implementation View** for PA4. This document therefore does not present a completed deployment topology, hosting result, container layout, or production readiness claim.
+
+### Intended Environment and Code Mapping
+
+| Area | Intended placement | Status and verification needed |
 |---|---|---|
-| **Database schema** (`database-schema.sql`) | ✅ Hoàn thiện | 18 relations, constraints, indexes đã có; áp dụng được lên Supabase |
-| **Seed data** (`seed-data.sql`) | ✅ Hoàn thiện | 6 phim, 1 cinema, 2 phòng, 82 ghế, 48 suất chiếu |
-| **Database documents** | ✅ Hoàn thiện | `database-design.md`, `database-schema.md`, `seed-README.md` |
-| **Architecture document** | ✅ Đang cập nhật | File này |
-| **Backend source** (`src/backend/CinemaTicketBooking.Api/`) | ⏳ Chưa triển khai | `Program.cs`, `.csproj`, `appsettings.Development.json`, `ApplicationDbContext.cs` đang trống (placeholder) |
-| **Frontend source** (`src/frontend/cinema-ticket-booking-ui/`) | ⏳ Chưa triển khai | `package.json`, `vite.config.ts`, `App.tsx`, `main.tsx` đang trống |
-| **EF Core Migrations** | ⏳ Chưa tạo | Chờ backend có code; hiện dùng SQL script trực tiếp |
-| **Dockerfile backend** | ⏳ Chưa tạo | Xem §5 và §10 của `local-development-setup.md` |
-| **Dockerfile frontend** | ⏳ Chưa tạo | Xem §6 và §10 của `local-development-setup.md` |
-| **`docker-compose.yml`** | ⏳ Trống | Placeholder; cấu trúc dự kiến mô tả trong `local-development-setup.md` §7 |
-| **Controllers / Services / Entities** | ⏳ Chưa tạo | Thư mục dự kiến: `Controllers/`, `Services/`, `Entities/`, `Middleware/`, `Validators/` |
-| **Payment Gateway Adapter** | ⏳ Chưa tạo | Interface `IPaymentGatewayAdapter` chưa có code; cổng chưa chốt (OQ-01) |
-| **Expiry Worker** | ⏳ Chưa tạo | `BackgroundService` chưa triển khai |
-| **JWT Authentication** | ⏳ Chưa tạo | Chờ backend code |
-| **API Tests** | ⏳ Chưa tạo | Verification Plan (mục 17) chờ implementation |
+| C01 | `src/frontend/cinema-ticket-booking-ui/`; Vercel build | User-supplied structure/hosting target; current file contents not inspected here |
+| C02–C16 | `src/backend/CinemaTicketBooking.Api/`; Render backend | Logical modules inside one backend; namespaces/folders are not sixteen deployments |
+| Local data | Docker PostgreSQL | User-reported choice; Compose configuration and seed reproducibility require checking |
+| Hosted data | Supabase PostgreSQL | Connection/TLS/pooling/network configuration must be verified; no browser SQL access |
+| Schema artifacts | `database/` | Reconcile with revised relational model; SQL-vs-EF migration source of truth must be chosen |
+| API contracts | `docs/api/` | Proposed transport design; source-grounded gaps listed below |
+| C14 workers | ASP.NET Core hosted execution, with durable claims | Baseline monolith execution; deployment process uptime/restarts and replica concurrency must be verified |
 
-### 18.2 Mối quan hệ giữa kiến trúc thiết kế và hiện trạng
+SAD Sections 5 and 6 remain PA4 deliverables. Hosting choices are additional project context, not proof those views are complete. Do not claim source files are empty, integrations absent, or a deployment successful without inspecting the current repository/environment.
 
-```text
-Thiết kế (architecture.md §1-17)      Hiện trạng (2026-10-23)
-─────────────────────────────────────  ──────────────────────────────────────
-Frontend SPA (React + Vite + TS)   →  Khung dự án (files trống)
-Backend API (ASP.NET Core)         →  Khung dự án (files trống)
-EF Core / Migrations               →  Chưa có (dùng database-schema.sql)
-PostgreSQL (18 relations)          →  Schema SQL hoàn thiện ✅
-Seed data                          →  seed-data.sql hoàn thiện ✅
-docker-compose.yml                 →  Trống (placeholder)
-Payment Gateway Adapter            →  Interface chưa định nghĩa
-Expiry Worker                      →  Chưa triển khai
-JWT Auth                           →  Chưa triển khai
-```
+### Identity Lifecycle Detail
 
-### 18.3 Hướng dẫn developer
+A successful credential check does not always create a replacement session. If another active session exists, C03 returns a conflict with a short-lived single-use challenge bound to that expected session. The user may cancel or explicitly confirm replacement. Confirmation atomically consumes the challenge, revokes the expected old session and creates the new session/token pair. A stale challenge cannot revoke a newer session. Access and refresh tokens are bound to the server-side session; refresh rotates hashes atomically and does not create another active session. Logout/account blocking rejects subsequent use; unlocking does not reactivate revoked sessions.
 
-- **Thiết lập môi trường local:** xem `docs/development/local-development-setup.md`
-- **Schema database:** `database/database-schema.sql` — áp dụng lên PostgreSQL trước khi chạy backend
-- **Seed data:** `database/seed-data.sql` + `database/seed-README.md`
-- **Khi bắt đầu implement backend:** tham chiếu mục 5 (Backend Architecture), mục 13 (Concurrency), mục 14 (ExpiryWorker) và `database/database-design.md` §31 để nắm protocol khóa
-- **Khi bắt đầu implement frontend:** tham chiếu mục 4 (Frontend Architecture) và `docs/api/` cho contract API
+### Timing, Navigation and Scheduling
+
+- The first physical seat selection starts five minutes. Quantity selection alone does not start this clock. Deselect/reselect does not restart it.
+- Movie Detail reload resets current selection state under the UC navigation policy; Checkout Step 1/2 reload restores eligible existing state without extending the deadline. Restoration is not a blanket policy for every page.
+- A valid initiated payment establishes ten minutes; the configurable safety grace defaults to ten seconds and is neither extra payment time nor an unconditional release deadline.
+- Admission uses the current official start, inclusive from five minutes before to twenty minutes after. Previously purchased start remains a separate immutable snapshot.
+- Cinema-level minimum turnaround defaults to fifteen minutes. C06 uses scheduled-duration snapshots and current applicable turnaround rules; changes to movie duration do not rewrite existing showtimes.
+- Rescheduling unstarted showtimes must preserve bookings' purchased-start snapshots and required notifications. UC-17 rejects cancellation when unresolved booking/payment/refund obligations block it and does not directly cancel paid bookings. Direct reactivation of a cancelled showtime is unsupported in the MVP.
+
+## Alignment Gaps and Implementation Decisions
+
+| Topic | Source-grounded position | Follow-up |
+|---|---|---|
+| Previous API authentication draft | SAD C03 explicitly includes refresh rotation and user-confirmed replacement challenges | Add refresh/replacement operations and DTOs; remove unconditional session replacement wording. Do not treat this SAD design as undecided |
+| Previous API cancellation draft | UC-10/19 states are pending_review, approved_awaiting_refund, rejected, withdrawn, completed | Add withdrawal while pending and preserve these lifecycle distinctions in projections |
+| Selection navigation | UC-01 distinguishes Movie Detail reload from Checkout restoration | Adjust API/client recovery wording accordingly |
+| Proposed relational mapping | Identity sessions, Guest-safe idempotency, category totals, admission ledger, cancellation, outbox and audit are required concepts | Implement reviewed schema/migrations; proposed table names do not prove deployment |
+| Identity physical model | ASP.NET Core Identity remains the account/password/role implementation | Map logical app_user/role relations to Identity; do not create duplicate credential systems |
+| Provider protocol | MoMo adapter details and AI provider are not specified by these documents | Verify actual provider contracts before implementation; preserve business invariants |
+| Guest transport/recovery | Secure Guest identity required; ID/email/phone alone never sufficient | Finalize credential lifetime, recovery, CSRF/CORS and hosting-dependent transport |
+| Quote and concurrency storage | Server-authoritative accepted snapshot required | Decide version/fingerprint storage and test competing price/seat/schedule updates |
+| Worker delivery semantics | Durable work with lease fencing and after-commit external calls | Test crash/restart and duplicate provider sends; no unsupported exactly-once email promise |
+| PA4 deployment | Vercel/Render/Supabase are user-selected targets | Complete UML deployment and implementation views, verify uptime/connection/security configuration |
+
+The supplied three documents are rewritten together. The previous API files, schema SQL and application code are not edited by this change and require a separate synchronization pass. Source rules take precedence over earlier generated API proposals.
+
+## References
+
+- [Software Architecture Document (PA3)](../../pa/PA3-Group15/rup_sad.docx)
+- [Project structure](../../PROJECT_STRUCTURE.md)
+- [Use-case specifications](../requirements/use-cases.md)
+- [Business system analysis](../requirements/business-system-analysis.md)
+- [Relational model](relational-model.md)
+- [Database design](../../database/database-design.md)
+- [Database schema](../../database/database-schema.md)
+- [Backend source tree](../../src/backend/CinemaTicketBooking.Api/)
+- [Frontend source tree](../../src/frontend/cinema-ticket-booking-ui/)

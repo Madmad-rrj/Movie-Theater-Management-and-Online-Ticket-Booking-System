@@ -1,319 +1,153 @@
--- Seed script for Demo Environment (Idempotent approach)
--- Target: PostgreSQL
--- Locale/Timezone: Asia/Ho_Chi_Minh (+07)
+-- Promethe-Phos demo fixture v2; matches cinema schema in database-schema.sql.
+-- Run only in an isolated development database after reviewing database-design.md.
+-- Pure PostgreSQL SQL; psql -X -v ON_ERROR_STOP=1 -f seed-data.sql
+-- Optional, BEFORE running: SET cinema.demo_start_date = '2026-11-14';
+-- Default is pinned (not CURRENT_DATE), so retries do not add a moving date window.
+-- Re-running the same fixture/date preserves existing data; drift causes rollback.
+-- Does not seed passwords, users, paid bookings, fake payments, admissions or emails.
+BEGIN;
+SET LOCAL search_path = cinema, public;
+SET LOCAL TIME ZONE 'UTC';
+SELECT pg_advisory_xact_lock(726141901);
 
--- 1. Reference Data: Roles
-INSERT INTO role (code, name, description, is_active)
-VALUES 
-    ('CUSTOMER', 'Customer', 'Can view movies and book tickets', true),
-    ('STAFF', 'Staff', 'Can validate tickets', true),
-    ('MANAGER', 'Manager', 'Can manage schedules', true),
-    ('ADMIN', 'Admin', 'System administrator', true)
+CREATE TEMP TABLE demo_movies (
+    seed_key text PRIMARY KEY, title text, runtime integer, description text, language text
+) ON COMMIT DROP;
+INSERT INTO demo_movies VALUES
+('DEMO_ENDGAME','Avengers: Endgame',181,'Những người hùng còn lại tìm cách đảo ngược hậu quả từ cuộc đối đầu với Thanos.','English'),
+('DEMO_INTERSTELLAR','Interstellar',169,'Một đoàn thám hiểm tìm kiếm tương lai cho con người ngoài hệ Mặt Trời.','English'),
+('DEMO_MI_FINAL','Mission: Impossible - The Final Reckoning',169,'Ethan Hunt cùng đồng đội đối diện một nhiệm vụ đe dọa tương lai thế giới.','English'),
+('DEMO_YOUR_NAME','Your Name',106,'Hai người trẻ khám phá sự kết nối kỳ lạ vượt qua khoảng cách và thời gian.','Japanese'),
+('DEMO_KINGDOM','Kingdom of Heaven',144,'Một người thợ rèn bị cuốn vào những xung đột quanh Jerusalem thời Trung cổ.','English'),
+('DEMO_WWZ','World War Z',116,'Một cựu nhân viên Liên Hợp Quốc tìm lời giải cho một đại dịch toàn cầu.','English');
+
+-- Required Identity roles; code/name/normalized_name must be mapped in EF Identity.
+INSERT INTO role(code,name,normalized_name,concurrency_stamp)
+SELECT x,x,x,'demo-role-v2-' || x FROM unnest(ARRAY['CUSTOMER','STAFF','MANAGER','ADMIN']) AS x
 ON CONFLICT (code) DO NOTHING;
 
--- 2. Reference Data: Genres
-INSERT INTO genre (code, name, description, is_active)
-VALUES 
-    ('ACTION', 'Action', 'Action-packed sequences', true),
-    ('SCI_FI', 'Sci-Fi', 'Science Fiction', true),
-    ('ADVENTURE', 'Adventure', 'Epic journeys and exploration', true),
-    ('DRAMA', 'Drama', 'Character-driven narratives', true),
-    ('THRILLER', 'Thriller', 'Suspenseful plots', true),
-    ('ANIMATION', 'Animation', 'Animated films', true),
-    ('ROMANCE', 'Romance', 'Love stories', true),
-    ('FANTASY', 'Fantasy', 'Magical and supernatural elements', true),
-    ('HORROR', 'Horror', 'Scary movies', true)
+CREATE TEMP TABLE demo_genres(code text PRIMARY KEY,name text) ON COMMIT DROP;
+INSERT INTO demo_genres VALUES
+('ACTION','Action'),('SCI_FI','Science Fiction'),('ADVENTURE','Adventure'),
+('DRAMA','Drama'),('THRILLER','Thriller'),('ANIMATION','Animation'),
+('ROMANCE','Romance'),('FANTASY','Fantasy'),('HORROR','Horror');
+INSERT INTO genre(code,name,normalized_name,is_active)
+SELECT code,name,upper(name),true FROM demo_genres
 ON CONFLICT (code) DO NOTHING;
 
--- 3. Reference Data: Seat Types & Ticket Types
-INSERT INTO seat_type (code, name, capacity_units, surcharge_amount, is_active)
-VALUES 
-    ('STANDARD', 'Standard', 1, 0, true),
-    ('VIP', 'VIP', 1, 15000, true),
-    ('COUPLE', 'Couple', 2, 40000, true)
+INSERT INTO seat_type(code,name,surcharge_amount,is_active) VALUES
+('DEMO_STANDARD','Standard',0,true),('DEMO_VIP','VIP',15000,true)
 ON CONFLICT (code) DO NOTHING;
 
-INSERT INTO ticket_type (code, name, discount_percent, eligibility_note, is_active)
-VALUES 
-    ('ADULT', 'Adult', 0.00, 'Standard admission', true),
-    ('STUDENT', 'Student', 15.00, 'Requires valid student ID', true),
-    ('CHILD', 'Child', 25.00, 'Under 12 years old', true)
+INSERT INTO cinema(code,name,address,timezone,status,minimum_turnaround_minutes)
+VALUES ('DEMO_CINEMA_HCM_01','Promethe-Phos Demo Cinema','Synthetic demo location, Ho Chi Minh City','Asia/Ho_Chi_Minh','active',15)
 ON CONFLICT (code) DO NOTHING;
 
--- 4. Cinema & Rooms
-INSERT INTO cinema (code, name, address, phone, status)
-VALUES ('CINEMA_HCM_01', 'Demo Cinema HCM', 'District 1, HCMC', '0901234567', 'active')
-ON CONFLICT (code) DO NOTHING;
+INSERT INTO cinema_room(cinema_id,code,name,status)
+SELECT c.id,r.code,r.name,'active'
+FROM cinema c CROSS JOIN (VALUES ('DEMO_ROOM_01','Demo Room 1'),('DEMO_ROOM_02','Demo Room 2')) r(code,name)
+WHERE c.code = 'DEMO_CINEMA_HCM_01'
+ON CONFLICT (cinema_id,code) DO NOTHING;
 
-DO $$ 
-DECLARE
-    v_cinema_id bigint;
-BEGIN
-    SELECT id INTO v_cinema_id FROM cinema WHERE code = 'CINEMA_HCM_01';
+INSERT INTO cinema_ticket_price(cinema_id,category_code,amount,currency)
+SELECT c.id,p.category,p.amount,'VND'
+FROM cinema c CROSS JOIN (VALUES ('Adult',100000),('Discounted',70000)) p(category,amount)
+WHERE c.code = 'DEMO_CINEMA_HCM_01'
+ON CONFLICT (cinema_id,category_code) DO NOTHING;
 
-    INSERT INTO cinema_room (cinema_id, code, name, status)
-    VALUES 
-        (v_cinema_id, 'ROOM_01', 'Room 1 - Standard', 'active'),
-        (v_cinema_id, 'ROOM_02', 'Room 2 - VIP', 'active')
-    ON CONFLICT (cinema_id, code) DO NOTHING;
-END $$;
+-- 5 rows x 10 seats in each of two rooms: 100 physical seats, one entitlement each.
+INSERT INTO seat(cinema_room_id,seat_type_id,row_label,seat_number,x_position,y_position,operational_state)
+SELECT r.id,st.id,chr(64+row_no),seat_no,seat_no-1,row_no-1,'active'
+FROM cinema c JOIN cinema_room r ON r.cinema_id=c.id
+CROSS JOIN generate_series(1,5) row_no CROSS JOIN generate_series(1,10) seat_no
+JOIN seat_type st ON st.code=CASE WHEN row_no>=4 THEN 'DEMO_VIP' ELSE 'DEMO_STANDARD' END
+WHERE c.code='DEMO_CINEMA_HCM_01' AND r.code IN ('DEMO_ROOM_01','DEMO_ROOM_02')
+ON CONFLICT (cinema_room_id,row_label,seat_number) DO NOTHING;
 
--- 5. Seats (Idempotent loop with constraint handling)
-DO $$ 
-DECLARE
-    v_cinema_id bigint;
-    v_room1_id bigint;
-    v_room2_id bigint;
-    v_standard_id bigint;
-    v_vip_id bigint;
-    v_couple_id bigint;
-    r int;
-    c int;
-    r_char varchar(1);
-BEGIN
-    SELECT id INTO v_cinema_id FROM cinema WHERE code = 'CINEMA_HCM_01';
-    -- Robust lookup: match both cinema_id and code
-    SELECT id INTO v_room1_id FROM cinema_room WHERE cinema_id = v_cinema_id AND code = 'ROOM_01';
-    SELECT id INTO v_room2_id FROM cinema_room WHERE cinema_id = v_cinema_id AND code = 'ROOM_02';
-    SELECT id INTO v_standard_id FROM seat_type WHERE code = 'STANDARD';
-    SELECT id INTO v_vip_id FROM seat_type WHERE code = 'VIP';
-    SELECT id INTO v_couple_id FROM seat_type WHERE code = 'COUPLE';
+-- now_showing is fictional DEMO catalogue state, not a real 2026 release claim.
+-- Release date/market, age classification and external media are deliberately NULL
+-- until the exact edition/territory/assets are approved; see movie-research.md.
+INSERT INTO movie(seed_key,title,description,duration_minutes,language,status)
+SELECT seed_key,title,description,runtime,language,'now_showing' FROM demo_movies
+ON CONFLICT (seed_key) DO NOTHING;
 
-    -- Bat buoc: dung script neu tham chieu bi thieu (thay vi de choi im lang)
-    IF v_cinema_id IS NULL THEN
-        RAISE EXCEPTION 'Cinema CINEMA_HCM_01 not found';
-    END IF;
-    IF v_room1_id IS NULL OR v_room2_id IS NULL THEN
-        RAISE EXCEPTION 'Cinema rooms ROOM_01/ROOM_02 not found for cinema %', v_cinema_id;
-    END IF;
-    IF v_standard_id IS NULL OR v_vip_id IS NULL OR v_couple_id IS NULL THEN
-        RAISE EXCEPTION 'One or more seat types (STANDARD/VIP/COUPLE) are missing';
-    END IF;
+CREATE TEMP TABLE demo_movie_genres(seed_key text,genre_code text,PRIMARY KEY(seed_key,genre_code)) ON COMMIT DROP;
+INSERT INTO demo_movie_genres VALUES
+('DEMO_ENDGAME','ACTION'),('DEMO_ENDGAME','SCI_FI'),('DEMO_ENDGAME','ADVENTURE'),
+('DEMO_INTERSTELLAR','SCI_FI'),('DEMO_INTERSTELLAR','ADVENTURE'),('DEMO_INTERSTELLAR','DRAMA'),
+('DEMO_MI_FINAL','ACTION'),('DEMO_MI_FINAL','THRILLER'),('DEMO_MI_FINAL','ADVENTURE'),
+('DEMO_YOUR_NAME','ANIMATION'),('DEMO_YOUR_NAME','ROMANCE'),('DEMO_YOUR_NAME','FANTASY'),
+('DEMO_KINGDOM','ACTION'),('DEMO_KINGDOM','ADVENTURE'),('DEMO_KINGDOM','DRAMA'),
+('DEMO_WWZ','HORROR'),('DEMO_WWZ','ACTION'),('DEMO_WWZ','THRILLER');
+INSERT INTO movie_genre(movie_id,genre_id)
+SELECT m.id,g.id FROM demo_movie_genres d JOIN movie m ON m.seed_key=d.seed_key JOIN genre g ON g.code=d.genre_code
+ON CONFLICT (movie_id,genre_id) DO NOTHING;
 
-    -- Room 1 (Standard & Couple)
-    FOR r IN 1..5 LOOP
-        r_char := chr(64 + r); -- A to E
-        FOR c IN 1..10 LOOP
-            IF r = 5 AND c > 5 THEN
-                INSERT INTO seat (cinema_room_id, seat_type_id, row_label, seat_number, status)
-                VALUES (v_room1_id, v_couple_id, r_char, c, 'active')
-                ON CONFLICT ON CONSTRAINT uq_seat_position DO NOTHING;
-            ELSE
-                INSERT INTO seat (cinema_room_id, seat_type_id, row_label, seat_number, status)
-                VALUES (v_room1_id, v_standard_id, r_char, c, 'active')
-                ON CONFLICT ON CONSTRAINT uq_seat_position DO NOTHING;
-            END IF;
-        END LOOP;
-    END LOOP;
-
-    -- Room 2 (VIP & Couple)
-    FOR r IN 1..4 LOOP
-        r_char := chr(64 + r); -- A to D
-        FOR c IN 1..8 LOOP
-            IF r = 4 AND c > 4 THEN
-                INSERT INTO seat (cinema_room_id, seat_type_id, row_label, seat_number, status)
-                VALUES (v_room2_id, v_couple_id, r_char, c, 'active')
-                ON CONFLICT ON CONSTRAINT uq_seat_position DO NOTHING;
-            ELSE
-                INSERT INTO seat (cinema_room_id, seat_type_id, row_label, seat_number, status)
-                VALUES (v_room2_id, v_vip_id, r_char, c, 'active')
-                ON CONFLICT ON CONSTRAINT uq_seat_position DO NOTHING;
-            END IF;
-        END LOOP;
-    END LOOP;
-END $$;
-
--- 6. Movies
--- LUU Y (da xac minh voi database-schema.sql): bang movie KHONG co unique constraint nao
--- tren title (chi co ck_movie_title_nonblank). Nghia la:
---   * IF NOT EXISTS chi an toan khi chay TUUAN TU (mot tien trinh). Hai len chay dong thoi
---     co the tao ban ghi cung ten vi khong co constraint de ON CONFLICT.
---   * Neu da co phim cung ten nhung du lieu sai, script se KHONG cap nhat (check-then-insert).
--- Tuy chon de gianh cho moi truong demo neu can an toan tuyet doi, them truoc doan nay:
---     CREATE UNIQUE INDEX IF NOT EXISTS ux_movie_title_normalized ON movie (lower(btrim(title)));
---   va doi sang dang: INSERT ... ON CONFLICT (lower(btrim(title))) DO UPDATE SET
---     duration_minutes = EXCLUDED.duration_minutes, ... (upsert).
+-- Drift detection BEFORE scheduling: never silently overwrite edited business data.
 DO $$
 BEGIN
-    IF NOT EXISTS (SELECT 1 FROM movie WHERE title = 'Avengers: Endgame') THEN
-        INSERT INTO movie (title, description, duration_minutes, release_date, poster_url, trailer_url, language, age_rating, status)
-        VALUES ('Avengers: Endgame', 'After Thanos erased half of the universe, the remaining Avengers band together to undo his actions and restore balance.', 181, '2019-04-26', 'https://image.tmdb.org/t/p/original/or06FN3Dka5tukK1e9sl16pB3iy.jpg', 'https://www.youtube.com/watch?v=TcMBFSGVi1c', 'English', 'PG-13', 'now_showing');
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM movie WHERE title = 'Interstellar') THEN
-        INSERT INTO movie (title, description, duration_minutes, release_date, poster_url, trailer_url, language, age_rating, status)
-        VALUES ('Interstellar', 'A team of astronauts travels through a wormhole in search of a planet that might support mankind.', 169, '2014-11-07', 'https://media.themoviedb.org/t/p/w600_and_h900_face/yQvGrMoipbRoddT0ZR8tPoR7NfX.jpg', 'https://www.youtube.com/watch?v=zSWdZVtXT7E', 'English', 'PG-13', 'now_showing');
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM movie WHERE title = 'Mission: Impossible - The Final Reckoning') THEN
-        INSERT INTO movie (title, description, duration_minutes, release_date, poster_url, trailer_url, language, age_rating, status)
-        VALUES ('Mission: Impossible - The Final Reckoning', 'Ethan Hunt faces his ultimate mission in a race against time.', 169, '2025-05-23', 'https://media.themoviedb.org/t/p/w600_and_h900_face/iKPsC9EFUafRP9SrUznI61getVP.jpg', 'https://www.youtube.com/watch?v=NOhDyUmT9z0', 'English', 'PG-13', 'now_showing');
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM movie WHERE title = 'Your Name') THEN
-        INSERT INTO movie (title, description, duration_minutes, release_date, poster_url, trailer_url, language, age_rating, status)
-        VALUES ('Your Name', 'Two teenagers discover they are swapping bodies and must work together to avert a disaster.', 106, '2016-08-26', 'https://media.themoviedb.org/t/p/w600_and_h900_face/vfJFJPepRKapMd5G2ro7klIRysq.jpg', 'https://www.youtube.com/watch?v=xU47nhruN-Q', 'Japanese', 'PG', 'now_showing');
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM movie WHERE title = 'Kingdom of Heaven') THEN
-        INSERT INTO movie (title, description, duration_minutes, release_date, poster_url, trailer_url, language, age_rating, status)
-        VALUES ('Kingdom of Heaven', 'Balian of Ibelin travels to Jerusalem during the Crusades of the 12th century, and there he finds himself as the defender of the city and its people.', 144, '2005-05-06', 'https://media.themoviedb.org/t/p/w600_and_h900_face/2NaFdWy9hkM35vZB1hkqsnTcms8.jpg', 'https://www.youtube.com/watch?v=13n48NlVOnM', 'English', 'R', 'now_showing');
-    END IF;
-
-    IF NOT EXISTS (SELECT 1 FROM movie WHERE title = 'World War Z') THEN
-        INSERT INTO movie (title, description, duration_minutes, release_date, poster_url, trailer_url, language, age_rating, status)
-        VALUES ('World War Z', 'Former United Nations employee Gerry Lane traverses the world in a race against time to stop the Zombie pandemic that is toppling armies and governments.', 116, '2013-06-21', 'https://media.themoviedb.org/t/p/w600_and_h900_face/aCnVdvExw6UWSeQfr0tUH3jr4qG.jpg', 'https://www.youtube.com/watch?v=HcwTxRuq-uk', 'English', 'PG-13', 'now_showing');
-    END IF;
+  IF (SELECT count(*) FROM ticket_category) <> 2 THEN RAISE EXCEPTION 'Exactly two ticket categories required'; END IF;
+  IF EXISTS (SELECT 1 FROM role WHERE name <> code OR normalized_name <> code) THEN
+    RAISE EXCEPTION 'Role mapping drift; review Identity mapping instead of overwriting'; END IF;
+  IF EXISTS (SELECT 1 FROM demo_movies d LEFT JOIN movie m ON m.seed_key=d.seed_key
+             WHERE m.id IS NULL OR m.title<>d.title OR m.duration_minutes<>d.runtime OR m.status<>'now_showing') THEN
+    RAISE EXCEPTION 'Demo movie fixture drift; no metadata overwrite performed'; END IF;
+  IF EXISTS (SELECT 1 FROM demo_genres d JOIN genre g ON g.code=d.code WHERE NOT g.is_active OR g.normalized_name<>upper(d.name)) THEN
+    RAISE EXCEPTION 'Genre fixture drift'; END IF;
+  IF EXISTS (SELECT 1 FROM seat_type WHERE code IN ('DEMO_STANDARD','DEMO_VIP') AND
+    (NOT is_active OR surcharge_amount <> CASE code WHEN 'DEMO_VIP' THEN 15000 ELSE 0 END)) THEN
+    RAISE EXCEPTION 'Seat type fixture drift'; END IF;
+  IF EXISTS (SELECT 1 FROM cinema WHERE code='DEMO_CINEMA_HCM_01' AND
+    (status<>'active' OR timezone<>'Asia/Ho_Chi_Minh' OR minimum_turnaround_minutes<>15)) THEN
+    RAISE EXCEPTION 'Cinema fixture drift'; END IF;
+  IF EXISTS (SELECT 1 FROM cinema_room r JOIN cinema c ON c.id=r.cinema_id
+    WHERE c.code='DEMO_CINEMA_HCM_01' AND r.code IN ('DEMO_ROOM_01','DEMO_ROOM_02') AND r.status<>'active') THEN
+    RAISE EXCEPTION 'Room fixture drift'; END IF;
+  IF EXISTS (SELECT 1 FROM cinema_ticket_price p JOIN cinema c ON c.id=p.cinema_id
+    WHERE c.code='DEMO_CINEMA_HCM_01' AND p.amount <> CASE p.category_code WHEN 'Adult' THEN 100000 ELSE 70000 END) THEN
+    RAISE EXCEPTION 'Cinema price fixture drift'; END IF;
+  IF EXISTS (SELECT 1 FROM seat s JOIN cinema_room r ON r.id=s.cinema_room_id JOIN cinema c ON c.id=r.cinema_id JOIN seat_type st ON st.id=s.seat_type_id
+    WHERE c.code='DEMO_CINEMA_HCM_01' AND r.code IN ('DEMO_ROOM_01','DEMO_ROOM_02') AND
+    (s.retired_at IS NOT NULL OR s.operational_state<>'active' OR s.row_label NOT IN ('A','B','C','D','E') OR s.seat_number>10 OR
+     s.x_position<>s.seat_number-1 OR s.y_position<>ascii(s.row_label)-65 OR
+     st.code<>CASE WHEN s.row_label IN ('D','E') THEN 'DEMO_VIP' ELSE 'DEMO_STANDARD' END)) THEN
+    RAISE EXCEPTION 'Physical seat fixture drift'; END IF;
 END $$;
 
--- 7. Movie Genres (Safe Linking)
+CREATE TEMP TABLE demo_schedule (
+  seed_key text PRIMARY KEY, movie_id bigint, room_id bigint, duration integer,
+  starts_at timestamptz, ends_at timestamptz, room_available_at timestamptz
+) ON COMMIT DROP;
+INSERT INTO demo_schedule
+SELECT 'DEMO_V2_' || d.day::text || '_' || slot.room_code || '_' || slot.hhmm,
+       m.id,r.id,m.duration_minutes,x.start_time,
+       x.start_time+m.duration_minutes*interval '1 minute',
+       x.start_time+(m.duration_minutes+15)*interval '1 minute'
+FROM (SELECT coalesce(nullif(current_setting('cinema.demo_start_date',true),''),'2026-11-14')::date + n AS day FROM generate_series(0,7) n) d
+CROSS JOIN (VALUES
+ ('DEMO_ROOM_01','10:00','DEMO_YOUR_NAME'),('DEMO_ROOM_01','13:00','DEMO_ENDGAME'),('DEMO_ROOM_01','17:00','DEMO_MI_FINAL'),
+ ('DEMO_ROOM_02','11:00','DEMO_WWZ'),('DEMO_ROOM_02','14:30','DEMO_KINGDOM'),('DEMO_ROOM_02','18:00','DEMO_INTERSTELLAR')
+) slot(room_code,hhmm,movie_key)
+JOIN cinema c ON c.code='DEMO_CINEMA_HCM_01'
+JOIN cinema_room r ON r.cinema_id=c.id AND r.code=slot.room_code
+JOIN movie m ON m.seed_key=slot.movie_key
+CROSS JOIN LATERAL (SELECT (d.day+slot.hhmm::time) AT TIME ZONE 'Asia/Ho_Chi_Minh' AS start_time) x;
+
+-- Only the stable seed key is a replay conflict. Overlap is an ERROR, not silently skipped.
+INSERT INTO showtime(seed_key,movie_id,cinema_room_id,duration_minutes_snapshot,turnaround_minutes_applied,starts_at,ends_at,room_available_at,status)
+SELECT seed_key,movie_id,room_id,duration,15,starts_at,ends_at,room_available_at,'scheduled' FROM demo_schedule
+ON CONFLICT (seed_key) DO NOTHING;
+
 DO $$
-DECLARE
-    v_movie_id bigint;
-    v_genre_id bigint;
 BEGIN
-    SELECT id INTO v_movie_id FROM movie WHERE title = 'Avengers: Endgame' LIMIT 1;
-    IF v_movie_id IS NOT NULL THEN
-        FOR v_genre_id IN (SELECT id FROM genre WHERE code IN ('ACTION', 'SCI_FI', 'ADVENTURE')) LOOP
-            INSERT INTO movie_genre (movie_id, genre_id) VALUES (v_movie_id, v_genre_id) ON CONFLICT DO NOTHING;
-        END LOOP;
-    END IF;
-
-    SELECT id INTO v_movie_id FROM movie WHERE title = 'Interstellar' LIMIT 1;
-    IF v_movie_id IS NOT NULL THEN
-        FOR v_genre_id IN (SELECT id FROM genre WHERE code IN ('SCI_FI', 'ADVENTURE', 'DRAMA')) LOOP
-            INSERT INTO movie_genre (movie_id, genre_id) VALUES (v_movie_id, v_genre_id) ON CONFLICT DO NOTHING;
-        END LOOP;
-    END IF;
-
-    SELECT id INTO v_movie_id FROM movie WHERE title = 'Mission: Impossible - The Final Reckoning' LIMIT 1;
-    IF v_movie_id IS NOT NULL THEN
-        FOR v_genre_id IN (SELECT id FROM genre WHERE code IN ('ACTION', 'THRILLER', 'ADVENTURE')) LOOP
-            INSERT INTO movie_genre (movie_id, genre_id) VALUES (v_movie_id, v_genre_id) ON CONFLICT DO NOTHING;
-        END LOOP;
-    END IF;
-
-    SELECT id INTO v_movie_id FROM movie WHERE title = 'Your Name' LIMIT 1;
-    IF v_movie_id IS NOT NULL THEN
-        FOR v_genre_id IN (SELECT id FROM genre WHERE code IN ('ANIMATION', 'ROMANCE', 'FANTASY')) LOOP
-            INSERT INTO movie_genre (movie_id, genre_id) VALUES (v_movie_id, v_genre_id) ON CONFLICT DO NOTHING;
-        END LOOP;
-    END IF;
-
-    SELECT id INTO v_movie_id FROM movie WHERE title = 'Kingdom of Heaven' LIMIT 1;
-    IF v_movie_id IS NOT NULL THEN
-        FOR v_genre_id IN (SELECT id FROM genre WHERE code IN ('ACTION', 'ADVENTURE', 'DRAMA')) LOOP
-            INSERT INTO movie_genre (movie_id, genre_id) VALUES (v_movie_id, v_genre_id) ON CONFLICT DO NOTHING;
-        END LOOP;
-    END IF;
-
-    SELECT id INTO v_movie_id FROM movie WHERE title = 'World War Z' LIMIT 1;
-    IF v_movie_id IS NOT NULL THEN
-        FOR v_genre_id IN (SELECT id FROM genre WHERE code IN ('HORROR', 'ACTION', 'THRILLER')) LOOP
-            INSERT INTO movie_genre (movie_id, genre_id) VALUES (v_movie_id, v_genre_id) ON CONFLICT DO NOTHING;
-        END LOOP;
-    END IF;
+ IF (SELECT count(*) FROM demo_schedule) <> 48 THEN RAISE EXCEPTION 'Expected 48 fixture showtimes'; END IF;
+ IF EXISTS (SELECT 1 FROM demo_schedule d LEFT JOIN showtime s ON s.seed_key=d.seed_key
+   WHERE s.id IS NULL OR s.movie_id<>d.movie_id OR s.cinema_room_id<>d.room_id OR s.starts_at<>d.starts_at OR
+         s.ends_at<>d.ends_at OR s.room_available_at<>d.room_available_at OR s.duration_minutes_snapshot<>d.duration OR
+         s.turnaround_minutes_applied<>15 OR s.status<>'scheduled') THEN
+   RAISE EXCEPTION 'Existing demo showtime drift; do not reset or reactivate existing schedules'; END IF;
 END $$;
-
--- 8. Showtimes (Idempotent generation for demo period)
-DO $$
-DECLARE
-    v_cinema_id bigint;
-    v_room1_id bigint;
-    v_room2_id bigint;
-    m1 record; m2 record; m3 record; m4 record; m5 record; m6 record;
-    d date;
-    base_tz varchar := 'Asia/Ho_Chi_Minh';
-    v_starts_at timestamptz;
-BEGIN
-    SELECT id INTO v_cinema_id FROM cinema WHERE code = 'CINEMA_HCM_01';
-    SELECT id INTO v_room1_id FROM cinema_room WHERE cinema_id = v_cinema_id AND code = 'ROOM_01';
-    SELECT id INTO v_room2_id FROM cinema_room WHERE cinema_id = v_cinema_id AND code = 'ROOM_02';
-
-    -- Bat buoc: dung script neu phong bi thieu
-    IF v_room1_id IS NULL OR v_room2_id IS NULL THEN
-        RAISE EXCEPTION 'Cinema rooms not found - run the seat/room section first';
-    END IF;
-
-    SELECT id, title, duration_minutes INTO m1 FROM movie WHERE title = 'Avengers: Endgame' LIMIT 1;
-    SELECT id, title, duration_minutes INTO m2 FROM movie WHERE title = 'Interstellar' LIMIT 1;
-    SELECT id, title, duration_minutes INTO m3 FROM movie WHERE title = 'Mission: Impossible - The Final Reckoning' LIMIT 1;
-    SELECT id, title, duration_minutes INTO m4 FROM movie WHERE title = 'Your Name' LIMIT 1;
-    SELECT id, title, duration_minutes INTO m5 FROM movie WHERE title = 'Kingdom of Heaven' LIMIT 1;
-    SELECT id, title, duration_minutes INTO m6 FROM movie WHERE title = 'World War Z' LIMIT 1;
-
-    -- Ensure movies exist before attempting showtime generation
-    IF m1.id IS NULL OR m2.id IS NULL OR m3.id IS NULL OR m4.id IS NULL OR m5.id IS NULL OR m6.id IS NULL THEN
-        RAISE NOTICE 'Skipping showtime generation: One or more movies are missing.';
-        RETURN;
-    END IF;
-
-    -- Loop through 8 days (Oct 28 to Nov 4, 2026)
-    FOR i IN 0..7 LOOP
-        d := '2026-10-28'::date + i;
-
-        -- ====== ROOM 1 ======
-        
-        -- 10:00 - Your Name (106 min)
-        v_starts_at := (d || ' 10:00:00 ' || base_tz)::timestamptz;
-        INSERT INTO showtime (movie_id, cinema_room_id, movie_title_snapshot, room_name_snapshot, duration_minutes_snapshot, starts_at, ends_at, room_available_at, booking_closes_at, base_price, status)
-            VALUES (m4.id, v_room1_id, m4.title, 'Room 1 - Standard', m4.duration_minutes,
-                    v_starts_at,
-                    v_starts_at + (m4.duration_minutes || ' minutes')::interval,
-                    v_starts_at + ((m4.duration_minutes + 15) || ' minutes')::interval,
-                    v_starts_at - interval '10 minutes', 80000, 'scheduled')
-        ON CONFLICT ON CONSTRAINT ex_showtime_room_time DO NOTHING;
-
-        -- 13:00 - Avengers (181 min)
-        v_starts_at := (d || ' 13:00:00 ' || base_tz)::timestamptz;
-        INSERT INTO showtime (movie_id, cinema_room_id, movie_title_snapshot, room_name_snapshot, duration_minutes_snapshot, starts_at, ends_at, room_available_at, booking_closes_at, base_price, status)
-            VALUES (m1.id, v_room1_id, m1.title, 'Room 1 - Standard', m1.duration_minutes,
-                    v_starts_at,
-                    v_starts_at + (m1.duration_minutes || ' minutes')::interval,
-                    v_starts_at + ((m1.duration_minutes + 15) || ' minutes')::interval,
-                    v_starts_at - interval '10 minutes', 85000, 'scheduled')
-        ON CONFLICT ON CONSTRAINT ex_showtime_room_time DO NOTHING;
-
-        -- 17:00 - Mission Impossible (169 min)
-        v_starts_at := (d || ' 17:00:00 ' || base_tz)::timestamptz;
-        INSERT INTO showtime (movie_id, cinema_room_id, movie_title_snapshot, room_name_snapshot, duration_minutes_snapshot, starts_at, ends_at, room_available_at, booking_closes_at, base_price, status)
-            VALUES (m3.id, v_room1_id, m3.title, 'Room 1 - Standard', m3.duration_minutes,
-                    v_starts_at,
-                    v_starts_at + (m3.duration_minutes || ' minutes')::interval,
-                    v_starts_at + ((m3.duration_minutes + 15) || ' minutes')::interval,
-                    v_starts_at - interval '10 minutes', 90000, 'scheduled')
-        ON CONFLICT ON CONSTRAINT ex_showtime_room_time DO NOTHING;
-
-        -- ====== ROOM 2 ======
-
-        -- 11:00 - World War Z (116 min)
-        v_starts_at := (d || ' 11:00:00 ' || base_tz)::timestamptz;
-        INSERT INTO showtime (movie_id, cinema_room_id, movie_title_snapshot, room_name_snapshot, duration_minutes_snapshot, starts_at, ends_at, room_available_at, booking_closes_at, base_price, status)
-            VALUES (m6.id, v_room2_id, m6.title, 'Room 2 - VIP', m6.duration_minutes,
-                    v_starts_at,
-                    v_starts_at + (m6.duration_minutes || ' minutes')::interval,
-                    v_starts_at + ((m6.duration_minutes + 15) || ' minutes')::interval,
-                    v_starts_at - interval '10 minutes', 100000, 'scheduled')
-        ON CONFLICT ON CONSTRAINT ex_showtime_room_time DO NOTHING;
-
-        -- 14:30 - Kingdom of Heaven (144 min)
-        v_starts_at := (d || ' 14:30:00 ' || base_tz)::timestamptz;
-        INSERT INTO showtime (movie_id, cinema_room_id, movie_title_snapshot, room_name_snapshot, duration_minutes_snapshot, starts_at, ends_at, room_available_at, booking_closes_at, base_price, status)
-            VALUES (m5.id, v_room2_id, m5.title, 'Room 2 - VIP', m5.duration_minutes,
-                    v_starts_at,
-                    v_starts_at + (m5.duration_minutes || ' minutes')::interval,
-                    v_starts_at + ((m5.duration_minutes + 15) || ' minutes')::interval,
-                    v_starts_at - interval '10 minutes', 100000, 'scheduled')
-        ON CONFLICT ON CONSTRAINT ex_showtime_room_time DO NOTHING;
-
-        -- 18:00 - Interstellar (169 min)
-        v_starts_at := (d || ' 18:00:00 ' || base_tz)::timestamptz;
-        INSERT INTO showtime (movie_id, cinema_room_id, movie_title_snapshot, room_name_snapshot, duration_minutes_snapshot, starts_at, ends_at, room_available_at, booking_closes_at, base_price, status)
-            VALUES (m2.id, v_room2_id, m2.title, 'Room 2 - VIP', m2.duration_minutes,
-                    v_starts_at,
-                    v_starts_at + (m2.duration_minutes || ' minutes')::interval,
-                    v_starts_at + ((m2.duration_minutes + 15) || ' minutes')::interval,
-                    v_starts_at - interval '10 minutes', 110000, 'scheduled')
-        ON CONFLICT ON CONSTRAINT ex_showtime_room_time DO NOTHING;
-    END LOOP;
-END $$;
+COMMIT;
+-- Outcome on a fresh baseline: 4 roles, 2 categories, 9 genres, 6 movies,
+-- 18 associations, 1 demo cinema, 2 rooms, 100 seats, 2 cinema prices, 48 showtimes.
+-- Changing demo_start_date explicitly creates another date set; old rows stay intact.

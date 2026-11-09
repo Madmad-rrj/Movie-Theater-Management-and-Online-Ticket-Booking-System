@@ -1,385 +1,1191 @@
-# Database Schema
+# Database Schema — Promethe-Phos
 
-## 1. Phạm vi và quy ước
+Bản 09/11/2026; **proposed physical baseline** cho Use-Case v2.4 / SAD v3.15. Data dictionary dưới đây được tạo từ cùng định nghĩa đã dùng sinh `database-schema.sql`, gồm **41 bảng**: 37 relation trong relational model và 4 bảng hỗ trợ Identity. Không phải snapshot database đang chạy hoặc migration 18 bảng cũ.
 
-Tài liệu này đặc tả schema vật lý PostgreSQL theo 18 relation trong <code>docs/analysis and design/relational-model.md</code> và quy tắc ở <code>database/database-design.md</code>. Đây là đặc tả schema, chưa phải DDL; script tạo cấu trúc thuộc <code>database/database-schema.sql</code>.
+## 1. Cách áp dụng và quy ước
 
-MVP vận hành một chi nhánh nhưng mô hình hỗ trợ nhiều rạp. Bảng <code>refund</code> được giữ để mở rộng và truy vết, không có nghĩa luồng hoàn tiền thuộc phạm vi demo.
+- Namespace `cinema`, bootstrap trên namespace chưa tồn tại. CREATE SCHEMA cố ý fail khi đã tồn tại; không DROP hoặc IF NOT EXISTS để che schema drift.
+- PK/FK numeric dùng bigint, identity claims dùng integer theo model hỗ trợ Identity; security/public IDs dùng UUID do application sinh.
+- Domain `vnd_amount`: numeric không làm tròn scale trước CHECK; giá trị nguyên, 0..99999999999999. Column NOT NULL được ghi riêng. Financial received/refund evidence dùng numeric để giữ số tiền/currency lệch.
+- FK mặc định PostgreSQL NO ACTION; không cascade xóa financial/history. Một FK refresh replacement được deferred; các constraint khác kiểm immediate trừ khi SQL ghi khác.
+- Cột có `NOT NULL`/`PRIMARY KEY` không nhận NULL; các cột khác nhận NULL. Thiếu DEFAULT thì application phải cung cấp khi cần.
+- CHECK không xác nhận current time/role/provider evidence hoặc toàn bộ state transitions. Unique/foreign key không thay business transaction. `version` do application tăng, không tự cập nhật.
+- Chuỗi hash/credential là dữ liệu đã xử lý an toàn; DDL không tự hash/encrypt. Bảng Identity cần Fluent API tương ứng, không tự dùng với mặc định AspNetUsers.
+- Index no-time: không dùng now() trong partial UQ; worker/service chủ động kết thúc expired active/session/selection records.
+- SQL dùng GiST native singleton room range và timestamp range, không cần extension btree_gist. Xem rationale trong database-design.md.
 
-- PK đơn dùng <code>bigint GENERATED ALWAYS AS IDENTITY</code>; FK dùng <code>bigint</code>. Hai PK ghép là <code>movie_genre(movie_id, genre_id)</code> và <code>user_role(user_id, role_id)</code>.
-- UUID cho mã công khai/idempotency do backend sinh; không phụ thuộc extension để tự sinh UUID.
-- Thời gian dùng <code>timestamptz</code>, backend ghi UTC và giao diện hiển thị theo <code>Asia/Ho_Chi_Minh</code>.
-- Giá VND dùng <code>numeric(14,0)</code>. Số tiền cổng báo nhận và tiền hoàn dùng <code>numeric(18,2)</code> để lưu chính xác sai lệch cần tra soát.
-- Trạng thái dùng <code>varchar</code> cùng CHECK constraint, giá trị chữ thường.
-- Chuỗi bắt buộc không được rỗng sau <code>btrim</code>. Unique key theo tên/email chuẩn hóa dùng <code>lower(btrim(value))</code>.
-- FK mặc định dùng <code>ON UPDATE RESTRICT</code> và <code>ON DELETE RESTRICT</code>, ngoại trừ các bảng nối thuần túy được ghi rõ.
-- PK/UNIQUE tự tạo index trong PostgreSQL; không tạo thêm index trùng. Index bổ sung được liệt kê theo bảng.
-- Không dùng kiểu SQL Server như <code>NVARCHAR</code>, <code>DATETIME2</code> hay <code>rowversion</code>.
+## 2. Danh mục bảng
 
-### Điểm cần đồng bộ trước khi viết DDL
-
-Relational model chọn CHECK <code>booking_detail.unit_price &gt;= 0</code>, nhưng giữ <code>booking.total_amount &gt; 0</code>. Database design trước đó ghi giá cuối cùng phải lớn hơn 0 và MVP không xử lý booking miễn phí. <strong>Đã đồng bộ theo quyết định OQ-06 (Option B — APPROVED):</strong> <code>unit_price &gt;= 0</code> trên từng detail, <code>booking.total_amount &gt; 0</code> và <code>payment.amount &gt; 0</code>; booking có thể chứa detail giá 0 miễn là tổng vẫn dương; booking tổng 0 (miễn phí toàn bộ) nằm ngoài phạm vi MVP và MVP không xây luồng xác nhận không-thanh-toán hay hệ thống khuyến mãi. Backend tính và kiểm tra giá từ dữ liệu server, không tin giá/tổng do client gửi.
-
-## 2. Bảng và quan hệ
-
-| Bảng | Mục đích | Primary key |
+| Bảng | Owner | Primary key / key shape |
 |---|---|---|
-| <code>movie</code> | Phim | <code>id</code> |
-| <code>genre</code> | Danh mục thể loại | <code>id</code> |
-| <code>movie_genre</code> | Nối phim với thể loại | <code>(movie_id, genre_id)</code> |
-| <code>cinema</code> | Rạp/chi nhánh | <code>id</code> |
-| <code>cinema_room</code> | Phòng thuộc rạp | <code>id</code> |
-| <code>seat_type</code> | Danh mục loại ghế | <code>id</code> |
-| <code>seat</code> | Vị trí ghế trong phòng | <code>id</code> |
-| <code>ticket_type</code> | Loại vé và mức giảm | <code>id</code> |
-| <code>showtime</code> | Lịch chiếu và khoảng chiếm dụng phòng | <code>id</code> |
-| <code>app_user</code> | Tài khoản | <code>id</code> |
-| <code>role</code> | Danh mục vai trò | <code>id</code> |
-| <code>user_role</code> | Nối tài khoản với vai trò | <code>(user_id, role_id)</code> |
-| <code>booking</code> | Đơn đặt vé | <code>id</code> |
-| <code>booking_detail</code> | Ghế, loại vé và giá snapshot của đơn | <code>id</code> |
-| <code>ticket</code> | Vé phát hành từ một booking detail | <code>id</code> |
-| <code>payment</code> | Một lần thử thanh toán | <code>id</code> |
-| <code>payment_event</code> | Callback/kết quả đối soát | <code>id</code> |
-| <code>refund</code> | Cấu trúc mở rộng cho một yêu cầu hoàn/payment | <code>id</code> |
-
-Movie–Genre và AppUser–Role là M:N qua bảng nối. Cinema–CinemaRoom, CinemaRoom–Seat, Movie–Showtime, Booking–Payment và Payment–PaymentEvent là 1:N. Booking–BookingDetail là 1:N; mỗi booking phải có ít nhất một detail do transaction bảo đảm. BookingDetail–Ticket là 1:0..N — mỗi detail phát hành đúng <code>capacity_units_snapshot</code> ticket (1 cho ghế thường, 2 cho ghế Couple); Payment–Refund là 1:0..1 nhờ UNIQUE payment_id.
+| `app_user` | C03 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `role` | C03 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `user_role` | C03 | `PRIMARY KEY (user_id,role_id)` |
+| `user_claim` | C03 / ASP.NET Core Identity support | `id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `role_claim` | C03 / ASP.NET Core Identity support | `id integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `user_login` | C03 / ASP.NET Core Identity support | `PRIMARY KEY (login_provider,provider_key)` |
+| `user_token` | C03 / ASP.NET Core Identity support | `PRIMARY KEY (user_id,login_provider,name)` |
+| `authenticated_session` | C03 | `id uuid PRIMARY KEY` |
+| `refresh_token` | C03 | `id uuid PRIMARY KEY` |
+| `session_replacement_challenge` | C03 | `id uuid PRIMARY KEY` |
+| `email_verification_request` | C03 | `id uuid PRIMARY KEY` |
+| `email_address_claim` | C03 | `normalized_email varchar(256) PRIMARY KEY CHECK (btrim(normalized_email) <> '')` |
+| `checkout_identity` | C08 | `id uuid PRIMARY KEY` |
+| `movie` | C04 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `genre` | C04 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `movie_genre` | C04 | `PRIMARY KEY (movie_id,genre_id)` |
+| `cinema` | C05 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `cinema_assignment` | C03 | `PRIMARY KEY (user_id,cinema_id,assignment_role)` |
+| `cinema_room` | C05 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `seat_type` | C05 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `seat` | C05 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `ticket_category` | C07 | `code varchar(16) PRIMARY KEY CHECK (code IN ('Adult','Discounted'))` |
+| `cinema_ticket_price` | C07 | `PRIMARY KEY (cinema_id,category_code)` |
+| `showtime` | C06 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `showtime_change` | C06 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `selection_session` | C08 | `id uuid PRIMARY KEY` |
+| `selection_seat` | C08 | `PRIMARY KEY (selection_id,seat_id)` |
+| `booking` | C08 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `booking_category` | C08 | `PRIMARY KEY (booking_id,category_code)` |
+| `booking_seat` | C08 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `operation_receipt` | C13 mechanism; caller owns result | `id uuid PRIMARY KEY` |
+| `payment` | C09 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `payment_event` | C09 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `ticket` | C11 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `admission_operation` | C11 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `cancellation_request` | C10 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `refund` | C10 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `refund_completion_evidence` | C10 | `refund_id bigint PRIMARY KEY REFERENCES refund(id)` |
+| `notification_request` | C15 | `id uuid PRIMARY KEY` |
+| `notification_attempt` | C15 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `audit_event` | C16 | `id bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
 
 ## 3. Đặc tả từng bảng
 
-### 3.1. movie
-
-| Cột | Kiểu PostgreSQL | NULL? | Mặc định | Khóa/duy nhất | CHECK / ghi chú |
-|---|---|---:|---|---|---|
-| <code>id</code> | <code>bigint GENERATED ALWAYS AS IDENTITY</code> | Không | Identity | PK | ID nội bộ |
-| <code>title</code> | <code>varchar(255)</code> | Không | — | — | Không rỗng sau trim |
-| <code>description</code> | <code>text</code> | Có | NULL | — | — |
-| <code>duration_minutes</code> | <code>smallint</code> | Không | — | — | Lớn hơn 0 |
-| <code>release_date</code> | <code>date</code> | Có | NULL | — | — |
-| <code>poster_url</code> | <code>text</code> | Có | NULL | — | — |
-| <code>trailer_url</code> | <code>text</code> | Có | NULL | — | — |
-| <code>language</code> | <code>varchar(50)</code> | Có | NULL | — | — |
-| <code>age_rating</code> | <code>varchar(20)</code> | Có | NULL | — | Nhãn không tự quyết định quyền mua |
-| <code>status</code> | <code>varchar(20)</code> | Không | <code>coming_soon</code> | — | <code>coming_soon</code>, <code>now_showing</code>, <code>ended</code>, <code>archived</code> |
-
-Ràng buộc: <code>ck_movie_duration_positive</code>, <code>ck_movie_status</code>, <code>ck_movie_title_nonblank</code>. Không unique title; phim đã có lịch được lưu trữ bằng status, không xóa lịch sử. Index bổ sung: <code>ix_movie_status_release_date_id(status, release_date DESC, id)</code>.
-
-### 3.2. genre
-
-| Cột | Kiểu PostgreSQL | NULL? | Mặc định | Khóa/duy nhất | CHECK / ghi chú |
-|---|---|---:|---|---|---|
-| <code>id</code> | <code>bigint GENERATED ALWAYS AS IDENTITY</code> | Không | Identity | PK | — |
-| <code>code</code> | <code>varchar(30)</code> | Không | — | UQ | Mã ổn định |
-| <code>name</code> | <code>varchar(100)</code> | Không | — | UQ chuẩn hóa | Unique theo <code>lower(btrim(name))</code> |
-| <code>description</code> | <code>text</code> | Có | NULL | — | — |
-| <code>is_active</code> | <code>boolean</code> | Không | <code>true</code> | — | — |
-
-Ràng buộc: <code>uq_genre_code</code>; unique expression index <code>ux_genre_name_normalized(lower(btrim(name)))</code>; CHECK chuỗi bắt buộc không rỗng. Thể loại đang được tham chiếu không xóa; có thể đặt inactive.
-
-### 3.3. movie_genre
-
-| Cột | Kiểu PostgreSQL | NULL? | Mặc định | Khóa/duy nhất | CHECK / ghi chú |
-|---|---|---:|---|---|---|
-| <code>movie_id</code> | <code>bigint</code> | Không | — | PK ghép, FK | → <code>movie(id)</code> |
-| <code>genre_id</code> | <code>bigint</code> | Không | — | PK ghép, FK | → <code>genre(id)</code> |
-
-PK <code>(movie_id, genre_id)</code> ngăn gán lặp. FK movie dùng <code>ON DELETE CASCADE</code> chỉ khi phim đủ điều kiện hard delete. FK genre dùng RESTRICT. Lưu ý PostgreSQL: CASCADE là vô điều kiện trong DDL; an toàn ở đây là bảo vệ gián tiếp — phim đã có lịch không xóa được vì <code>showtime.movie_id</code> dùng RESTRICT, nên CASCADE trên <code>movie_genre.movie_id</code> chỉ có thể kích hoạt trên phim không còn tham chiếu lịch sử. Index bổ sung: <code>ix_movie_genre_genre_movie(genre_id, movie_id)</code>.
-
-### 3.4. cinema
-
-| Cột | Kiểu PostgreSQL | NULL? | Mặc định | Khóa/duy nhất | CHECK / ghi chú |
-|---|---|---:|---|---|---|
-| <code>id</code> | <code>bigint GENERATED ALWAYS AS IDENTITY</code> | Không | Identity | PK | — |
-| <code>code</code> | <code>varchar(30)</code> | Không | — | UQ | Mã duy nhất toàn hệ thống |
-| <code>name</code> | <code>varchar(150)</code> | Không | — | — | Không rỗng |
-| <code>address</code> | <code>text</code> | Không | — | — | Không rỗng |
-| <code>phone</code> | <code>varchar(30)</code> | Có | NULL | — | Không mặc định duy nhất |
-| <code>status</code> | <code>varchar(20)</code> | Không | <code>active</code> | — | <code>active</code>, <code>inactive</code> |
-
-Ràng buộc: <code>uq_cinema_code</code>; CHECK status và chuỗi bắt buộc không rỗng. Không hard delete rạp đã có phòng/lịch/đơn. Index bổ sung: <code>ix_cinema_room_cinema_id(cinema_id)</code> phục vụ FK cinema và tra cứu phòng theo rạp.
-
-### 3.5. cinema_room
-
-| Cột | Kiểu PostgreSQL | NULL? | Mặc định | Khóa/duy nhất | CHECK / ghi chú |
-|---|---|---:|---|---|---|
-| <code>id</code> | <code>bigint GENERATED ALWAYS AS IDENTITY</code> | Không | Identity | PK | — |
-| <code>cinema_id</code> | <code>bigint</code> | Không | — | FK | → <code>cinema(id)</code> |
-| <code>code</code> | <code>varchar(20)</code> | Không | — | UQ ghép | Duy nhất trong rạp |
-| <code>name</code> | <code>varchar(100)</code> | Không | — | UQ ghép chuẩn hóa | Duy nhất trong rạp theo trim/lower |
-| <code>status</code> | <code>varchar(20)</code> | Không | <code>active</code> | — | <code>active</code>, <code>maintenance</code>, <code>inactive</code> |
-
-FK cinema dùng RESTRICT. Unique <code>(cinema_id, code)</code>; unique expression index <code>ux_cinema_room_name_normalized(cinema_id, lower(btrim(name)))</code>; CHECK status/chuỗi. Không lưu capacity; sức chứa suy ra từ ghế và loại ghế.
-
-### 3.6. seat_type
-
-| Cột | Kiểu PostgreSQL | NULL? | Mặc định | Khóa/duy nhất | CHECK / ghi chú |
-|---|---|---:|---|---|---|
-| <code>id</code> | <code>bigint GENERATED ALWAYS AS IDENTITY</code> | Không | Identity | PK | — |
-| <code>code</code> | <code>varchar(30)</code> | Không | — | UQ | Ví dụ STANDARD, VIP, COUPLE |
-| <code>name</code> | <code>varchar(100)</code> | Không | — | UQ chuẩn hóa | Unique sau trim/lower |
-| <code>capacity_units</code> | <code>smallint</code> | Không | <code>1</code> | — | Chỉ 1 hoặc 2 |
-| <code>surcharge_amount</code> | <code>numeric(14,0)</code> | Không | <code>0</code> | — | VND, không âm |
-| <code>is_active</code> | <code>boolean</code> | Không | <code>true</code> | — | — |
-
-Ràng buộc: UQ code; unique expression index trên tên chuẩn hóa; CHECK <code>capacity_units IN (1, 2)</code>, <code>surcharge_amount &gt;= 0</code> và chuỗi bắt buộc không rỗng. Thay phụ thu không đổi giá snapshot của booking cũ.
-
-### 3.7. seat
-
-| Cột | Kiểu PostgreSQL | NULL? | Mặc định | Khóa/duy nhất | CHECK / ghi chú |
-|---|---|---:|---|---|---|
-| <code>id</code> | <code>bigint GENERATED ALWAYS AS IDENTITY</code> | Không | Identity | PK | — |
-| <code>cinema_room_id</code> | <code>bigint</code> | Không | — | FK | → <code>cinema_room(id)</code> |
-| <code>seat_type_id</code> | <code>bigint</code> | Không | — | FK | → <code>seat_type(id)</code> |
-| <code>row_label</code> | <code>varchar(10)</code> | Không | — | — | Chuẩn hóa chữ hoa ở backend, không rỗng |
-| <code>seat_number</code> | <code>smallint</code> | Không | — | — | Lớn hơn 0 |
-| <code>status</code> | <code>varchar(20)</code> | Không | <code>active</code> | — | <code>active</code>, <code>maintenance</code>, <code>inactive</code> |
-
-FK phòng và loại ghế dùng RESTRICT. Unique vị trí <code>(cinema_room_id, row_label, seat_number)</code>; composite UQ <code>(id, cinema_room_id)</code> làm đích FK ghép; CHECK số ghế dương, status hợp lệ và chuỗi không rỗng. Seat.status là trạng thái vật lý, không biểu diễn held/sold. Index bổ sung: <code>ix_seat_seat_type_id(seat_type_id)</code>.
-
-### 3.8. ticket_type
-
-| Cột | Kiểu PostgreSQL | NULL? | Mặc định | Khóa/duy nhất | CHECK / ghi chú |
-|---|---|---:|---|---|---|
-| <code>id</code> | <code>bigint GENERATED ALWAYS AS IDENTITY</code> | Không | Identity | PK | — |
-| <code>code</code> | <code>varchar(30)</code> | Không | — | UQ | Ví dụ ADULT, CHILD, STUDENT |
-| <code>name</code> | <code>varchar(100)</code> | Không | — | UQ chuẩn hóa | Unique sau trim/lower |
-| <code>discount_percent</code> | <code>numeric(5,2)</code> | Không | <code>0</code> | — | 0 đến 100 |
-| <code>eligibility_note</code> | <code>text</code> | Có | NULL | — | Điều kiện áp dụng |
-| <code>is_active</code> | <code>boolean</code> | Không | <code>true</code> | — | — |
-
-Ràng buộc: UQ code; unique expression index trên tên chuẩn hóa; CHECK <code>discount_percent BETWEEN 0 AND 100</code>. Backend xác minh điều kiện loại vé, không nhận mức giảm từ client.
-
-### 3.9. showtime
-
-| Cột | Kiểu PostgreSQL | NULL? | Mặc định | Khóa/duy nhất | CHECK / ghi chú |
-|---|---|---:|---|---|---|
-| <code>id</code> | <code>bigint GENERATED ALWAYS AS IDENTITY</code> | Không | Identity | PK | — |
-| <code>movie_id</code> | <code>bigint</code> | Không | — | FK | → <code>movie(id)</code> |
-| <code>cinema_room_id</code> | <code>bigint</code> | Không | — | FK | → <code>cinema_room(id)</code> |
-| <code>movie_title_snapshot</code> | <code>varchar(255)</code> | Không | — | — | Tên tại lúc lập lịch |
-| <code>room_name_snapshot</code> | <code>varchar(100)</code> | Không | — | — | Tên phòng tại lúc lập lịch |
-| <code>duration_minutes_snapshot</code> | <code>smallint</code> | Không | — | — | Lớn hơn 0 |
-| <code>starts_at</code> | <code>timestamptz</code> | Không | — | — | Bắt đầu |
-| <code>ends_at</code> | <code>timestamptz</code> | Không | — | — | Kết thúc suất |
-| <code>room_available_at</code> | <code>timestamptz</code> | Không | — | — | Bao gồm thời gian dọn phòng |
-| <code>booking_closes_at</code> | <code>timestamptz</code> | Có | NULL | — | NULL nếu chưa cấu hình cutoff |
-| <code>base_price</code> | <code>numeric(14,0)</code> | Không | — | — | VND, lớn hơn 0 |
-| <code>status</code> | <code>varchar(20)</code> | Không | <code>draft</code> | — | <code>draft</code>, <code>scheduled</code>, <code>in_progress</code>, <code>completed</code>, <code>cancelled</code> |
-| <code>cancelled_at</code> | <code>timestamptz</code> | Có | NULL | — | Bắt buộc nếu cancelled |
-| <code>cancellation_reason</code> | <code>text</code> | Có | NULL | — | Bắt buộc, không rỗng nếu cancelled |
-
-FK movie/room dùng RESTRICT. Composite UQ <code>(id, cinema_room_id)</code> làm đích FK ghép. CHECK thời lượng/giá dương; <code>starts_at &lt; ends_at &lt;= room_available_at</code>; <code>booking_closes_at IS NULL OR booking_closes_at &lt;= starts_at</code>; status hợp lệ; trạng thái cancelled tương đương có cancelled_at và lý do không rỗng, status khác không có hai giá trị này.
-
-Exclusion constraint <code>ex_showtime_room_time</code> ngăn các khoảng <code>[starts_at, room_available_at)</code> giao nhau trong cùng phòng, trừ suất cancelled. Cần extension <code>btree_gist</code>; constraint dùng <code>cinema_room_id WITH =</code> và <code>tstzrange(starts_at, room_available_at, '[)') WITH &amp;&amp;</code> với predicate <code>status &lt;&gt; 'cancelled'</code>. Service vẫn kiểm tra status phòng/phim, thời lượng và điều kiện mở bán. Index bổ sung: <code>ix_showtime_movie_starts_at(movie_id, starts_at)</code>, <code>ix_showtime_room_starts_at(cinema_room_id, starts_at)</code>.
-
-### 3.10. app_user
-
-| Cột | Kiểu PostgreSQL | NULL? | Mặc định | Khóa/duy nhất | CHECK / ghi chú |
-|---|---|---:|---|---|---|
-| <code>id</code> | <code>bigint GENERATED ALWAYS AS IDENTITY</code> | Không | Identity | PK | — |
-| <code>email</code> | <code>varchar(254)</code> | Không | — | UQ chuẩn hóa | Unique theo <code>lower(btrim(email))</code> |
-| <code>password_hash</code> | <code>text</code> | Không | — | — | Chỉ lưu hash |
-| <code>full_name</code> | <code>varchar(150)</code> | Không | — | — | Không rỗng sau trim |
-| <code>phone</code> | <code>varchar(20)</code> | Có | NULL | — | Không mặc định duy nhất |
-| <code>status</code> | <code>varchar(20)</code> | Không | <code>active</code> | — | <code>active</code>, <code>locked</code>, <code>deactivated</code> |
-| <code>email_verified_at</code> | <code>timestamptz</code> | Có | NULL | — | — |
-| <code>last_login_at</code> | <code>timestamptz</code> | Có | NULL | — | — |
-
-Ràng buộc: unique expression index <code>ux_app_user_email_normalized</code>; CHECK status và email/password_hash/full_name không rỗng. Không lưu mật khẩu gốc; email chuẩn hóa không gộp các biến thể dấu chấm/dấu cộng theo quy tắc riêng của nhà cung cấp.
-
-### 3.11. role
-
-| Cột | Kiểu PostgreSQL | NULL? | Mặc định | Khóa/duy nhất | CHECK / ghi chú |
-|---|---|---:|---|---|---|
-| <code>id</code> | <code>bigint GENERATED ALWAYS AS IDENTITY</code> | Không | Identity | PK | — |
-| <code>code</code> | <code>varchar(30)</code> | Không | — | UQ | Mã policy ổn định |
-| <code>name</code> | <code>varchar(100)</code> | Không | — | — | Không rỗng sau trim |
-| <code>description</code> | <code>text</code> | Có | NULL | — | — |
-| <code>is_active</code> | <code>boolean</code> | Không | <code>true</code> | — | — |
-
-Ràng buộc: <code>uq_role_code</code>; CHECK code/name không rỗng. Mã seed dự kiến CUSTOMER, STAFF, MANAGER, ADMIN; quyền được backend authorization policy quyết định.
-
-### 3.12. user_role
-
-| Cột | Kiểu PostgreSQL | NULL? | Mặc định | Khóa/duy nhất | CHECK / ghi chú |
-|---|---|---:|---|---|---|
-| <code>user_id</code> | <code>bigint</code> | Không | — | PK ghép, FK | → <code>app_user(id)</code> |
-| <code>role_id</code> | <code>bigint</code> | Không | — | PK ghép, FK | → <code>role(id)</code> |
-| <code>assigned_at</code> | <code>timestamptz</code> | Không | <code>CURRENT_TIMESTAMP</code> | — | Thời điểm cấp |
-| <code>assigned_by_user_id</code> | <code>bigint</code> | Có | NULL | FK | → <code>app_user(id)</code> |
-
-PK <code>(user_id, role_id)</code> ngăn cấp trùng. FK user_id có thể CASCADE chỉ khi user chưa có dữ liệu lịch sử cần giữ. Tương tự FK movie_genre, CASCADE là vô điều kiện trong DDL; an toàn là bảo vệ gián tiếp do <code>booking.user_id</code>, <code>ticket.validated_by_user_id</code> và <code>user_role.assigned_by_user_id</code> dùng RESTRICT, nên tài khoản đã có dữ liệu lịch sử không thể bị xóa vật lý (chỉ `deactivated`). role_id và assigned_by_user_id dùng RESTRICT. Index bổ sung: <code>ix_user_role_role_user(role_id, user_id)</code>, <code>ix_user_role_assigned_by(assigned_by_user_id)</code>.
-
-### 3.13. booking
-
-| Cột | Kiểu PostgreSQL | NULL? | Mặc định | Khóa/duy nhất | CHECK / ghi chú |
-|---|---|---:|---|---|---|
-| <code>id</code> | <code>bigint GENERATED ALWAYS AS IDENTITY</code> | Không | Identity | PK | — |
-| <code>booking_code</code> | <code>uuid</code> | Không | — | UQ | Backend sinh mã tra cứu |
-| <code>user_id</code> | <code>bigint</code> | Không | — | FK | → <code>app_user(id)</code> |
-| <code>showtime_id</code> | <code>bigint</code> | Không | — | FK ghép | Cùng cinema_room_id → showtime |
-| <code>cinema_room_id</code> | <code>bigint</code> | Không | — | FK ghép | Phòng của showtime |
-| <code>request_key</code> | <code>uuid</code> | Không | — | UQ ghép | Idempotency |
-| <code>request_fingerprint</code> | <code>varchar(64)</code> | Không | — | — | SHA-256 dữ liệu đặt chuẩn hóa |
-| <code>contact_email_snapshot</code> | <code>varchar(254)</code> | Không | — | — | Email tại thời điểm đặt |
-| <code>contact_phone_snapshot</code> | <code>varchar(20)</code> | Có | NULL | — | — |
-| <code>total_amount</code> | <code>numeric(14,0)</code> | Không | — | — | VND, lớn hơn 0 |
-| <code>currency</code> | <code>varchar(3)</code> | Không | <code>VND</code> | — | CHECK bằng VND trong MVP |
-| <code>expires_at</code> | <code>timestamptz</code> | Không | — | — | Hạn giữ ghế |
-| <code>status</code> | <code>varchar(20)</code> | Không | <code>pending</code> | — | <code>pending</code>, <code>confirmed</code>, <code>expired</code>, <code>cancelled</code> |
-| <code>confirmed_at</code> | <code>timestamptz</code> | Có | NULL | — | Bắt buộc khi confirmed |
-| <code>cancelled_at</code> | <code>timestamptz</code> | Có | NULL | — | Bắt buộc khi cancelled |
-| <code>cancellation_reason</code> | <code>text</code> | Có | NULL | — | Bắt buộc, không rỗng khi cancelled |
-| <code>created_at</code> | <code>timestamptz</code> | Không | <code>CURRENT_TIMESTAMP</code> | — | Bắt đầu thời gian giữ |
-
-FK user và FK ghép <code>(showtime_id, cinema_room_id) → showtime(id, cinema_room_id)</code> dùng RESTRICT. UNIQUE: booking_code; <code>(user_id, request_key)</code>; <code>(id, showtime_id, cinema_room_id)</code> là UQ kỹ thuật làm đích FK ghép từ detail.
-
-CHECK: total_amount dương; currency VND; expires_at lớn hơn created_at; status hợp lệ; confirmed phải có confirmed_at, pending/expired không có; cancelled phải có cancelled_at và lý do không rỗng, status khác không có trường hủy. Một booking `cancelled` được phép giữ lại `confirmed_at` nếu trước đó từng được xác nhận (phù hợp `database-design.md` mục 23.1; trong MVP luồng hủy sau xác nhận không tồn tại nên trạng thái này không xảy ra, CHECK vẫn cho phép để mở rộng sau này không phải đổi constraint). Check không thể tính tổng các detail. Transaction tạo booking phải tạo ít nhất một detail và giữ toàn bộ ghế nguyên tử. Hạn giữ là 5 phút từ created_at do service/worker thực thi. Cùng user/request_key nhưng khác fingerprint bị từ chối.
-
-Index bổ sung: <code>ix_booking_user_history(user_id, created_at DESC, id DESC)</code>; <code>ix_booking_showtime_status(showtime_id, status, id)</code>; <code>ix_booking_expiry(expires_at, id) WHERE status = 'pending'</code>.
-
-### 3.14. booking_detail
-
-| Cột | Kiểu PostgreSQL | NULL? | Mặc định | Khóa/duy nhất | CHECK / ghi chú |
-|---|---|---:|---|---|---|
-| <code>id</code> | <code>bigint GENERATED ALWAYS AS IDENTITY</code> | Không | Identity | PK | — |
-| <code>booking_id</code> | <code>bigint</code> | Không | — | FK ghép | Cùng suất/phòng → booking |
-| <code>showtime_id</code> | <code>bigint</code> | Không | — | FK ghép, UQ-P | Ghế hiệu lực duy nhất theo suất |
-| <code>cinema_room_id</code> | <code>bigint</code> | Không | — | FK ghép | Khớp booking và seat |
-| <code>seat_id</code> | <code>bigint</code> | Không | — | FK ghép, UQ | Ghế vật lý |
-| <code>ticket_type_id</code> | <code>bigint</code> | Không | — | FK | → <code>ticket_type(id)</code> |
-| <code>seat_label_snapshot</code> | <code>varchar(30)</code> | Không | — | — | Nhãn tại lúc đặt |
-| <code>seat_type_name_snapshot</code> | <code>varchar(100)</code> | Không | — | — | Loại ghế tại lúc đặt |
-| <code>ticket_type_name_snapshot</code> | <code>varchar(100)</code> | Không | — | — | Loại vé tại lúc đặt |
-| <code>capacity_units_snapshot</code> | <code>smallint</code> | Không | — | — | Chỉ 1 hoặc 2 |
-| <code>base_amount</code> | <code>numeric(14,0)</code> | Không | — | — | VND, lớn hơn 0 |
-| <code>surcharge_amount</code> | <code>numeric(14,0)</code> | Không | — | — | VND, không âm |
-| <code>discount_percent_snapshot</code> | <code>numeric(5,2)</code> | Không | — | — | 0 đến 100 |
-| <code>discount_amount</code> | <code>numeric(14,0)</code> | Không | — | — | 0 đến base_amount |
-| <code>unit_price</code> | <code>numeric(14,0)</code> | Không | — | — | VND, không âm; base + surcharge − discount |
-| <code>allocation_status</code> | <code>varchar(20)</code> | Không | <code>held</code> | UQ-P có điều kiện | <code>held</code>, <code>sold</code>, <code>released</code> |
-| <code>released_at</code> | <code>timestamptz</code> | Có | NULL | — | Có đúng khi released |
-
-FK ghép: <code>(booking_id, showtime_id, cinema_room_id) → booking(id, showtime_id, cinema_room_id)</code>; <code>(seat_id, cinema_room_id) → seat(id, cinema_room_id)</code>; FK ticket_type → ticket_type(id). Dùng RESTRICT. UNIQUE toàn phần <code>(booking_id, seat_id)</code>; UQ kỹ thuật <code>(booking_id, showtime_id, cinema_room_id)</code>; partial unique index <code>ux_booking_detail_active_seat(showtime_id, seat_id) WHERE allocation_status IN ('held', 'sold')</code>.
-
-CHECK: capacity_units_snapshot thuộc {1,2}; base_amount dương; surcharge_amount không âm; discount_percent_snapshot từ 0 đến 100; <code>0 &lt;= discount_amount &lt;= base_amount</code>; <code>unit_price &gt;= 0</code> và <code>unit_price = base_amount + surcharge_amount - discount_amount</code>; status hợp lệ; released tương đương released_at có giá trị. Giá snapshot do backend tính, không cập nhật theo danh mục. Giảm giá chỉ áp dụng base_amount; phụ thu tính một lần mỗi detail. Tổng booking được tính trong transaction, không phải CHECK liên bảng.
-
-Index bổ sung: <code>ix_booking_detail_seat_room(seat_id, cinema_room_id)</code>; <code>ix_booking_detail_ticket_type(ticket_type_id)</code>; <code>ix_booking_detail_showtime_seat(showtime_id, seat_id)</code> — index toàn phần phục vụ tra cứu mọi detail theo suất (kể cả `released`), kiểm tra RESTRICT khi xóa showtime và làm đường tra cứu cho FK ghép; index partial `ux_booking_detail_active_seat` vẫn giữ vai trò ràng buộc duy nhất, không thay thế index toàn phần này.
-
-### 3.15. ticket
-
-| Cột | Kiểu PostgreSQL | NULL? | Mặc định | Khóa/duy nhất | CHECK / ghi chú |
-|---|---|---:|---|---|---|
-| <code>id</code> | <code>bigint GENERATED ALWAYS AS IDENTITY</code> | Không | Identity | PK | — |
-| <code>booking_detail_id</code> | <code>bigint</code> | Không | — | FK | → <code>booking_detail(id)</code>; mỗi detail phát hành đúng <code>capacity_units_snapshot</code> vé |
-| <code>ticket_code</code> | <code>uuid</code> | Không | — | UQ | Backend sinh mã |
-| <code>status</code> | <code>varchar(20)</code> | Không | <code>valid</code> | — | <code>valid</code>, <code>used</code>, <code>voided</code> |
-| <code>issued_at</code> | <code>timestamptz</code> | Không | — | — | Thời điểm phát hành |
-| <code>used_at</code> | <code>timestamptz</code> | Có | NULL | — | Thời điểm soát thành công |
-| <code>validated_by_user_id</code> | <code>bigint</code> | Có | NULL | FK | → <code>app_user(id)</code> |
-| <code>voided_at</code> | <code>timestamptz</code> | Có | NULL | — | Thời điểm vô hiệu hóa |
-| <code>void_reason</code> | <code>text</code> | Có | NULL | — | Lý do vô hiệu |
-
-FK booking_detail và validated_by_user dùng RESTRICT; không còn UNIQUE trên booking_detail_id — số vé theo detail là bất biến nghiệp vụ: mỗi detail phát hành đúng <code>capacity_units_snapshot</code> vé (1 ghế thường = 1 vé, ghế Couple = 2 vé độc lập, mỗi người soát vé riêng). Idempotency phát hành do service bảo đảm trong transaction áp dụng payment (đếm vé hiện có của detail, chỉ chèn phần thiếu). CHECK status/timestamp: valid không có mốc dùng/hủy; used có used_at và validated_by_user_id, không có dữ liệu hủy; voided có voided_at và lý do không rỗng, không có used_at. Vé used không được void theo quy tắc hiện tại. Index bổ sung: <code>ix_ticket_validated_by_user(validated_by_user_id)</code>; <code>ix_ticket_booking_detail(booking_detail_id)</code> phục vụ tra cứu/đếm vé theo detail (trước đây do UQ đảm nhiệm).
-
-### 3.16. payment
-
-| Cột | Kiểu PostgreSQL | NULL? | Mặc định | Khóa/duy nhất | CHECK / ghi chú |
-|---|---|---:|---|---|---|
-| <code>id</code> | <code>bigint GENERATED ALWAYS AS IDENTITY</code> | Không | Identity | PK | — |
-| <code>booking_id</code> | <code>bigint</code> | Không | — | FK | → <code>booking(id)</code> |
-| <code>provider</code> | <code>varchar(30)</code> | Không | — | — | Mã cổng |
-| <code>merchant_request_id</code> | <code>uuid</code> | Không | — | UQ | Backend sinh idempotency key |
-| <code>provider_transaction_id</code> | <code>varchar(150)</code> | Có | NULL | UQ-P | Unique theo provider nếu khác NULL |
-| <code>method</code> | <code>varchar(50)</code> | Có | NULL | — | Phương thức do cổng xác nhận |
-| <code>amount</code> | <code>numeric(14,0)</code> | Không | — | — | VND, lớn hơn 0 |
-| <code>currency</code> | <code>varchar(3)</code> | Không | <code>VND</code> | — | CHECK bằng VND trong MVP |
-| <code>received_amount</code> | <code>numeric(18,2)</code> | Có | NULL | — | Số tiền thực thu đã xác minh, không âm |
-| <code>received_currency</code> | <code>varchar(3)</code> | Có | NULL | — | Tiền tệ thực thu |
-| <code>status</code> | <code>varchar(20)</code> | Không | <code>created</code> | UQ-P có điều kiện | <code>created</code>, <code>pending</code>, <code>unknown</code>, <code>succeeded</code>, <code>failed</code>, <code>cancelled</code> |
-| <code>applied_at</code> | <code>timestamptz</code> | Có | NULL | UQ-P có điều kiện | Lần thu được áp dụng cho booking |
-| <code>paid_at</code> | <code>timestamptz</code> | Có | NULL | — | Thời điểm cổng báo thu |
-| <code>verified_at</code> | <code>timestamptz</code> | Có | NULL | — | Backend xác minh |
-| <code>reconciliation_status</code> | <code>varchar(20)</code> | Không | <code>none</code> | — | <code>none</code>, <code>needs_review</code>, <code>refund_required</code>, <code>resolved</code> |
-| <code>failure_code</code> | <code>varchar(100)</code> | Có | NULL | — | Mã lỗi đã lọc |
-| <code>next_reconcile_at</code> | <code>timestamptz</code> | Có | <code>CURRENT_TIMESTAMP</code> | — | NULL khi không còn retry |
-| <code>created_at</code> | <code>timestamptz</code> | Không | <code>CURRENT_TIMESTAMP</code> | — | Thời điểm tạo attempt |
-
-FK booking dùng RESTRICT. UNIQUE merchant_request_id; UQ kỹ thuật <code>(id, provider)</code> làm đích FK ghép từ refund. Partial unique indexes: <code>ux_payment_provider_transaction(provider, provider_transaction_id) WHERE provider_transaction_id IS NOT NULL</code>; <code>ux_payment_open_booking(booking_id) WHERE status IN ('created', 'pending', 'unknown')</code>; <code>ux_payment_applied_booking(booking_id) WHERE applied_at IS NOT NULL</code>.
-
-CHECK: amount dương; currency VND; received_amount nếu có thì không âm; status/reconciliation_status hợp lệ; chuỗi bắt buộc không rỗng. Succeeded yêu cầu paid_at, verified_at, received_amount, received_currency và provider_transaction_id. Phân bố cột theo trạng thái (CHECK cùng hàng):
-
-- `paid_at` được phép có từ trạng thái `pending`/`unknown` trở đi nếu cổng đã báo thời điểm thu trước khi backend xác minh; không bắt buộc có trên `pending`/`unknown`; không có trên `created` và `failed`/`cancelled` chưa từng thu.
-- `verified_at`, `received_amount`, `received_currency` chỉ được đặt khi `status = 'succeeded'`; các trạng thái khác không có ba cột này.
-- `provider_transaction_id` được phép đặt ngay khi cổng trả về mã giao dịch (kể cả khi payment còn `pending`/`unknown`), để phục vụ đối soát; unique theo provider vẫn chỉ áp dụng khi khác NULL.
-- `applied_at` chỉ được đặt khi `status = 'succeeded'` và `received_amount`/`received_currency` khớp `amount`/`currency`.
-
-Việc cho phép `paid_at`/`provider_transaction_id` xuất hiện trước khi xác minh phản ánh hành vi cổng báo thu sớm; định nghĩa chi tiết lifecycle của cổng cụ thể còn phụ thuộc OQ-01 (OPEN) và có thể cần điều chỉnh khi chọn cổng. Đối chiếu amount/currency với booking, điều kiện booking pending và cập nhật booking/detail/ticket là invariant của service transaction.
-
-Index bổ sung: <code>ix_payment_booking_created(booking_id, created_at DESC)</code>; <code>ix_payment_reconcile_due(next_reconcile_at, id) WHERE status IN ('created', 'pending', 'unknown')</code>; <code>ix_payment_reconciliation_queue(reconciliation_status, created_at, id) WHERE reconciliation_status IN ('needs_review', 'refund_required')</code>; <code>ix_payment_paid_at(paid_at) WHERE status = 'succeeded'</code>.
-
-### 3.17. payment_event
-
-| Cột | Kiểu PostgreSQL | NULL? | Mặc định | Khóa/duy nhất | CHECK / ghi chú |
-|---|---|---:|---|---|---|
-| <code>id</code> | <code>bigint GENERATED ALWAYS AS IDENTITY</code> | Không | Identity | PK | — |
-| <code>payment_id</code> | <code>bigint</code> | Không | — | FK | → <code>payment(id)</code> |
-| <code>source</code> | <code>varchar(20)</code> | Không | — | — | <code>webhook</code>, <code>reconcile</code> |
-| <code>event_key</code> | <code>varchar(200)</code> | Không | — | UQ ghép | Idempotency trong payment |
-| <code>event_type</code> | <code>varchar(50)</code> | Không | — | — | Loại sự kiện |
-| <code>payload_summary</code> | <code>jsonb</code> | Không | <code>'{}'::jsonb</code> | — | Dữ liệu tích hợp đã lọc |
-| <code>received_at</code> | <code>timestamptz</code> | Không | <code>CURRENT_TIMESTAMP</code> | — | Thời điểm tiếp nhận |
-| <code>processed_at</code> | <code>timestamptz</code> | Có | NULL | — | Thời điểm xử lý thành công |
-| <code>status</code> | <code>varchar(20)</code> | Không | <code>received</code> | — | <code>received</code>, <code>processed</code>, <code>failed</code> |
-| <code>retry_count</code> | <code>integer</code> | Không | <code>0</code> | — | Không âm |
-| <code>next_retry_at</code> | <code>timestamptz</code> | Có | <code>CURRENT_TIMESTAMP</code> | — | NULL khi không retry |
-| <code>last_error</code> | <code>varchar(500)</code> | Có | NULL | — | Lỗi đã lọc |
-
-FK payment dùng RESTRICT. UNIQUE <code>(payment_id, event_key)</code>; CHECK source/status, retry_count không âm, chuỗi bắt buộc không rỗng và processed tương đương processed_at có giá trị. Event được lưu trước ACK; đánh dấu processed và cập nhật nghiệp vụ phải commit cùng transaction xử lý. Xử lý đồng thời cùng một event được tuần tự hóa bằng khóa: worker phải claim dòng event bằng `SELECT ... FOR UPDATE` (hoặc `FOR UPDATE SKIP LOCKED` theo protocol khóa mục 31 của database-design) trước khi xử lý; worker không giữ khóa không xử lý được event. Không thêm trạng thái `processing` vào miền `status` hiện tại (`received`, `processed`, `failed`); nếu sau này muốn claim bằng chuyển trạng thái có điều kiện, phải mở rộng miền trạng thái qua migration — quyết định này chưa chốt. Index bổ sung: <code>ix_payment_event_retry(next_retry_at, id) WHERE status IN ('received', 'failed')</code>. Không lưu secret hoặc dữ liệu thẻ trong payload.
-
-### 3.18. refund
-
-Bảng này là cấu trúc mở rộng, không phải luồng MVP.
-
-| Cột | Kiểu PostgreSQL | NULL? | Mặc định | Khóa/duy nhất | CHECK / ghi chú |
-|---|---|---:|---|---|---|
-| <code>id</code> | <code>bigint GENERATED ALWAYS AS IDENTITY</code> | Không | Identity | PK | — |
-| <code>payment_id</code> | <code>bigint</code> | Không | — | UQ, FK | → <code>payment(id)</code>; tối đa một refund/payment |
-| <code>provider</code> | <code>varchar(30)</code> | Không | — | FK ghép, UQ-P | → <code>payment(id, provider)</code>; khớp provider của payment (phi chuẩn hóa có kiểm soát) |
-| <code>merchant_refund_id</code> | <code>uuid</code> | Không | — | UQ | Backend sinh idempotency key |
-| <code>provider_refund_id</code> | <code>varchar(150)</code> | Có | NULL | — | Mã do provider cấp |
-| <code>amount</code> | <code>numeric(18,2)</code> | Không | — | — | Lớn hơn 0 |
-| <code>currency</code> | <code>varchar(3)</code> | Không | — | — | Tiền tệ thực thu |
-| <code>reason</code> | <code>text</code> | Không | — | — | Không rỗng |
-| <code>status</code> | <code>varchar(20)</code> | Không | <code>pending</code> | — | <code>pending</code>, <code>unknown</code>, <code>succeeded</code>, <code>failed</code> |
-| <code>requested_by_user_id</code> | <code>bigint</code> | Có | NULL | FK | → <code>app_user(id)</code>; NULL nếu do hệ thống |
-| <code>completed_at</code> | <code>timestamptz</code> | Có | NULL | — | Có khi succeeded |
-| <code>next_retry_at</code> | <code>timestamptz</code> | Có | <code>CURRENT_TIMESTAMP</code> | — | NULL khi không retry |
-| <code>last_error</code> | <code>varchar(500)</code> | Có | NULL | — | Lỗi đã lọc |
-
-FK ghép <code>(payment_id, provider) → payment(id, provider)</code> dùng RESTRICT bảo đảm <code>refund.provider = payment.provider</code> mà không cần trigger; requested_by_user dùng RESTRICT. UNIQUE payment_id (tối đa một refund/payment) và merchant_refund_id; CHECK amount dương, status hợp lệ, chuỗi bắt buộc không rỗng và succeeded tương đương completed_at có giá trị.
-
-Index bổ sung: partial unique index <code>ux_refund_provider_refund_id(provider, provider_refund_id) WHERE provider_refund_id IS NOT NULL</code> — bảo đảm duy nhất theo provider; nhờ cột <code>provider</code> được khóa bằng FK ghép với <code>payment.provider</code>, không có rủi ro lệch dữ liệu giữa hai cột; <code>ix_refund_retry(next_retry_at, id) WHERE status IN ('pending', 'unknown', 'failed')</code>; <code>ix_refund_requested_by(requested_by_user_id)</code>; <code>ix_refund_completed_at(completed_at) WHERE status = 'succeeded'</code>.
-
-## 4. Toàn vẹn xuyên bảng
-
-- PostgreSQL bảo đảm PK, FK đơn/ghép, UNIQUE, unique partial/expression index, CHECK và exclusion constraint lịch phòng.
-- Service transaction bảo đảm booking có ít nhất một detail; tổng booking bằng tổng snapshot; giá/loại vé do server tính; chuyển trạng thái booking-detail-payment-ticket nguyên tử; expiry/release; xác minh callback và quyền sở hữu.
-- Worker xử lý booking hết hạn, đối soát payment và retry sự kiện. Thời gian trôi qua không tự loại hàng khỏi partial index; không dùng điều kiện index phụ thuộc <code>now()</code>.
-- Không cascade xóa dữ liệu booking/payment/ticket. FK lịch sử dùng RESTRICT; cascade chỉ áp dụng cho relation nối thuần túy như đã nêu.
-- Một ghế có tối đa một detail held/sold trên mỗi suất. Booking pending giữ ghế 5 phút từ created_at; worker/service chuyển booking và detail sang expired/released trong cùng transaction, chỉ khi booking quá hạn và không còn payment attempt `created`/`pending`/`unknown` cần giữ để xử lý (điều kiện hai phần theo `database/database-design.md` mục 31.5/34.1 và BR-BOOK-004). Cửa sổ chờ bị chặn bởi grace period (OQ-07 — RESOLVED, chính sách): sau khi quá <code>expires_at</code> thêm một khoảng ân hạn (đề xuất 2–3 phút, giá trị chính xác là cấu hình triển khai), worker truy vấn trạng thái cổng; nếu cổng xác nhận chưa thu tiền, payment chuyển `failed`/`cancelled` và booking chuyển `expired` + detail `released` trong cùng transaction; nếu cổng không phản hồi xác đáng, payment giữ `unknown` và `reconciliation_status` sang `needs_review` — ghế vẫn giữ (ưu tiên an toàn tài chính), worker tiếp tục retry đối soát.
-- Mỗi booking tối đa một payment attempt created/pending/unknown và tối đa một payment có applied_at. Các attempt succeeded khác vẫn được lưu để tra soát.
-- Callback trùng bị chặn bởi UNIQUE(payment_id, event_key); mỗi booking_detail phát hành đúng capacity_units_snapshot ticket (ghế Couple = 2 vé riêng, mỗi người soát riêng); soát vé bằng cập nhật có điều kiện valid → used trên từng vé.
-- Mã provider_refund_id duy nhất theo provider được bảo đảm trực tiếp bằng refund.provider (FK ghép với payment(id, provider)) và partial unique index ux_refund_provider_refund_id.
-
-## 5. Chuẩn hóa và snapshot
-
-Danh mục lưu riêng; Movie–Genre và AppUser–Role dùng bảng nối; mỗi ghế trong booking là một hàng booking_detail, không lưu danh sách ghế trong chuỗi. Ticket tham chiếu booking_detail thay vì lặp khóa booking, suất, ghế và loại vé.
-
-Schema không tuyên bố mọi bảng đạt 3NF nghiêm ngặt. Snapshot tên phim/phòng, ghế/loại vé/giá cùng booking.total_amount và payment.amount được giữ để bảo toàn nội dung, giá đã chốt và dữ liệu đối soát. Các cột lặp cinema_room_id/showtime_id phục vụ FK ghép chống ghế sai phòng. Backend ghi snapshot trong transaction tạo booking và không tính lại từ danh mục hiện hành.
-
-## 6. Tài liệu liên quan
-
-- <code>database/database-design.md</code> — entity, nghiệp vụ, data type, constraint, index và concurrency.
-- <code>docs/analysis and design/relational-model.md</code> — relation, PK/FK ghép, candidate key, cardinality và chuẩn hóa.
-- <code>database/database-schema.sql</code> — DDL PostgreSQL sẽ được triển khai ở bước tiếp theo.
+### 3.1. app_user
+
+Owner: C03. Logical reference: `docs/analysis and design/relational-model.md`, relation `app_user`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `user_name` | `varchar(256) NOT NULL` |
+| `normalized_user_name` | `varchar(256) NOT NULL UNIQUE` |
+| `primary_email` | `varchar(256) NOT NULL` |
+| `normalized_email` | `varchar(256) NOT NULL UNIQUE` |
+| `email_confirmed` | `boolean NOT NULL DEFAULT false` |
+| `password_hash` | `text` |
+| `security_stamp` | `text` |
+| `concurrency_stamp` | `text` |
+| `phone_number` | `text` |
+| `phone_number_confirmed` | `boolean NOT NULL DEFAULT false` |
+| `two_factor_enabled` | `boolean NOT NULL DEFAULT false` |
+| `lockout_end` | `timestamptz` |
+| `lockout_enabled` | `boolean NOT NULL DEFAULT true` |
+| `access_failed_count` | `integer NOT NULL DEFAULT 0 CHECK (access_failed_count >= 0)` |
+| `full_name` | `varchar(150) NOT NULL CHECK (btrim(full_name) <> '')` |
+| `account_state` | `varchar(20) NOT NULL DEFAULT 'active' CHECK (account_state IN ('active','locked','deactivated'))` |
+| `created_at` | `timestamptz NOT NULL DEFAULT clock_timestamp()` |
+| `version` | `bigint NOT NULL DEFAULT 1 CHECK (version > 0)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+CHECK (btrim(primary_email) <> '' AND btrim(normalized_email) <> '' AND btrim(normalized_user_name) <> '')
+```
+
+### 3.2. role
+
+Owner: C03. Logical reference: `docs/analysis and design/relational-model.md`, relation `role`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `code` | `varchar(30) NOT NULL UNIQUE CHECK (code IN ('CUSTOMER','STAFF','MANAGER','ADMIN'))` |
+| `name` | `varchar(256) NOT NULL` |
+| `normalized_name` | `varchar(256) NOT NULL UNIQUE` |
+| `concurrency_stamp` | `text` |
+
+### 3.3. user_role
+
+Owner: C03. Logical reference: `docs/analysis and design/relational-model.md`, relation `user_role`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `user_id` | `bigint NOT NULL REFERENCES app_user(id)` |
+| `role_id` | `bigint NOT NULL REFERENCES role(id)` |
+| `assigned_at` | `timestamptz NOT NULL DEFAULT clock_timestamp()` |
+| `assigned_by_user_id` | `bigint REFERENCES app_user(id)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+PRIMARY KEY (user_id,role_id)
+```
+
+Index bổ sung:
+
+```sql
+CREATE INDEX ix_user_role_role ON user_role(role_id,user_id);
+```
+
+### 3.4. user_claim
+
+Bảng hỗ trợ Identity store; không thêm numbered use case.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `user_id` | `bigint NOT NULL REFERENCES app_user(id)` |
+| `claim_type` | `text` |
+| `claim_value` | `text` |
+
+Index bổ sung:
+
+```sql
+CREATE INDEX ix_user_claim_owner ON user_claim(user_id);
+```
+
+### 3.5. role_claim
+
+Bảng hỗ trợ Identity store; không thêm numbered use case.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `integer GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `role_id` | `bigint NOT NULL REFERENCES role(id)` |
+| `claim_type` | `text` |
+| `claim_value` | `text` |
+
+Index bổ sung:
+
+```sql
+CREATE INDEX ix_role_claim_owner ON role_claim(role_id);
+```
+
+### 3.6. user_login
+
+Bảng hỗ trợ Identity store; không thêm numbered use case.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `login_provider` | `varchar(128) NOT NULL` |
+| `provider_key` | `varchar(128) NOT NULL` |
+| `provider_display_name` | `text` |
+| `user_id` | `bigint NOT NULL REFERENCES app_user(id)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+PRIMARY KEY (login_provider,provider_key)
+```
+
+Index bổ sung:
+
+```sql
+CREATE INDEX ix_user_login_user ON user_login(user_id);
+```
+
+### 3.7. user_token
+
+Bảng hỗ trợ Identity store; không thêm numbered use case.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `user_id` | `bigint NOT NULL REFERENCES app_user(id)` |
+| `login_provider` | `varchar(128) NOT NULL` |
+| `name` | `varchar(128) NOT NULL` |
+| `value` | `text` |
+
+Ràng buộc cấp bảng:
+
+```sql
+PRIMARY KEY (user_id,login_provider,name)
+```
+
+### 3.8. authenticated_session
+
+Owner: C03. Logical reference: `docs/analysis and design/relational-model.md`, relation `authenticated_session`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `uuid PRIMARY KEY` |
+| `user_id` | `bigint NOT NULL REFERENCES app_user(id)` |
+| `started_at` | `timestamptz NOT NULL` |
+| `expires_at` | `timestamptz NOT NULL` |
+| `revoked_at` | `timestamptz` |
+| `revocation_reason` | `text` |
+| `version` | `bigint NOT NULL DEFAULT 1 CHECK (version > 0)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+UNIQUE (id,user_id),
+CHECK (expires_at > started_at),
+CHECK (revoked_at IS NULL OR revoked_at >= started_at)
+```
+
+Index bổ sung:
+
+```sql
+CREATE UNIQUE INDEX ux_session_unrevoked ON authenticated_session(user_id) WHERE revoked_at IS NULL;
+```
+
+### 3.9. refresh_token
+
+Owner: C03. Logical reference: `docs/analysis and design/relational-model.md`, relation `refresh_token`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `uuid PRIMARY KEY` |
+| `session_id` | `uuid NOT NULL REFERENCES authenticated_session(id)` |
+| `token_hash` | `text NOT NULL UNIQUE CHECK (btrim(token_hash) <> '')` |
+| `created_at` | `timestamptz NOT NULL` |
+| `expires_at` | `timestamptz NOT NULL` |
+| `consumed_at` | `timestamptz` |
+| `revoked_at` | `timestamptz` |
+| `replacement_token_id` | `uuid` |
+
+Ràng buộc cấp bảng:
+
+```sql
+UNIQUE (id,session_id),
+FOREIGN KEY (replacement_token_id,session_id) REFERENCES refresh_token(id,session_id) DEFERRABLE INITIALLY DEFERRED,
+CHECK (expires_at > created_at),
+CHECK (replacement_token_id IS NULL OR (replacement_token_id <> id AND consumed_at IS NOT NULL))
+```
+
+Index bổ sung:
+
+```sql
+CREATE INDEX ix_refresh_session ON refresh_token(session_id);
+```
+
+### 3.10. session_replacement_challenge
+
+Owner: C03. Logical reference: `docs/analysis and design/relational-model.md`, relation `session_replacement_challenge`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `uuid PRIMARY KEY` |
+| `user_id` | `bigint NOT NULL REFERENCES app_user(id)` |
+| `expected_session_id` | `uuid NOT NULL` |
+| `challenge_hash` | `text NOT NULL UNIQUE CHECK (btrim(challenge_hash) <> '')` |
+| `created_at` | `timestamptz NOT NULL` |
+| `expires_at` | `timestamptz NOT NULL` |
+| `consumed_at` | `timestamptz` |
+
+Ràng buộc cấp bảng:
+
+```sql
+FOREIGN KEY (expected_session_id,user_id) REFERENCES authenticated_session(id,user_id),
+CHECK (expires_at > created_at)
+```
+
+### 3.11. email_verification_request
+
+Owner: C03. Logical reference: `docs/analysis and design/relational-model.md`, relation `email_verification_request`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `uuid PRIMARY KEY` |
+| `user_id` | `bigint NOT NULL REFERENCES app_user(id)` |
+| `purpose` | `varchar(24) NOT NULL CHECK (purpose IN ('initial_verification','email_change'))` |
+| `target_email` | `varchar(256) NOT NULL CHECK (btrim(target_email) <> '')` |
+| `normalized_target_email` | `varchar(256) NOT NULL CHECK (btrim(normalized_target_email) <> '')` |
+| `token_hash` | `text NOT NULL UNIQUE CHECK (btrim(token_hash) <> '')` |
+| `original_requested_at` | `timestamptz NOT NULL` |
+| `last_sent_at` | `timestamptz NOT NULL` |
+| `token_expires_at` | `timestamptz NOT NULL` |
+| `reservation_expires_at` | `timestamptz` |
+| `next_resend_at` | `timestamptz NOT NULL` |
+| `state` | `varchar(16) NOT NULL DEFAULT 'active' CHECK (state IN ('active','verified','cancelled','expired','replaced'))` |
+| `consumed_at` | `timestamptz` |
+| `verified_at` | `timestamptz` |
+| `version` | `bigint NOT NULL DEFAULT 1 CHECK (version > 0)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+UNIQUE (id,user_id,normalized_target_email),
+CHECK (last_sent_at >= original_requested_at AND token_expires_at > last_sent_at AND next_resend_at >= last_sent_at + interval '60 seconds'),
+CHECK ((purpose = 'initial_verification' AND reservation_expires_at IS NULL) OR (purpose = 'email_change' AND reservation_expires_at IS NOT NULL AND reservation_expires_at = original_requested_at + interval '72 hours' AND token_expires_at <= reservation_expires_at)),
+CHECK ((state = 'verified' AND consumed_at IS NOT NULL AND verified_at IS NOT NULL) OR (state <> 'verified' AND consumed_at IS NULL AND verified_at IS NULL))
+```
+
+Index bổ sung:
+
+```sql
+CREATE UNIQUE INDEX ux_verification_active_user ON email_verification_request(user_id) WHERE state = 'active';
+CREATE INDEX ix_verification_reservation_history ON email_verification_request(user_id,normalized_target_email,original_requested_at DESC);
+```
+
+### 3.12. email_address_claim
+
+Owner: C03. Logical reference: `docs/analysis and design/relational-model.md`, relation `email_address_claim`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `normalized_email` | `varchar(256) PRIMARY KEY CHECK (btrim(normalized_email) <> '')` |
+| `user_id` | `bigint NOT NULL REFERENCES app_user(id)` |
+| `verification_request_id` | `uuid` |
+| `claim_kind` | `varchar(16) NOT NULL CHECK (claim_kind IN ('primary','reservation'))` |
+| `reserved_until` | `timestamptz` |
+
+Ràng buộc cấp bảng:
+
+```sql
+FOREIGN KEY (verification_request_id,user_id,normalized_email) REFERENCES email_verification_request(id,user_id,normalized_target_email),
+CHECK ((claim_kind = 'primary' AND verification_request_id IS NULL AND reserved_until IS NULL) OR (claim_kind = 'reservation' AND verification_request_id IS NOT NULL AND reserved_until IS NOT NULL))
+```
+
+Index bổ sung:
+
+```sql
+CREATE UNIQUE INDEX ux_primary_claim_user ON email_address_claim(user_id) WHERE claim_kind = 'primary';
+```
+
+### 3.13. checkout_identity
+
+Owner: C08. Logical reference: `docs/analysis and design/relational-model.md`, relation `checkout_identity`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `uuid PRIMARY KEY` |
+| `user_id` | `bigint REFERENCES app_user(id)` |
+| `guest_credential_hash` | `text UNIQUE` |
+| `guest_expires_at` | `timestamptz` |
+| `revoked_at` | `timestamptz` |
+| `created_at` | `timestamptz NOT NULL` |
+| `version` | `bigint NOT NULL DEFAULT 1 CHECK (version > 0)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+CHECK ((user_id IS NOT NULL AND guest_credential_hash IS NULL AND guest_expires_at IS NULL) OR (user_id IS NULL AND guest_credential_hash IS NOT NULL AND btrim(guest_credential_hash) <> '' AND guest_expires_at IS NOT NULL AND guest_expires_at > created_at))
+```
+
+Index bổ sung:
+
+```sql
+CREATE UNIQUE INDEX ux_checkout_user ON checkout_identity(user_id) WHERE user_id IS NOT NULL;
+```
+
+### 3.14. movie
+
+Owner: C04. Logical reference: `docs/analysis and design/relational-model.md`, relation `movie`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `seed_key` | `varchar(100) UNIQUE` |
+| `title` | `varchar(255) NOT NULL CHECK (btrim(title) <> '')` |
+| `description` | `text` |
+| `duration_minutes` | `smallint NOT NULL CHECK (duration_minutes > 0)` |
+| `release_date` | `date` |
+| `release_market` | `varchar(20)` |
+| `poster_url` | `text` |
+| `trailer_url` | `text` |
+| `language` | `varchar(50)` |
+| `age_rating` | `varchar(30)` |
+| `age_rating_system` | `varchar(30)` |
+| `status` | `varchar(20) NOT NULL DEFAULT 'coming_soon' CHECK (status IN ('coming_soon','now_showing','ended','archived'))` |
+| `version` | `bigint NOT NULL DEFAULT 1 CHECK (version > 0)` |
+
+Index bổ sung:
+
+```sql
+CREATE INDEX ix_movie_public_sort ON movie(release_date DESC NULLS LAST,id DESC) WHERE status IN ('coming_soon','now_showing');
+```
+
+### 3.15. genre
+
+Owner: C04. Logical reference: `docs/analysis and design/relational-model.md`, relation `genre`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `code` | `varchar(30) NOT NULL UNIQUE CHECK (btrim(code) <> '')` |
+| `name` | `varchar(100) NOT NULL CHECK (btrim(name) <> '')` |
+| `normalized_name` | `varchar(100) NOT NULL UNIQUE CHECK (btrim(normalized_name) <> '')` |
+| `description` | `text` |
+| `is_active` | `boolean NOT NULL DEFAULT true` |
+| `version` | `bigint NOT NULL DEFAULT 1 CHECK (version > 0)` |
+
+### 3.16. movie_genre
+
+Owner: C04. Logical reference: `docs/analysis and design/relational-model.md`, relation `movie_genre`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `movie_id` | `bigint NOT NULL REFERENCES movie(id)` |
+| `genre_id` | `bigint NOT NULL REFERENCES genre(id)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+PRIMARY KEY (movie_id,genre_id)
+```
+
+Index bổ sung:
+
+```sql
+CREATE INDEX ix_movie_genre_reverse ON movie_genre(genre_id,movie_id);
+```
+
+### 3.17. cinema
+
+Owner: C05. Logical reference: `docs/analysis and design/relational-model.md`, relation `cinema`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `code` | `varchar(40) NOT NULL UNIQUE CHECK (btrim(code) <> '')` |
+| `name` | `varchar(150) NOT NULL CHECK (btrim(name) <> '')` |
+| `address` | `text NOT NULL CHECK (btrim(address) <> '')` |
+| `phone` | `varchar(30)` |
+| `timezone` | `varchar(64) NOT NULL DEFAULT 'Asia/Ho_Chi_Minh'` |
+| `status` | `varchar(16) NOT NULL DEFAULT 'active' CHECK (status IN ('active','inactive'))` |
+| `minimum_turnaround_minutes` | `smallint NOT NULL DEFAULT 15 CHECK (minimum_turnaround_minutes >= 0)` |
+| `version` | `bigint NOT NULL DEFAULT 1 CHECK (version > 0)` |
+
+### 3.18. cinema_assignment
+
+Owner: C03. Logical reference: `docs/analysis and design/relational-model.md`, relation `cinema_assignment`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `user_id` | `bigint NOT NULL REFERENCES app_user(id)` |
+| `cinema_id` | `bigint NOT NULL REFERENCES cinema(id)` |
+| `assignment_role` | `varchar(16) NOT NULL CHECK (assignment_role IN ('STAFF','MANAGER'))` |
+| `assigned_at` | `timestamptz NOT NULL DEFAULT clock_timestamp()` |
+| `assigned_by_user_id` | `bigint NOT NULL REFERENCES app_user(id)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+PRIMARY KEY (user_id,cinema_id,assignment_role)
+```
+
+Index bổ sung:
+
+```sql
+CREATE INDEX ix_assignment_cinema ON cinema_assignment(cinema_id,assignment_role,user_id);
+```
+
+### 3.19. cinema_room
+
+Owner: C05. Logical reference: `docs/analysis and design/relational-model.md`, relation `cinema_room`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `cinema_id` | `bigint NOT NULL REFERENCES cinema(id)` |
+| `code` | `varchar(30) NOT NULL CHECK (btrim(code) <> '')` |
+| `name` | `varchar(100) NOT NULL CHECK (btrim(name) <> '')` |
+| `status` | `varchar(16) NOT NULL DEFAULT 'active' CHECK (status IN ('active','inactive','maintenance'))` |
+| `version` | `bigint NOT NULL DEFAULT 1 CHECK (version > 0)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+UNIQUE (cinema_id,code),
+UNIQUE (id,cinema_id)
+```
+
+### 3.20. seat_type
+
+Owner: C05. Logical reference: `docs/analysis and design/relational-model.md`, relation `seat_type`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `code` | `varchar(30) NOT NULL UNIQUE CHECK (btrim(code) <> '')` |
+| `name` | `varchar(100) NOT NULL CHECK (btrim(name) <> '')` |
+| `surcharge_amount` | `vnd_amount NOT NULL DEFAULT 0` |
+| `is_active` | `boolean NOT NULL DEFAULT true` |
+| `version` | `bigint NOT NULL DEFAULT 1 CHECK (version > 0)` |
+
+### 3.21. seat
+
+Owner: C05. Logical reference: `docs/analysis and design/relational-model.md`, relation `seat`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `cinema_room_id` | `bigint NOT NULL REFERENCES cinema_room(id)` |
+| `seat_type_id` | `bigint NOT NULL REFERENCES seat_type(id)` |
+| `row_label` | `varchar(10) NOT NULL CHECK (btrim(row_label) <> '')` |
+| `seat_number` | `smallint NOT NULL CHECK (seat_number > 0)` |
+| `x_position` | `integer NOT NULL CHECK (x_position >= 0)` |
+| `y_position` | `integer NOT NULL CHECK (y_position >= 0)` |
+| `operational_state` | `varchar(20) NOT NULL DEFAULT 'active' CHECK (operational_state IN ('active','out_of_service'))` |
+| `retired_at` | `timestamptz` |
+| `version` | `bigint NOT NULL DEFAULT 1 CHECK (version > 0)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+UNIQUE (cinema_room_id,row_label,seat_number),
+UNIQUE (cinema_room_id,x_position,y_position),
+UNIQUE (id,cinema_room_id)
+```
+
+### 3.22. ticket_category
+
+Owner: C07. Logical reference: `docs/analysis and design/relational-model.md`, relation `ticket_category`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `code` | `varchar(16) PRIMARY KEY CHECK (code IN ('Adult','Discounted'))` |
+| `display_name` | `varchar(100) NOT NULL CHECK (btrim(display_name) <> '')` |
+| `eligibility_description` | `text NOT NULL` |
+| `version` | `bigint NOT NULL DEFAULT 1 CHECK (version > 0)` |
+
+### 3.23. cinema_ticket_price
+
+Owner: C07. Logical reference: `docs/analysis and design/relational-model.md`, relation `cinema_ticket_price`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `cinema_id` | `bigint NOT NULL REFERENCES cinema(id)` |
+| `category_code` | `varchar(16) NOT NULL REFERENCES ticket_category(code)` |
+| `amount` | `vnd_amount NOT NULL` |
+| `currency` | `varchar(3) NOT NULL DEFAULT 'VND' CHECK (currency = 'VND')` |
+| `updated_at` | `timestamptz NOT NULL DEFAULT clock_timestamp()` |
+| `version` | `bigint NOT NULL DEFAULT 1 CHECK (version > 0)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+PRIMARY KEY (cinema_id,category_code)
+```
+
+### 3.24. showtime
+
+Owner: C06. Logical reference: `docs/analysis and design/relational-model.md`, relation `showtime`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `seed_key` | `varchar(120) UNIQUE` |
+| `movie_id` | `bigint NOT NULL REFERENCES movie(id)` |
+| `cinema_room_id` | `bigint NOT NULL REFERENCES cinema_room(id)` |
+| `duration_minutes_snapshot` | `smallint NOT NULL CHECK (duration_minutes_snapshot > 0)` |
+| `turnaround_minutes_applied` | `smallint NOT NULL CHECK (turnaround_minutes_applied >= 0)` |
+| `starts_at` | `timestamptz NOT NULL` |
+| `ends_at` | `timestamptz NOT NULL` |
+| `room_available_at` | `timestamptz NOT NULL` |
+| `status` | `varchar(16) NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','scheduled','in_progress','completed','cancelled'))` |
+| `cancelled_at` | `timestamptz` |
+| `cancellation_reason` | `text` |
+| `version` | `bigint NOT NULL DEFAULT 1 CHECK (version > 0)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+UNIQUE (id,cinema_room_id),
+CHECK (ends_at = starts_at + duration_minutes_snapshot * interval '1 minute'),
+CHECK (room_available_at = ends_at + turnaround_minutes_applied * interval '1 minute'),
+CHECK ((status = 'cancelled' AND cancelled_at IS NOT NULL AND cancellation_reason IS NOT NULL AND btrim(cancellation_reason) <> '') OR (status <> 'cancelled' AND cancelled_at IS NULL AND cancellation_reason IS NULL)),
+CONSTRAINT ex_showtime_room_time EXCLUDE USING gist (int8range(cinema_room_id,cinema_room_id,'[]') WITH &&, tstzrange(starts_at,room_available_at,'[)') WITH &&) WHERE (status <> 'cancelled')
+```
+
+Index bổ sung:
+
+```sql
+CREATE INDEX ix_showtime_movie_time ON showtime(movie_id,starts_at,id);
+CREATE INDEX ix_showtime_room_time ON showtime(cinema_room_id,starts_at,id);
+```
+
+### 3.25. showtime_change
+
+Owner: C06. Logical reference: `docs/analysis and design/relational-model.md`, relation `showtime_change`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `showtime_id` | `bigint NOT NULL REFERENCES showtime(id)` |
+| `old_starts_at` | `timestamptz NOT NULL` |
+| `new_starts_at` | `timestamptz NOT NULL` |
+| `changed_by_user_id` | `bigint NOT NULL REFERENCES app_user(id)` |
+| `changed_at` | `timestamptz NOT NULL` |
+| `reason` | `text NOT NULL CHECK (btrim(reason) <> '')` |
+| `operation_key` | `uuid NOT NULL` |
+
+Ràng buộc cấp bảng:
+
+```sql
+UNIQUE (showtime_id,operation_key),
+CHECK (old_starts_at <> new_starts_at)
+```
+
+### 3.26. selection_session
+
+Owner: C08. Logical reference: `docs/analysis and design/relational-model.md`, relation `selection_session`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `uuid PRIMARY KEY` |
+| `checkout_identity_id` | `uuid NOT NULL REFERENCES checkout_identity(id)` |
+| `showtime_id` | `bigint NOT NULL` |
+| `cinema_room_id` | `bigint NOT NULL` |
+| `started_at` | `timestamptz NOT NULL` |
+| `duration_seconds` | `integer NOT NULL DEFAULT 300 CHECK (duration_seconds = 300)` |
+| `expires_at` | `timestamptz NOT NULL` |
+| `adult_quantity` | `integer NOT NULL CHECK (adult_quantity >= 0)` |
+| `discounted_quantity` | `integer NOT NULL CHECK (discounted_quantity >= 0)` |
+| `maximum_tickets_snapshot` | `integer NOT NULL DEFAULT 8 CHECK (maximum_tickets_snapshot > 0)` |
+| `state` | `varchar(16) NOT NULL DEFAULT 'active' CHECK (state IN ('active','consumed','expired','abandoned'))` |
+| `accepted_quote_fingerprint` | `text` |
+| `quoted_adult_price` | `vnd_amount` |
+| `quoted_discounted_price` | `vnd_amount` |
+| `quoted_total` | `vnd_amount` |
+| `quoted_showtime_start` | `timestamptz` |
+| `version` | `bigint NOT NULL DEFAULT 1 CHECK (version > 0)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+FOREIGN KEY (showtime_id,cinema_room_id) REFERENCES showtime(id,cinema_room_id),
+UNIQUE (id,cinema_room_id),
+UNIQUE (id,checkout_identity_id,showtime_id,cinema_room_id),
+CHECK (expires_at = started_at + duration_seconds * interval '1 second'),
+CHECK (adult_quantity::bigint + discounted_quantity BETWEEN 1 AND maximum_tickets_snapshot)
+```
+
+Index bổ sung:
+
+```sql
+CREATE UNIQUE INDEX ux_selection_active ON selection_session(checkout_identity_id,showtime_id) WHERE state = 'active';
+```
+
+### 3.27. selection_seat
+
+Owner: C08. Logical reference: `docs/analysis and design/relational-model.md`, relation `selection_seat`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `selection_id` | `uuid NOT NULL` |
+| `seat_id` | `bigint NOT NULL` |
+| `cinema_room_id` | `bigint NOT NULL` |
+
+Ràng buộc cấp bảng:
+
+```sql
+PRIMARY KEY (selection_id,seat_id),
+FOREIGN KEY (selection_id,cinema_room_id) REFERENCES selection_session(id,cinema_room_id),
+FOREIGN KEY (seat_id,cinema_room_id) REFERENCES seat(id,cinema_room_id)
+```
+
+### 3.28. booking
+
+Owner: C08. Logical reference: `docs/analysis and design/relational-model.md`, relation `booking`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `booking_code` | `uuid NOT NULL UNIQUE` |
+| `checkout_identity_id` | `uuid NOT NULL REFERENCES checkout_identity(id)` |
+| `selection_session_id` | `uuid NOT NULL UNIQUE` |
+| `showtime_id` | `bigint NOT NULL` |
+| `cinema_room_id` | `bigint NOT NULL` |
+| `contact_full_name` | `varchar(150) NOT NULL CHECK (btrim(contact_full_name) <> '')` |
+| `contact_phone` | `varchar(30) NOT NULL CHECK (btrim(contact_phone) <> '')` |
+| `contact_email` | `varchar(256) NOT NULL CHECK (btrim(contact_email) <> '')` |
+| `terms_accepted_at` | `timestamptz NOT NULL` |
+| `age_acknowledged_at` | `timestamptz NOT NULL` |
+| `purchased_start_at` | `timestamptz NOT NULL` |
+| `movie_title_snapshot` | `varchar(255) NOT NULL CHECK (btrim(movie_title_snapshot) <> '')` |
+| `room_name_snapshot` | `varchar(100) NOT NULL CHECK (btrim(room_name_snapshot) <> '')` |
+| `reservation_expires_at` | `timestamptz NOT NULL` |
+| `maximum_tickets_snapshot` | `integer NOT NULL DEFAULT 8 CHECK (maximum_tickets_snapshot > 0)` |
+| `total_amount` | `vnd_amount NOT NULL` |
+| `currency` | `varchar(3) NOT NULL DEFAULT 'VND' CHECK (currency = 'VND')` |
+| `status` | `varchar(16) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','confirmed','expired','cancelled'))` |
+| `created_at` | `timestamptz NOT NULL` |
+| `confirmed_at` | `timestamptz` |
+| `cancelled_at` | `timestamptz` |
+| `cancellation_reason` | `text` |
+| `version` | `bigint NOT NULL DEFAULT 1 CHECK (version > 0)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+UNIQUE (id,showtime_id,cinema_room_id),
+UNIQUE (id,checkout_identity_id),
+FOREIGN KEY (showtime_id,cinema_room_id) REFERENCES showtime(id,cinema_room_id),
+FOREIGN KEY (selection_session_id,checkout_identity_id,showtime_id,cinema_room_id) REFERENCES selection_session(id,checkout_identity_id,showtime_id,cinema_room_id),
+CHECK (reservation_expires_at > created_at),
+CHECK ((status = 'confirmed' AND confirmed_at IS NOT NULL) OR (status IN ('pending','expired') AND confirmed_at IS NULL) OR status = 'cancelled'),
+CHECK ((status = 'cancelled' AND cancelled_at IS NOT NULL AND cancellation_reason IS NOT NULL AND btrim(cancellation_reason) <> '') OR (status <> 'cancelled' AND cancelled_at IS NULL AND cancellation_reason IS NULL))
+```
+
+Index bổ sung:
+
+```sql
+CREATE INDEX ix_booking_owner_history ON booking(checkout_identity_id,created_at DESC,id DESC);
+CREATE INDEX ix_booking_showtime_state ON booking(showtime_id,status,id);
+CREATE INDEX ix_booking_pending_expiry ON booking(reservation_expires_at,id) WHERE status = 'pending';
+```
+
+### 3.29. booking_category
+
+Owner: C08. Logical reference: `docs/analysis and design/relational-model.md`, relation `booking_category`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `booking_id` | `bigint NOT NULL REFERENCES booking(id)` |
+| `category_code` | `varchar(16) NOT NULL REFERENCES ticket_category(code)` |
+| `quantity` | `integer NOT NULL CHECK (quantity >= 0)` |
+| `base_price_snapshot` | `vnd_amount NOT NULL` |
+| `category_name_snapshot` | `varchar(100) NOT NULL CHECK (btrim(category_name_snapshot) <> '')` |
+| `admitted_quantity` | `integer NOT NULL DEFAULT 0` |
+
+Ràng buộc cấp bảng:
+
+```sql
+PRIMARY KEY (booking_id,category_code),
+CHECK (admitted_quantity BETWEEN 0 AND quantity)
+```
+
+### 3.30. booking_seat
+
+Owner: C08. Logical reference: `docs/analysis and design/relational-model.md`, relation `booking_seat`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `booking_id` | `bigint NOT NULL` |
+| `showtime_id` | `bigint NOT NULL` |
+| `cinema_room_id` | `bigint NOT NULL` |
+| `seat_id` | `bigint NOT NULL` |
+| `seat_label_snapshot` | `varchar(30) NOT NULL CHECK (btrim(seat_label_snapshot) <> '')` |
+| `seat_type_name_snapshot` | `varchar(100) NOT NULL CHECK (btrim(seat_type_name_snapshot) <> '')` |
+| `surcharge_snapshot` | `vnd_amount NOT NULL` |
+| `allocation_status` | `varchar(16) NOT NULL DEFAULT 'held' CHECK (allocation_status IN ('held','sold','released'))` |
+| `released_at` | `timestamptz` |
+
+Ràng buộc cấp bảng:
+
+```sql
+UNIQUE (booking_id,seat_id),
+FOREIGN KEY (booking_id,showtime_id,cinema_room_id) REFERENCES booking(id,showtime_id,cinema_room_id),
+FOREIGN KEY (seat_id,cinema_room_id) REFERENCES seat(id,cinema_room_id),
+CHECK ((allocation_status = 'released') = (released_at IS NOT NULL))
+```
+
+Index bổ sung:
+
+```sql
+CREATE UNIQUE INDEX ux_active_seat ON booking_seat(showtime_id,seat_id) WHERE allocation_status IN ('held','sold');
+```
+
+### 3.31. operation_receipt
+
+Owner: C13 mechanism; caller owns result. Logical reference: `docs/analysis and design/relational-model.md`, relation `operation_receipt`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `uuid PRIMARY KEY` |
+| `actor_scope` | `text NOT NULL CHECK (btrim(actor_scope) <> '')` |
+| `operation_name` | `varchar(80) NOT NULL CHECK (btrim(operation_name) <> '')` |
+| `target_scope` | `text NOT NULL CHECK (btrim(target_scope) <> '')` |
+| `request_key` | `uuid NOT NULL` |
+| `request_fingerprint` | `text NOT NULL CHECK (btrim(request_fingerprint) <> '')` |
+| `processing_state` | `varchar(16) NOT NULL CHECK (processing_state IN ('processing','committed','rejected'))` |
+| `result_reference` | `text` |
+| `created_at` | `timestamptz NOT NULL` |
+| `committed_at` | `timestamptz` |
+| `lease_until` | `timestamptz` |
+| `claim_token` | `uuid` |
+
+Ràng buộc cấp bảng:
+
+```sql
+UNIQUE (actor_scope,operation_name,target_scope,request_key),
+CHECK ((processing_state = 'committed') = (committed_at IS NOT NULL)),
+CHECK ((lease_until IS NULL) = (claim_token IS NULL))
+```
+
+### 3.32. payment
+
+Owner: C09. Logical reference: `docs/analysis and design/relational-model.md`, relation `payment`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `booking_id` | `bigint NOT NULL REFERENCES booking(id)` |
+| `provider` | `varchar(30) NOT NULL CHECK (btrim(provider) <> '')` |
+| `merchant_request_id` | `uuid NOT NULL UNIQUE` |
+| `provider_transaction_id` | `text` |
+| `amount` | `vnd_amount NOT NULL CHECK (amount > 0)` |
+| `currency` | `varchar(3) NOT NULL DEFAULT 'VND' CHECK (currency = 'VND')` |
+| `received_amount` | `numeric` |
+| `received_currency` | `varchar(12)` |
+| `status` | `varchar(16) NOT NULL DEFAULT 'created' CHECK (status IN ('created','pending','unknown','succeeded','failed','cancelled'))` |
+| `created_at` | `timestamptz NOT NULL` |
+| `initiation_committed_at` | `timestamptz NOT NULL` |
+| `initiated_at` | `timestamptz` |
+| `payment_window_seconds` | `integer NOT NULL DEFAULT 600 CHECK (payment_window_seconds = 600)` |
+| `payment_deadline` | `timestamptz` |
+| `grace_seconds` | `integer NOT NULL DEFAULT 10 CHECK (grace_seconds >= 0)` |
+| `grace_until` | `timestamptz` |
+| `verified_at` | `timestamptz` |
+| `paid_at` | `timestamptz` |
+| `applied_at` | `timestamptz` |
+| `reconciliation_status` | `varchar(24) NOT NULL DEFAULT 'none' CHECK (reconciliation_status IN ('none','needs_review','refund_required','resolved'))` |
+| `next_reconcile_at` | `timestamptz` |
+| `retry_count` | `integer NOT NULL DEFAULT 0 CHECK (retry_count >= 0)` |
+| `lease_until` | `timestamptz` |
+| `claim_token` | `uuid` |
+| `version` | `bigint NOT NULL DEFAULT 1 CHECK (version > 0)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+UNIQUE (id,booking_id),
+UNIQUE (id,provider),
+CHECK (provider_transaction_id IS NULL OR btrim(provider_transaction_id) <> ''),
+CHECK (received_amount IS NULL OR (received_amount >= 0 AND received_amount < 1e18)),
+CHECK ((initiated_at IS NULL AND payment_deadline IS NULL AND grace_until IS NULL) OR (initiated_at IS NOT NULL AND payment_deadline IS NOT NULL AND grace_until IS NOT NULL AND payment_deadline = initiated_at + payment_window_seconds * interval '1 second' AND grace_until = payment_deadline + grace_seconds * interval '1 second')),
+CHECK (status <> 'succeeded' OR (verified_at IS NOT NULL AND paid_at IS NOT NULL AND received_amount IS NOT NULL AND received_currency IS NOT NULL AND provider_transaction_id IS NOT NULL)),
+CHECK (applied_at IS NULL OR (status = 'succeeded' AND received_amount = amount AND received_currency = currency)),
+CHECK ((lease_until IS NULL) = (claim_token IS NULL))
+```
+
+Index bổ sung:
+
+```sql
+CREATE UNIQUE INDEX ux_payment_open ON payment(booking_id) WHERE status IN ('created','pending','unknown');
+CREATE UNIQUE INDEX ux_payment_applied ON payment(booking_id) WHERE applied_at IS NOT NULL;
+CREATE UNIQUE INDEX ux_payment_provider_tx ON payment(provider,provider_transaction_id) WHERE provider_transaction_id IS NOT NULL;
+CREATE INDEX ix_payment_reconcile ON payment(next_reconcile_at,id) WHERE status IN ('created','pending','unknown') OR reconciliation_status IN ('needs_review','refund_required');
+```
+
+### 3.33. payment_event
+
+Owner: C09. Logical reference: `docs/analysis and design/relational-model.md`, relation `payment_event`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `payment_id` | `bigint` |
+| `provider` | `varchar(30) NOT NULL CHECK (btrim(provider) <> '')` |
+| `provider_event_identity` | `text NOT NULL CHECK (btrim(provider_event_identity) <> '')` |
+| `source` | `varchar(16) NOT NULL CHECK (source IN ('webhook','query'))` |
+| `sanitized_payload` | `jsonb NOT NULL` |
+| `received_at` | `timestamptz NOT NULL` |
+| `verified_at` | `timestamptz NOT NULL` |
+| `processing_status` | `varchar(16) NOT NULL DEFAULT 'received' CHECK (processing_status IN ('received','processed','failed','needs_review'))` |
+| `processed_at` | `timestamptz` |
+| `retry_count` | `integer NOT NULL DEFAULT 0 CHECK (retry_count >= 0)` |
+| `next_retry_at` | `timestamptz` |
+| `lease_until` | `timestamptz` |
+| `claim_token` | `uuid` |
+| `last_error_code` | `varchar(100)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+UNIQUE (provider,provider_event_identity),
+FOREIGN KEY (payment_id,provider) REFERENCES payment(id,provider),
+CHECK ((processing_status = 'processed') = (processed_at IS NOT NULL)),
+CHECK ((lease_until IS NULL) = (claim_token IS NULL))
+```
+
+Index bổ sung:
+
+```sql
+CREATE INDEX ix_event_due ON payment_event(next_retry_at,id) WHERE processing_status IN ('received','failed');
+```
+
+### 3.34. ticket
+
+Owner: C11. Logical reference: `docs/analysis and design/relational-model.md`, relation `ticket`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `booking_id` | `bigint NOT NULL UNIQUE REFERENCES booking(id)` |
+| `ticket_code` | `uuid NOT NULL UNIQUE` |
+| `qr_lookup_hash` | `text NOT NULL UNIQUE CHECK (btrim(qr_lookup_hash) <> '')` |
+| `encrypted_qr_credential` | `bytea NOT NULL CHECK (octet_length(encrypted_qr_credential) > 0)` |
+| `qr_key_version` | `varchar(60) NOT NULL CHECK (btrim(qr_key_version) <> '')` |
+| `issued_at` | `timestamptz NOT NULL` |
+| `status` | `varchar(16) NOT NULL DEFAULT 'valid' CHECK (status IN ('valid','voided'))` |
+| `voided_at` | `timestamptz` |
+| `void_reason` | `text` |
+
+Ràng buộc cấp bảng:
+
+```sql
+UNIQUE (id,booking_id),
+CHECK ((status = 'voided' AND voided_at IS NOT NULL AND void_reason IS NOT NULL AND btrim(void_reason) <> '') OR (status = 'valid' AND voided_at IS NULL AND void_reason IS NULL))
+```
+
+### 3.35. admission_operation
+
+Owner: C11. Logical reference: `docs/analysis and design/relational-model.md`, relation `admission_operation`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `booking_id` | `bigint NOT NULL REFERENCES booking(id)` |
+| `ticket_id` | `bigint NOT NULL` |
+| `staff_user_id` | `bigint NOT NULL REFERENCES app_user(id)` |
+| `request_key` | `uuid NOT NULL` |
+| `fingerprint` | `text NOT NULL CHECK (btrim(fingerprint) <> '')` |
+| `adult_quantity` | `integer NOT NULL CHECK (adult_quantity >= 0)` |
+| `discounted_quantity` | `integer NOT NULL CHECK (discounted_quantity >= 0)` |
+| `age_verified` | `boolean NOT NULL CHECK (age_verified)` |
+| `discounted_eligibility_verified` | `boolean NOT NULL` |
+| `official_start_at_validation` | `timestamptz NOT NULL` |
+| `admitted_at` | `timestamptz NOT NULL` |
+
+Ràng buộc cấp bảng:
+
+```sql
+UNIQUE (booking_id,request_key),
+FOREIGN KEY (ticket_id,booking_id) REFERENCES ticket(id,booking_id),
+CHECK (adult_quantity::bigint + discounted_quantity > 0),
+CHECK (discounted_quantity = 0 OR discounted_eligibility_verified),
+CHECK (admitted_at BETWEEN official_start_at_validation - interval '5 minutes' AND official_start_at_validation + interval '20 minutes')
+```
+
+### 3.36. cancellation_request
+
+Owner: C10. Logical reference: `docs/analysis and design/relational-model.md`, relation `cancellation_request`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `booking_id` | `bigint NOT NULL` |
+| `requested_by_identity_id` | `uuid NOT NULL` |
+| `request_key` | `uuid NOT NULL` |
+| `requested_at` | `timestamptz NOT NULL` |
+| `purchased_start_snapshot` | `timestamptz NOT NULL` |
+| `official_start_at_request` | `timestamptz NOT NULL` |
+| `reason` | `text NOT NULL CHECK (btrim(reason) <> '')` |
+| `status` | `varchar(32) NOT NULL DEFAULT 'pending_review' CHECK (status IN ('pending_review','approved_awaiting_refund','rejected','withdrawn','completed'))` |
+| `reviewed_by_user_id` | `bigint REFERENCES app_user(id)` |
+| `reviewed_at` | `timestamptz` |
+| `decision_reason` | `text` |
+| `withdrawn_at` | `timestamptz` |
+| `completed_at` | `timestamptz` |
+| `version` | `bigint NOT NULL DEFAULT 1 CHECK (version > 0)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+UNIQUE (requested_by_identity_id,request_key),
+UNIQUE (id,booking_id),
+FOREIGN KEY (booking_id,requested_by_identity_id) REFERENCES booking(id,checkout_identity_id),
+CHECK (purchased_start_snapshot <> official_start_at_request AND requested_at < official_start_at_request),
+CHECK ((status = 'withdrawn') = (withdrawn_at IS NOT NULL)),
+CHECK ((status = 'completed') = (completed_at IS NOT NULL)),
+CHECK (status NOT IN ('approved_awaiting_refund','completed') OR (reviewed_at IS NOT NULL AND reviewed_by_user_id IS NOT NULL)),
+CHECK (status <> 'rejected' OR (reviewed_at IS NOT NULL AND decision_reason IS NOT NULL AND btrim(decision_reason) <> ''))
+```
+
+Index bổ sung:
+
+```sql
+CREATE UNIQUE INDEX ux_cancellation_open ON cancellation_request(booking_id) WHERE status IN ('pending_review','approved_awaiting_refund');
+```
+
+### 3.37. refund
+
+Owner: C10. Logical reference: `docs/analysis and design/relational-model.md`, relation `refund`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `payment_id` | `bigint NOT NULL UNIQUE` |
+| `booking_id` | `bigint NOT NULL REFERENCES booking(id)` |
+| `cancellation_request_id` | `bigint UNIQUE` |
+| `origin` | `varchar(30) NOT NULL CHECK (origin IN ('payment_reconciliation','showtime_rescheduling'))` |
+| `merchant_refund_id` | `uuid NOT NULL UNIQUE` |
+| `amount` | `numeric NOT NULL CHECK (amount > 0 AND amount < 1e18)` |
+| `currency` | `varchar(12) NOT NULL CHECK (btrim(currency) <> '')` |
+| `status` | `varchar(16) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','unknown','failed','succeeded'))` |
+| `created_at` | `timestamptz NOT NULL` |
+| `completed_at` | `timestamptz` |
+| `version` | `bigint NOT NULL DEFAULT 1 CHECK (version > 0)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+FOREIGN KEY (payment_id,booking_id) REFERENCES payment(id,booking_id),
+FOREIGN KEY (cancellation_request_id,booking_id) REFERENCES cancellation_request(id,booking_id),
+CHECK ((origin = 'showtime_rescheduling' AND cancellation_request_id IS NOT NULL) OR (origin = 'payment_reconciliation' AND cancellation_request_id IS NULL)),
+CHECK ((status = 'succeeded') = (completed_at IS NOT NULL))
+```
+
+### 3.38. refund_completion_evidence
+
+Owner: C10. Logical reference: `docs/analysis and design/relational-model.md`, relation `refund_completion_evidence`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `refund_id` | `bigint PRIMARY KEY REFERENCES refund(id)` |
+| `transfer_channel` | `varchar(80) NOT NULL CHECK (btrim(transfer_channel) <> '')` |
+| `external_reference` | `text NOT NULL CHECK (btrim(external_reference) <> '')` |
+| `amount` | `numeric NOT NULL CHECK (amount > 0 AND amount < 1e18)` |
+| `currency` | `varchar(12) NOT NULL CHECK (btrim(currency) <> '')` |
+| `externally_completed_at` | `timestamptz NOT NULL` |
+| `evidence_note` | `text NOT NULL CHECK (btrim(evidence_note) <> '')` |
+| `recorded_by_user_id` | `bigint NOT NULL REFERENCES app_user(id)` |
+| `recorded_at` | `timestamptz NOT NULL` |
+| `operation_key` | `uuid NOT NULL UNIQUE` |
+
+Ràng buộc cấp bảng:
+
+```sql
+UNIQUE (transfer_channel,external_reference),
+CHECK (recorded_at >= externally_completed_at)
+```
+
+### 3.39. notification_request
+
+Owner: C15. Logical reference: `docs/analysis and design/relational-model.md`, relation `notification_request`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `uuid PRIMARY KEY` |
+| `deduplication_key` | `text NOT NULL UNIQUE CHECK (btrim(deduplication_key) <> '')` |
+| `notification_kind` | `varchar(30) NOT NULL CHECK (notification_kind IN ('ticket_issued','ticket_resend','verification','email_change_security','showtime_changed'))` |
+| `booking_id` | `bigint REFERENCES booking(id)` |
+| `verification_request_id` | `uuid REFERENCES email_verification_request(id)` |
+| `recipient_email` | `varchar(256) NOT NULL CHECK (btrim(recipient_email) <> '')` |
+| `template_key` | `varchar(100) NOT NULL CHECK (btrim(template_key) <> '')` |
+| `protected_payload` | `bytea` |
+| `payload_key_version` | `varchar(60)` |
+| `state` | `varchar(16) NOT NULL DEFAULT 'pending' CHECK (state IN ('pending','sending','sent','failed','cancelled'))` |
+| `created_at` | `timestamptz NOT NULL` |
+| `next_attempt_at` | `timestamptz` |
+| `lease_until` | `timestamptz` |
+| `claim_token` | `uuid` |
+| `sent_at` | `timestamptz` |
+| `attempt_count` | `integer NOT NULL DEFAULT 0 CHECK (attempt_count >= 0)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+CHECK ((notification_kind IN ('ticket_issued','ticket_resend','showtime_changed') AND booking_id IS NOT NULL AND verification_request_id IS NULL) OR (notification_kind IN ('verification','email_change_security') AND booking_id IS NULL AND verification_request_id IS NOT NULL)),
+CHECK ((protected_payload IS NULL) = (payload_key_version IS NULL)),
+CHECK ((lease_until IS NULL) = (claim_token IS NULL)),
+CHECK ((state = 'sent') = (sent_at IS NOT NULL))
+```
+
+Index bổ sung:
+
+```sql
+CREATE INDEX ix_notification_due ON notification_request(next_attempt_at,id) WHERE state IN ('pending','sending','failed');
+```
+
+### 3.40. notification_attempt
+
+Owner: C15. Logical reference: `docs/analysis and design/relational-model.md`, relation `notification_attempt`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `request_id` | `uuid NOT NULL REFERENCES notification_request(id)` |
+| `attempt_no` | `integer NOT NULL CHECK (attempt_no > 0)` |
+| `claim_token` | `uuid NOT NULL` |
+| `started_at` | `timestamptz NOT NULL` |
+| `finished_at` | `timestamptz` |
+| `provider_message_id` | `text` |
+| `outcome` | `varchar(16) NOT NULL CHECK (outcome IN ('started','sent','failed','unknown'))` |
+| `sanitized_error_code` | `varchar(100)` |
+
+Ràng buộc cấp bảng:
+
+```sql
+UNIQUE (request_id,attempt_no),
+CHECK ((outcome = 'started' AND finished_at IS NULL) OR (outcome <> 'started' AND finished_at IS NOT NULL))
+```
+
+### 3.41. audit_event
+
+Owner: C16. Logical reference: `docs/analysis and design/relational-model.md`, relation `audit_event`.
+
+| Cột | Kiểu, nullability, default và constraint tại cột (SQL chính xác) |
+|---|---|
+| `id` | `bigint GENERATED ALWAYS AS IDENTITY PRIMARY KEY` |
+| `operation_identity` | `uuid NOT NULL` |
+| `event_type` | `varchar(100) NOT NULL CHECK (btrim(event_type) <> '')` |
+| `actor_kind` | `varchar(16) NOT NULL CHECK (actor_kind IN ('user','guest','system','provider'))` |
+| `actor_user_id` | `bigint REFERENCES app_user(id)` |
+| `actor_scope` | `text` |
+| `resource_type` | `varchar(80) NOT NULL CHECK (btrim(resource_type) <> '')` |
+| `resource_id` | `text NOT NULL CHECK (btrim(resource_id) <> '')` |
+| `occurred_at` | `timestamptz NOT NULL` |
+| `correlation_id` | `text` |
+| `sanitized_context` | `jsonb NOT NULL DEFAULT '{}'::jsonb` |
+
+Ràng buộc cấp bảng:
+
+```sql
+UNIQUE (operation_identity,event_type,resource_type,resource_id),
+CHECK ((actor_kind = 'user') = (actor_user_id IS NOT NULL))
+```
+
+Index bổ sung:
+
+```sql
+CREATE INDEX ix_audit_resource ON audit_event(resource_type,resource_id,occurred_at);
+```
+
+## 4. Quy tắc bổ sung ngoài CREATE TABLE
+
+Bootstrap insert đúng Adult/Discounted. Trigger `tr_category_no_delete` ngăn DELETE category; CHECK code và PK cấm category thứ ba/duplicate. Runtime role không có TRUNCATE/DDL. Append-only triggers cấm UPDATE/DELETE trên `admission_operation`, `refund_completion_evidence`, `audit_event`, `showtime_change`.
+
+DDL revoke PUBLIC trên schema/tables/sequences/functions; chưa tạo runtime DB role/grants hoặc RLS. Không expose schema cho browser/Supabase anon. Migration owner có thể thay cấu trúc nên không dùng làm application runtime credential.
+
+## 5. Logical → physical bổ sung / khác biệt có chủ đích
+
+| Nội dung | Quyết định vật lý |
+|---|---|
+| Identity 3 logical relations | Giữ user/role/membership; bổ sung 4 bảng claims/logins/tokens, map tất cả bằng EF |
+| Email initial vs change | reservation_expires_at NULL cho initial verification; primary ownership không hết hạn vì token |
+| Selection-room consistency | Thêm cinema_room_id và composite FKs vào selection_session/selection_seat |
+| Selection deadline | Snapshot duration_seconds=300; không created_at+5 phút ở booking |
+| Payment initiation uncertainty | Thêm initiation_committed_at; valid initiated_at/deadline có thể chưa biết |
+| Guest access | Checkout identity XOR user/guest hash; expiry không xóa paid booking |
+| Required ticket categories | Seed trong DDL, không phụ thuộc demo fixture |
+| QR redelivery | Hash lookup + ciphertext/key version; key không ở DB |
+| Seat retirement | retired_at tách operational state; không xóa/tái sử dụng ID |
+| Seed identity | Nullable seed_key unique cho movie/showtime; không unique title |
+| Film classification | age_rating_system/release_market ghi provenance, không đổi PG-13 thành luật admission Việt Nam |
+| Schedule exclusion | Native range GiST; tất cả state trừ cancelled tham gia |
+| Partial UQ key location | Booking UQ(id,showtime_id,cinema_room_id); child booking_seat cho nhiều seat |
+
+## 6. State vocabularies và giới hạn
+
+Enums CHECK trong từng bảng là nguồn chính xác của DDL. Cancellation request có `pending_review`, `approved_awaiting_refund`, `rejected`, `withdrawn`, `completed`; refund có `pending`, `unknown`, `failed`, `succeeded`. Payment reconciliation status riêng, không dùng `refund_required` làm financial refund state. Ticket chỉ `valid/voided`; exhausted/remaining derive từ category admissions, không one-scan used.
+
+`movie.status=now_showing` ở seed là demo classification. `available` là seat projection từ operational state và absence of active allocation, không state lưu ở seat. Cinema/room/support-process enum choices là physical mapping proposal; thay bằng migration có review nếu implementation chọn mapping khác.
+
+## 7. Các invariant không do DDL này bảo đảm đầy đủ
+
+- Category rows đủ hai, quantities = số booking seats, giá tổng bằng các snapshots; reservation deadline bằng selection deadline; snapshots bất biến.
+- Account/claims cùng primary email, current roles/assignments, last active Admin, permanent Customer membership, challenge/refresh consumption protocol.
+- Current showtime eligibility, no structural edit dưới freeze, safe cancel/reschedule và đúng turnaround config hiện hành.
+- Verified provider truth; eligible payment applied đồng bộ booking/seats/ticket/outbox/audit; no downgrade.
+- Admission current authority và category ledger/counter consistency, first-admission auto-reject request, approved-cancellation restriction.
+- Full refund amount/currency match, evidence verification, allowed actor, origin-specific completion effects.
+- Worker fencing, external calls outside business locks, privacy and key/retention management.
+
+Các invariant này phải thực thi trong service transaction/procedures được kiểm thử; không mở generic CRUD trực tiếp vào tables. Xem protocol và migration plan tại [database-design.md](database-design.md).
+
+## 8. Validation / references
+
+DDL và seed đã được kiểm tra trên PostgreSQL 16.2 biệt lập ở single-user mode; chi tiết test và giới hạn ở database-design.md §18. Chưa xác nhận EF migration/runtime compatibility hoặc Supabase roles/pooler. Không thay thế multi-connection concurrency/integration tests.
+
+- [DDL](database-schema.sql)
+- [Seed](seed-data.sql)
+- [Movie provenance](movie-research.md)
+- [PostgreSQL constraints](https://www.postgresql.org/docs/current/ddl-constraints.html)
+- [Identity model customization](https://learn.microsoft.com/en-us/aspnet/core/security/authentication/customize-identity-model)
