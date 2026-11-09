@@ -11,15 +11,15 @@ SET LOCAL TIME ZONE 'UTC';
 SELECT pg_advisory_xact_lock(726141901);
 
 CREATE TEMP TABLE demo_movies (
-    seed_key text PRIMARY KEY, title text, runtime integer, description text, language text
+    seed_key text PRIMARY KEY, title text, runtime integer, description text, language text, poster_url text
 ) ON COMMIT DROP;
 INSERT INTO demo_movies VALUES
-('DEMO_ENDGAME','Avengers: Endgame',181,'Những người hùng còn lại tìm cách đảo ngược hậu quả từ cuộc đối đầu với Thanos.','English'),
-('DEMO_INTERSTELLAR','Interstellar',169,'Một đoàn thám hiểm tìm kiếm tương lai cho con người ngoài hệ Mặt Trời.','English'),
-('DEMO_MI_FINAL','Mission: Impossible - The Final Reckoning',169,'Ethan Hunt cùng đồng đội đối diện một nhiệm vụ đe dọa tương lai thế giới.','English'),
-('DEMO_YOUR_NAME','Your Name',106,'Hai người trẻ khám phá sự kết nối kỳ lạ vượt qua khoảng cách và thời gian.','Japanese'),
-('DEMO_KINGDOM','Kingdom of Heaven',144,'Một người thợ rèn bị cuốn vào những xung đột quanh Jerusalem thời Trung cổ.','English'),
-('DEMO_WWZ','World War Z',116,'Một cựu nhân viên Liên Hợp Quốc tìm lời giải cho một đại dịch toàn cầu.','English');
+('DEMO_ENDGAME','Avengers: Endgame',181,'Những người hùng còn lại tìm cách đảo ngược hậu quả từ cuộc đối đầu với Thanos.','English','https://media.themoviedb.org/t/p/w600_and_h900_face/jtDv3lCnST0fZRvdYFwR5CVwK2x.jpg'),
+('DEMO_INTERSTELLAR','Interstellar',169,'Một đoàn thám hiểm tìm kiếm tương lai cho con người ngoài Hệ Mặt Trời.','English','https://media.themoviedb.org/t/p/w600_and_h900_face/yQvGrMoipbRoddT0ZR8tPoR7NfX.jpg'),
+('DEMO_MI_FINAL','Mission: Impossible - The Final Reckoning',169,'Ethan Hunt cùng đồng đội đối diện một nhiệm vụ đe dọa tương lai thế giới.','English','https://media.themoviedb.org/t/p/w600_and_h900_face/iKPsC9EFUafRP9SrUznI61getVP.jpg'),
+('DEMO_YOUR_NAME','Your Name',106,'Hai người trẻ khám phá sự kết nối kỳ lạ vượt qua khoảng cách và thời gian.','Japanese','https://media.themoviedb.org/t/p/w600_and_h900_face/vfJFJPepRKapMd5G2ro7klIRysq.jpg'),
+('DEMO_KINGDOM','Kingdom of Heaven',144,'Một người thợ rèn bị cuốn vào những xung đột quanh Jerusalem thời Trung cổ.','English','https://media.themoviedb.org/t/p/w600_and_h900_face/2NaFdWy9hkM35vZB1hkqsnTcms8.jpg'),
+('DEMO_WWZ','World War Z',116,'Một cựu nhân viên Liên Hợp Quốc tìm lời giải cho một đại dịch toàn cầu.','English','https://media.themoviedb.org/t/p/w600_and_h900_face/aCnVdvExw6UWSeQfr0tUH3jr4qG.jpg');
 
 -- Required Identity roles; code/name/normalized_name must be mapped in EF Identity.
 INSERT INTO role(code,name,normalized_name,concurrency_stamp)
@@ -65,11 +65,13 @@ WHERE c.code='DEMO_CINEMA_HCM_01' AND r.code IN ('DEMO_ROOM_01','DEMO_ROOM_02')
 ON CONFLICT (cinema_room_id,row_label,seat_number) DO NOTHING;
 
 -- now_showing is fictional DEMO catalogue state, not a real 2026 release claim.
--- Release date/market, age classification and external media are deliberately NULL
--- until the exact edition/territory/assets are approved; see movie-research.md.
-INSERT INTO movie(seed_key,title,description,duration_minutes,language,status)
-SELECT seed_key,title,description,runtime,language,'now_showing' FROM demo_movies
-ON CONFLICT (seed_key) DO NOTHING;
+-- Release date/market and age classification remain NULL until the exact
+-- edition/territory is approved. Poster URLs are demo assets supplied by the
+-- user; they are not a production media approval. See movie-research.md.
+INSERT INTO movie(seed_key,title,description,duration_minutes,language,poster_url,status)
+SELECT seed_key,title,description,runtime,language,poster_url,'now_showing' FROM demo_movies
+ON CONFLICT (seed_key) DO UPDATE
+SET poster_url = EXCLUDED.poster_url;
 
 CREATE TEMP TABLE demo_movie_genres(seed_key text,genre_code text,PRIMARY KEY(seed_key,genre_code)) ON COMMIT DROP;
 INSERT INTO demo_movie_genres VALUES
@@ -90,7 +92,8 @@ BEGIN
   IF EXISTS (SELECT 1 FROM role WHERE name <> code OR normalized_name <> code) THEN
     RAISE EXCEPTION 'Role mapping drift; review Identity mapping instead of overwriting'; END IF;
   IF EXISTS (SELECT 1 FROM demo_movies d LEFT JOIN movie m ON m.seed_key=d.seed_key
-             WHERE m.id IS NULL OR m.title<>d.title OR m.duration_minutes<>d.runtime OR m.status<>'now_showing') THEN
+             WHERE m.id IS NULL OR m.title<>d.title OR m.duration_minutes<>d.runtime OR
+                   m.poster_url<>d.poster_url OR m.status<>'now_showing') THEN
     RAISE EXCEPTION 'Demo movie fixture drift; no metadata overwrite performed'; END IF;
   IF EXISTS (SELECT 1 FROM demo_genres d JOIN genre g ON g.code=d.code WHERE NOT g.is_active OR g.normalized_name<>upper(d.name)) THEN
     RAISE EXCEPTION 'Genre fixture drift'; END IF;

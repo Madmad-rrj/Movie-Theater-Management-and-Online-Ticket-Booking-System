@@ -199,20 +199,20 @@ Credential chỉ trong cookie HttpOnly; không nằm trong JSON. Lifetime chưa 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
 | `query` | `string` | O | Từ khóa |
-| `genreId` | `UUID` | O | Genre filter |
+| `genreId` | `decimal string` | O | ID `bigint` của genre; chuỗi số nguyên dương |
 | `status` | `enum:coming_soon,now_showing` | O | Chỉ public listing |
 | `page` | `integer` | O | >=1, mặc định 1 |
-| `pageSize` | `integer` | O | 1..100, mặc định 20 |
+| `pageSize` | `integer` | O | 1..100, mặc định 12 cho browse movies |
 
 ## Genre
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `genreId` | `UUID` | R | Identity |
+| `genreId` | `decimal string` | R | Identity `bigint`, serialize thành chuỗi số |
 | `name` | `string` | R | Tên |
 | `description` | `string` | N | Mô tả |
 | `isActive` | `boolean` | R | Trạng thái |
-| `version` | `string` | R | Concurrency token |
+| `version` | `decimal string` | R | Concurrency token `bigint`, serialize thành chuỗi số |
 
 ## Movie
 
@@ -220,7 +220,7 @@ Public detail cho phép ended; archived trả 404. Management có thể đọc a
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `movieId` | `UUID` | R | Identity |
+| `movieId` | `decimal string` | R | Identity `bigint`, serialize thành chuỗi số |
 | `title` | `string` | R | Tên phim |
 | `description` | `string` | N | Nội dung |
 | `durationMinutes` | `integer` | R | >0 |
@@ -228,10 +228,10 @@ Public detail cho phép ended; archived trả 404. Management có thể đọc a
 | `posterUrl` | `string` | N | URL hợp lệ |
 | `trailerUrl` | `string` | N | URL hợp lệ |
 | `language` | `string` | N | Ngôn ngữ |
-| `ageRating` | `string` | R | Theo classification được cấu hình |
+| `ageRating` | `string` | N | Có thể null khi database chưa có phân loại |
 | `status` | `enum:coming_soon,now_showing,ended,archived` | R | Public listing chỉ coming_soon/now_showing |
 | `genres` | `Genre[]` | R | Genre liên quan |
-| `version` | `string` | R | Concurrency token |
+| `version` | `decimal string` | R | `bigint` version serialize thành chuỗi số |
 
 ## Cinema
 

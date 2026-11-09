@@ -11,7 +11,7 @@ Movie Theater Management and Online Ticket Booking System/
 ├── mandatory-instruction.md                   # Quy tắc bắt buộc khi làm việc với agent
 ├── .env.example                               # Mẫu biến môi trường ở root, không chứa secret
 ├── .gitignore                                 # Danh sách file/thư mục bị Git bỏ qua
-├── docker-compose.yml                         # File Docker Compose hiện có, chưa được cấu hình
+├── docker-compose.yml                         # PostgreSQL local, named volume và init scripts
 │
 ├── .vscode/
 │   └── settings.json                          # Cấu hình VS Code dùng chung
@@ -20,6 +20,7 @@ Movie Theater Management and Online Ticket Booking System/
 │   ├── database-design.md                     # Quyết định và nguyên tắc thiết kế database
 │   ├── database-schema.md                     # Mô tả bảng, cột, khóa, ràng buộc và index
 │   ├── database-schema.sql                    # Script tạo schema PostgreSQL
+│   ├── demo-movies.sql                        # Truy vấn read-only kiểm chứng dữ liệu phim
 │   ├── movie-research.md                      # Dữ liệu nghiên cứu phục vụ seed phim
 │   ├── seed-data.sql                          # Script seed dữ liệu mẫu
 │   └── seed-README.md                         # Hướng dẫn chạy và xác minh seed
@@ -64,6 +65,9 @@ Movie Theater Management and Online Ticket Booking System/
 │       ├── customer-user-flow.md              # Luồng đặt vé của Customer
 │       └── customer-web-layout.md             # Bố cục website
 │
+├── scripts/
+│   └── demo-local-db.ps1                      # Khởi động PostgreSQL và chạy truy vấn demo
+│
 ├── pa/
 │   ├── PA0/
 │   │   └── 24120235-24120271-24120098-24120244-24120255.pdf
@@ -91,20 +95,44 @@ Movie Theater Management and Online Ticket Booking System/
     │       ├── CinemaTicketBooking.Api.csproj # Project ASP.NET Core Web API
     │       ├── Program.cs                    # Entry point, DI và middleware
     │       ├── appsettings.Development.json  # Cấu hình môi trường development
-    │       └── Data/
-    │           └── ApplicationDbContext.cs    # DbContext và DbSet của EF Core
+    │       ├── Controllers/
+    │       │   └── MoviesController.cs        # GET /api/movies
+    │       ├── Data/
+    │       │   └── ApplicationDbContext.cs   # Mapping cinema.movie/genre
+    │       ├── DTOs/Movies/
+    │       │   ├── MovieDtos.cs               # Movie, Genre, pagination và error DTO
+    │       │   └── MovieQuery.cs              # Query/filter/pagination input
+    │       ├── Models/
+    │       │   ├── Movie.cs                   # Entity cinema.movie
+    │       │   ├── Genre.cs                   # Entity cinema.genre
+    │       │   └── MovieGenre.cs              # Entity cinema.movie_genre
+    │       └── Services/
+    │           ├── IMovieService.cs           # Service contract
+    │           └── MovieService.cs            # Read-only movie query
     │
     └── frontend/
         └── cinema-ticket-booking-ui/
             ├── .env.example                   # Mẫu biến môi trường frontend
             ├── index.html                    # HTML entry point của Vite
             ├── package.json                   # Dependency và script frontend
+            ├── package-lock.json              # Lockfile npm của frontend
             ├── tsconfig.json                  # Cấu hình TypeScript
-            ├── vite.config.ts                 # Cấu hình Vite
+            ├── tsconfig.app.json              # Type-check mã React
+            ├── tsconfig.node.json             # Type-check cấu hình Vite
+            ├── vite.config.ts                 # Cấu hình Vite và proxy API
             └── src/
                 ├── App.tsx                    # Component gốc
-                ├── index.css                  # CSS toàn cục
-                └── main.tsx                   # Entry point khởi chạy React
+                ├── index.css                  # CSS toàn cục trang chủ
+                ├── main.tsx                   # Entry point khởi chạy React
+                ├── components/
+                │   ├── MovieCard.tsx           # Thẻ phim
+                │   └── StatePanel.tsx          # Empty/error state
+                ├── pages/
+                │   └── HomePage.tsx            # Trang chủ
+                ├── services/
+                │   └── moviesApi.ts            # Client GET /api/movies
+                └── types/
+                    └── movies.ts               # Kiểu response Movie API
 ```
 
 ## Quy ước về file và thư mục chưa có

@@ -2,7 +2,7 @@
 
 ## Mục đích, nguồn và trạng thái
 
-Bản soạn ngày 09/11/2026 cho C01 Web Application ↔ C02 Backend API của hệ thống quản lý rạp và đặt vé. Ba tài liệu là **thiết kế Proposed**, không phải xác nhận implementation hoặc kết quả kiểm thử.
+Bản soạn ngày 09/11/2026 cho C01 Web Application ↔ C02 Backend API của hệ thống quản lý rạp và đặt vé. Phần lớn catalogue vẫn là **thiết kế Proposed**; riêng `GET /api/movies` đã có implementation tối thiểu và được kiểm chứng với PostgreSQL local theo log công việc.
 
 Nguồn đối chiếu: **Use-Case Specifications v2.4** (`rup_ucspec-v2.4_final(5).docx`, bản đính kèm) và **SAD v3.15** (`rup_sad(1).docx`). Trong repository, đối chiếu bản tương ứng ở `pa/PA3-Group15/` theo version/nội dung, không chỉ theo tên. Use-case quyết định hành vi; SAD quyết định component và ranh giới giao tiếp. Không dùng schema/Markdown cũ để khôi phục nghiệp vụ đã bị thay thế. Chưa kiểm tra repository hiện tại trong lần soạn này, nên không khẳng định source/schema vẫn là skeleton hoặc tất cả endpoint chưa tồn tại.
 
@@ -12,7 +12,7 @@ Tên endpoint, DTO, enum API, transport và mã lỗi dưới đây là các l�
 
 - Base path `/api`; HTTPS ở môi trường online. JSON UTF-8, field camelCase. Không đưa credential/PII vào query string.
 - Request có JSON body dùng `Content-Type: application/json`. GET/DELETE không có body trong catalogue. 204 không có body hoặc JSON content type bắt buộc.
-- ID dạng UUID; exception là categoryCode (`Adult`/`Discounted`) và mã public được định nghĩa riêng. Public code không phải quyền truy cập.
+- ID của entity có PK `bigint` trong schema (`movie`, `genre` và các quan hệ liên quan trong endpoint đọc phim) là chuỗi số thập phân trong JSON, ví dụ `"6"`, để không mất chính xác khi client JavaScript xử lý. Các ID UUID của những entity khác vẫn là UUID; `categoryCode` (`Adult`/`Discounted`) và mã public là các mã riêng, không phải UUID hay quyền truy cập.
 - `Instant`: UTC ISO 8601 có `Z`. `Date`: YYYY-MM-DD theo timezone cinema, mặc định Asia/Ho_Chi_Minh. Khi không lọc cinema, backend diễn giải ngày riêng theo mỗi cinema, không lấy timezone trình duyệt.
 - `Money`: `{ "amount": 120000, "currency": "VND" }`; amount nguyên không âm. Không trộn Money object và integer cùng một field giữa các API. Positive-total/payment eligibility vẫn do UC kiểm tra.
 - Category cố định Adult/Discounted; role code CUSTOMER/STAFF/MANAGER/ADMIN. Mỗi physical seat là một chỗ; không Couple/capacity expansion.
@@ -33,7 +33,7 @@ Collection phân trang:
 { "data": [], "pagination": { "page": 1, "pageSize": 20, "totalItems": 0, "totalPages": 0 } }
 ```
 
-Chỉ operation nhận PageQuery, MovieQuery, ShowtimeQuery hoặc OperationalQuery mới phân trang. Collection danh mục nhỏ không nhận pagination trả `{ "data": [] }`. Arrays lồng trong object không có pagination độc lập. page mặc định 1; pageSize mặc định 20, tối đa 100. Ordering mặc định ổn định bằng ID trừ khi operation công bố khác; filter không mở rộng quyền.
+Chỉ operation nhận PageQuery, MovieQuery, ShowtimeQuery hoặc OperationalQuery mới phân trang. Collection danh mục nhỏ không nhận pagination trả `{ "data": [] }`. Arrays lồng trong object không có pagination độc lập. page mặc định 1; pageSize mặc định 20, tối đa 100, riêng `GET /api/movies` mặc định 12 theo UC-06A. Ordering mặc định ổn định bằng ID trừ khi operation công bố khác; `GET /api/movies` sắp xếp release date giảm dần (NULL cuối), rồi movie ID giảm dần; filter không mở rộng quyền.
 
 Create mới trả 201; async durable acceptance trả 202; read/update/replay trả 200; delete/logout thành công trả 204. Catalogue quy định ngoại lệ cụ thể. 201 có thể kèm Location của resource; không đưa secret vào Location.
 
