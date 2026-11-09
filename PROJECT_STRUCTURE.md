@@ -11,7 +11,7 @@ Movie Theater Management and Online Ticket Booking System/
 ├── mandatory-instruction.md                   # Quy tắc bắt buộc khi làm việc với agent
 ├── .env.example                               # Mẫu biến môi trường ở root, không chứa secret
 ├── .gitignore                                 # Danh sách file/thư mục bị Git bỏ qua
-├── docker-compose.yml                         # File Docker Compose hiện có, chưa được cấu hình
+├── docker-compose.yml                         # PostgreSQL local, named volume và init scripts
 │
 ├── .vscode/
 │   └── settings.json                          # Cấu hình VS Code dùng chung
@@ -20,6 +20,7 @@ Movie Theater Management and Online Ticket Booking System/
 │   ├── database-design.md                     # Quyết định và nguyên tắc thiết kế database
 │   ├── database-schema.md                     # Mô tả bảng, cột, khóa, ràng buộc và index
 │   ├── database-schema.sql                    # Script tạo schema PostgreSQL
+│   ├── demo-movies.sql                        # Truy vấn read-only kiểm chứng dữ liệu phim
 │   ├── movie-research.md                      # Dữ liệu nghiên cứu phục vụ seed phim
 │   ├── seed-data.sql                          # Script seed dữ liệu mẫu
 │   └── seed-README.md                         # Hướng dẫn chạy và xác minh seed
@@ -63,6 +64,9 @@ Movie Theater Management and Online Ticket Booking System/
 │       ├── customer-ui-state.md               # Trạng thái và phản hồi của UI
 │       ├── customer-user-flow.md              # Luồng đặt vé của Customer
 │       └── customer-web-layout.md             # Bố cục website
+│
+├── scripts/
+│   └── demo-local-db.ps1                      # Khởi động PostgreSQL và chạy truy vấn demo
 │
 ├── pa/
 │   ├── PA0/

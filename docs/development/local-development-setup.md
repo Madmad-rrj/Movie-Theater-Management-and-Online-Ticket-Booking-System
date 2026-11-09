@@ -1,21 +1,21 @@
 # Local Development Setup — Promethe-Phos
 
-Ngày rà soát: 09/11/2026. Phạm vi: PostgreSQL local (CIN-SUB-222), backend (223), frontend (224), Docker Compose (225), configuration (226), quy trình chạy và kiểm chứng (227).
+Ngày rà soát: 09/11/2026. Phạm vi đã kiểm chứng trong nhiệm vụ này: PostgreSQL local bằng Docker Compose, bootstrap schema, seed và truy vấn phim. Backend/frontend, Supabase, booking và payment chưa thuộc demo.
 
 ## 1. Phạm vi và mức độ xác minh
 
-Hướng dẫn dành cho Windows PowerShell tại repository của nhóm. Các lệnh dưới đây là hướng dẫn cần thực hiện trên máy phát triển; **chưa được chạy trên repository hiện tại trong lần rà soát này**. Không suy ra code còn skeleton, Compose còn trống, seed idempotent hoặc endpoint đã chạy từ các mô tả cũ.
+Hướng dẫn dành cho Windows PowerShell tại repository của nhóm. Phần PostgreSQL demo trong Mục 4 đã được chạy kiểm chứng trên repository hiện tại; backend/frontend và các integration khác chưa được chạy trong phạm vi này.
 
 | Nội dung | Căn cứ / trạng thái |
 |---|---|
 | Stack | React + Vite + TypeScript; ASP.NET Core Web API + Identity + EF Core/Npgsql + PostgreSQL theo SAD |
-| Local DB | PostgreSQL bằng Docker theo lựa chọn của nhóm; ví dụ bên dưới expose host port 5433 |
+| Local DB | PostgreSQL 16.4 bằng Docker Compose; demo đã chạy trên port 55433 vì port mặc định 5433 đang bận |
 | Cloud DB | Supabase PostgreSQL; không đồng nghĩa sử dụng Supabase Auth |
 | Email | Nhóm báo đã thử Brevo API và gửi thành công; chưa chứng minh app outbox/retry đã tích hợp |
 | Payment | MoMo hướng tới demo, chưa thử; phải ghi rõ mock hoặc sandbox khi chạy |
 | Hosting | Vercel frontend / Render backend là lựa chọn của nhóm; không xác nhận deployment hoạt động |
 | Phiên bản dependency | Phải đọc manifest/lockfile hiện tại; không mặc định .NET 8, Node 20 hay PostgreSQL 16 là yêu cầu đã chốt |
-| Database lifecycle | Phải chọn migration/script phù hợp code và baseline mới trước khi seed |
+| Database lifecycle | Demo dùng `database-schema.sql` bootstrap trên volume mới và `seed-data.sql`; không chạy EF migration |
 
 Hướng dẫn thiết lập không thay thế [architecture.md](../analysis%20and%20design/architecture.md), [use-cases.md](../requirements/use-cases.md), hoặc SAD Deployment/Implementation View cần hoàn thiện ở PA4.
 
@@ -83,76 +83,77 @@ User Secrets chỉ dành cho development, **không mã hóa như một secret va
 
 ## 4. PostgreSQL Docker local
 
-### 4.1 Ưu tiên cấu hình repository đã có
+### 4.1 Demo database đầu tiên
 
-Đọc Compose hiện tại và kiểm service/volume/ports trước. Nếu đã có PostgreSQL service đáp ứng nhu cầu, dùng file đó; không tạo instance trùng port hoặc trỏ nhầm database khác. Ví dụ dưới đây là **phương án dự kiến độc lập** khi repo chưa có cấu hình dùng được.
+Demo hiện tại chỉ khởi động PostgreSQL, chạy bootstrap schema/seed và truy vấn danh sách phim. Chưa có frontend, Backend API, Supabase, booking hoặc payment.
 
-Tạo `compose.local.example.yaml` với nội dung sau. PostgreSQL 16 ở đây chỉ là image mẫu có volume path tương ứng, không tuyên bố version hiện tại của dự án. Nếu nhóm chọn major khác, đối chiếu image documentation và kế hoạch migration/volume trước khi đổi.
+Điều kiện cần:
 
-```yaml
-services:
-  postgres:
-    image: postgres:16
-    environment:
-      POSTGRES_DB: cinema_local
-      POSTGRES_USER: cinema_local
-      POSTGRES_PASSWORD: ${CINEMA_LOCAL_DB_PASSWORD:?Set local database password}
-    ports:
-      - "127.0.0.1:5433:5432"
-    volumes:
-      - cinema_pg_local:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U cinema_local -d cinema_local"]
-      interval: 5s
-      timeout: 3s
-      retries: 12
+- Docker Desktop đang chạy, Linux containers và Docker Compose v2 khả dụng.
+- PowerShell trên Windows.
+- Repository checkout ở trạng thái có `docker-compose.yml`, `.env` và các SQL script.
 
-volumes:
-  cinema_pg_local:
-```
-
-Trong `.env.docker.local` đặt `CINEMA_LOCAL_DB_PASSWORD` bằng mật khẩu local tự chọn, theo cú pháp Compose dotenv; không commit file này. Thêm ignore rule nếu chưa có. Không copy mẫu ghi đè secret file đang dùng.
+Tạo `.env` từ `.env.example`, sau đó thay password local nếu cần. Không ghi password thật vào Git và không in `.env` ra terminal:
 
 ```powershell
-Set-Location -LiteralPath $cinemaRepo
-docker compose --env-file .env.docker.local -f compose.local.example.yaml config --quiet
-docker compose --env-file .env.docker.local -f compose.local.example.yaml up -d postgres
-docker compose --env-file .env.docker.local -f compose.local.example.yaml ps
-docker compose --env-file .env.docker.local -f compose.local.example.yaml exec -T postgres pg_isready -U cinema_local -d cinema_local
+Copy-Item -LiteralPath .env.example -Destination .env
 ```
 
-Không đưa output `docker compose config` đầy đủ lên issue vì có thể chứa secret đã nội suy. `pg_isready` chỉ kiểm readiness, không chứng minh backend đã authenticate hoặc schema đúng.
+Chạy demo từ bất kỳ thư mục nào:
 
-Backend chạy trên Windows host dùng `Host=localhost;Port=5433`. Backend container trên cùng Compose network dùng service DNS `postgres` và port **5432**. Browser không dùng service DNS này. Không dùng volume chung với database khác.
+```powershell
+.\scripts\demo-local-db.ps1
+```
 
-POSTGRES_* dùng cho initialization của data directory mới; đổi password trong env không tự đổi password của cluster đã tồn tại. Khi volume có dữ liệu, quản lý credential/migration có chủ đích; không xóa volume để “sửa nhanh”.
+Script tự xác định project root từ vị trí script, kiểm tra Docker/Compose và file đầu vào, khởi động service `postgres`, chờ readiness tối đa 120 giây, xác nhận `cinema` và `cinema.movie`, rồi chạy `database/demo-movies.sql` qua `psql` trong container.
+
+Compose dùng PostgreSQL `16.4`, named volume `cinema_demo_postgres_data`, host binding `127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432`, và mount read-only theo thứ tự:
+
+1. `database/database-schema.sql` → `/docker-entrypoint-initdb.d/01-schema.sql`
+2. `database/seed-data.sql` → `/docker-entrypoint-initdb.d/02-seed.sql`
+
+`database-schema.sql` là bootstrap cho database/schema trống: nó tạo namespace `cinema` và các bảng, không phải migration nâng cấp database cũ. Init scripts chỉ chạy khi data directory của volume mới còn trống. Restart hoặc chạy lại Compose không chạy seed lần nữa; seed hiện có transaction, advisory lock và kiểm tra drift nên chạy lại cùng fixture/date không tạo phim trùng.
+
+Kết quả seed mới dự kiến có **6 phim**, **18 movie–genre links**, **9 genres**, **1 cinema**, **2 rooms**, **100 seats**, **2 cinema prices** và **48 showtimes**. Demo query in 6 phim theo `cinema.movie.id`, duration, status, language và genres.
+
+Backend chạy trên Windows host (khi được triển khai sau này) sẽ dùng `Host=localhost;Port=5433`; container cùng Compose network dùng host `postgres;Port=5432`. Demo hiện chưa khởi động backend.
 
 ### 4.2 Schema, migrations và seed
 
-**Trước khi ghi DB:** xác nhận đúng local database, đối chiếu migration/script với baseline mới (Guest selection, booking-level quantities/QR/admissions, cancellation/refund và outbox). SQL cũ có Couple/per-person ticket hoặc timer cũ không trở thành đúng chỉ vì chạy không lỗi.
+Demo này chọn trực tiếp `database/database-schema.sql` làm bootstrap duy nhất cho volume mới và `database/seed-data.sql` làm fixture. Không chạy EF migrations hoặc `EnsureCreated` trong phạm vi demo.
 
-Chọn **một nguồn quản lý schema chính** cho database này:
+Không dùng `docker compose down -v`, `docker volume rm`, `TRUNCATE`, `DROP` hoặc script tự reset để vượt lỗi. Nếu init thất bại, xem log và sửa nguyên nhân; restart container không tiếp tục một init script đã lỗi trên data directory đã có dữ liệu.
 
-1. **EF migrations:** dùng migration đã review, phù hợp DbContext/provider hiện tại. Nếu có local tool manifest, chạy `dotnet tool restore`; không tự cài EF global latest. Kiểm migration list và generated SQL trước update. Không dùng EnsureCreated trên cùng DB rồi chạy migrations như chưa có schema.
-2. **SQL scripts:** dùng database-schema.sql đã review; kiểm destructive statements, constraints, schema version và tương thích DbContext. Không chạy thêm initial EF migration lên schema có sẵn mà chưa có kế hoạch baseline.
-
-Ví dụ EF, chỉ sau khi project và migrations đã tồn tại/được kiểm tra:
+Xem log:
 
 ```powershell
-Set-Location -LiteralPath $cinemaRepo
-# Thiết lập connection/User Secrets theo mục 5.1 trước khi gọi EF
-$env:ASPNETCORE_ENVIRONMENT = 'Development'
-$env:DOTNET_ENVIRONMENT = 'Development'
-# Chỉ dùng khi có .config/dotnet-tools.json chứa dotnet-ef tương thích
-dotnet tool restore
-dotnet ef migrations list --project $apiProject --startup-project $apiProject
-# Sau khi review migrations và xác nhận connection trỏ DB local:
-dotnet ef database update --project $apiProject --startup-project $apiProject
+docker compose logs --tail 200 postgres
+docker compose ps
 ```
 
-Nếu chưa có migrations/SQL phù hợp, ghi “blocked: schema chưa đồng bộ” và hoàn thiện trước; không tạo migration để che chênh lệch mô hình. Nếu có nhiều DbContext, chỉ rõ `--context` đúng tên đã kiểm tra.
+Dừng container nhưng giữ dữ liệu:
 
-Seed phải đọc `database/seed-README.md` và SQL thực tế trước khi chạy. Không khẳng định seed idempotent; không truncate booking/payment/ticket/admission hoặc xóa showtimes để xử lý unique conflict. Dùng dữ liệu local biệt lập với cinema/room/seat, hai categories, prices, movie và showtime tương lai hợp lệ; account test phải được tạo qua Identity/seeder đúng hash và role assignments. Không đặt tài khoản production trong seed.
+```powershell
+docker compose stop postgres
+```
+
+Khởi động lại volume hiện tại:
+
+```powershell
+docker compose start postgres
+```
+
+Nếu muốn đổi schema/seed, đó là thay đổi bootstrap/fixture riêng, không phải migration. Chỉ thử trên database/volume demo mới được đặt tên rõ ràng; không xóa volume đang chứa dữ liệu người dùng.
+
+Xử lý lỗi thường gặp:
+
+| Triệu chứng | Cách xử lý |
+|---|---|
+| Docker chưa chạy | Khởi động Docker Desktop rồi chạy lại script. |
+| Port 5433 đã dùng | Đổi `POSTGRES_HOST_PORT` trong `.env` sang port trống, ví dụ `55433`; không tự dừng tiến trình khác. |
+| Thiếu `.env` hoặc biến bắt buộc | Copy `.env.example` thành `.env` và điền `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD`. |
+| Schema/seed lỗi | Đọc `docker compose logs postgres`; không reset volume và không cho rằng restart sẽ tiếp tục init. |
+| Volume đã tồn tại với schema khác | Giữ nguyên volume; tạo project/volume demo khác có tên rõ ràng hoặc xử lý migration có chủ đích. |
 
 ### 4.3 Supabase là profile khác
 
@@ -299,7 +300,7 @@ Mỗi evidence ghi commit, môi trường, tool versions, mode provider, seed/te
 
 | Triệu chứng | Kiểm tra / cách xử lý |
 |---|---|
-| DB connection refused | Docker daemon, service status, port mapping 5433 host/5432 container; tránh nhầm localhost trong container |
+| DB connection refused | Docker daemon, service status, port mapping `POSTGRES_HOST_PORT`/5432; tránh nhầm localhost trong container |
 | Password authentication failed | Backend config provider ưu tiên, password thực trong cluster cũ; env đổi không reset volume credential |
 | Backend không đọc `.env` | Kiểm configuration providers; dùng User Secrets/env của process đúng key, không giả có dotenv loader |
 | EF relation missing/already exists | Kiểm database/schema/migration history và SQL-vs-EF baseline; không drop DB để che mismatch |
@@ -311,11 +312,10 @@ Mỗi evidence ghi commit, môi trường, tool versions, mode provider, seed/te
 | Unknown payment | Đọc reconciliation/evidence; không mark failed/release thủ công |
 | Worker không xử lý | Registration, options, queue state, lease expiry/fencing, logs đã lọc; không chạy nhiều process vô kiểm soát |
 
-Dừng frontend/backend bằng Ctrl+C trong terminal tương ứng. Dừng Compose mẫu mà giữ volume:
+Dừng frontend/backend bằng Ctrl+C trong terminal tương ứng. Dừng demo Compose mà giữ volume:
 
 ```powershell
-Set-Location -LiteralPath $cinemaRepo
-docker compose --env-file .env.docker.local -f compose.local.example.yaml down
+docker compose stop postgres
 ```
 
 Không thêm `-v` vào routine shutdown; thao tác đó xóa named volume. Reset dữ liệu là thao tác riêng, cần xác định database/backup và mục tiêu, không phải bước bắt buộc mỗi lần chạy.
@@ -329,4 +329,4 @@ Không thêm `-v` vào routine shutdown; thao tác đó xóa named volume. Reset
 - [Docker Compose interpolation](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/), [PostgreSQL official image](https://hub.docker.com/_/postgres), [EF migrations](https://learn.microsoft.com/en-us/ef/core/managing-schemas/migrations/).
 - [Vite environment](https://vite.dev/guide/env-and-mode).
 
-Rewrote local setup around manifest-driven dependency selection, isolated Docker PostgreSQL, explicit ASP.NET/Vite/Compose configuration boundaries, reviewed schema initialization, and separate mock/sandbox integration evidence. Removed stale implementation claims and aligned smoke checks with the revised use-case and architecture baseline. Commands and end-to-end behavior remain unverified in the current repository.
+Demo verification on 09/11/2026: PostgreSQL 16.4 initialized the `cinema` schema and seed successfully in named volume `movietheatermanagementandonlineticketbookingsystem_cinema_demo_postgres_data`. The query returned 6 movies on the first run and 6 movies on the second run. Port 5433 was already occupied by an unrelated container, so verification used `POSTGRES_HOST_PORT=55433`; the default remains configurable at 5433. No volume reset or destructive command was used.
