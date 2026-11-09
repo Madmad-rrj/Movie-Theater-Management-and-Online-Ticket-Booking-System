@@ -95,20 +95,44 @@ Movie Theater Management and Online Ticket Booking System/
     │       ├── CinemaTicketBooking.Api.csproj # Project ASP.NET Core Web API
     │       ├── Program.cs                    # Entry point, DI và middleware
     │       ├── appsettings.Development.json  # Cấu hình môi trường development
-    │       └── Data/
-    │           └── ApplicationDbContext.cs    # DbContext và DbSet của EF Core
+    │       ├── Controllers/
+    │       │   └── MoviesController.cs        # GET /api/movies
+    │       ├── Data/
+    │       │   └── ApplicationDbContext.cs   # Mapping cinema.movie/genre
+    │       ├── DTOs/Movies/
+    │       │   ├── MovieDtos.cs               # Movie, Genre, pagination và error DTO
+    │       │   └── MovieQuery.cs              # Query/filter/pagination input
+    │       ├── Models/
+    │       │   ├── Movie.cs                   # Entity cinema.movie
+    │       │   ├── Genre.cs                   # Entity cinema.genre
+    │       │   └── MovieGenre.cs              # Entity cinema.movie_genre
+    │       └── Services/
+    │           ├── IMovieService.cs           # Service contract
+    │           └── MovieService.cs            # Read-only movie query
     │
     └── frontend/
         └── cinema-ticket-booking-ui/
             ├── .env.example                   # Mẫu biến môi trường frontend
             ├── index.html                    # HTML entry point của Vite
             ├── package.json                   # Dependency và script frontend
+            ├── package-lock.json              # Lockfile npm của frontend
             ├── tsconfig.json                  # Cấu hình TypeScript
-            ├── vite.config.ts                 # Cấu hình Vite
+            ├── tsconfig.app.json              # Type-check mã React
+            ├── tsconfig.node.json             # Type-check cấu hình Vite
+            ├── vite.config.ts                 # Cấu hình Vite và proxy API
             └── src/
                 ├── App.tsx                    # Component gốc
-                ├── index.css                  # CSS toàn cục
-                └── main.tsx                   # Entry point khởi chạy React
+                ├── index.css                  # CSS toàn cục trang chủ
+                ├── main.tsx                   # Entry point khởi chạy React
+                ├── components/
+                │   ├── MovieCard.tsx           # Thẻ phim
+                │   └── StatePanel.tsx          # Empty/error state
+                ├── pages/
+                │   └── HomePage.tsx            # Trang chủ
+                ├── services/
+                │   └── moviesApi.ts            # Client GET /api/movies
+                └── types/
+                    └── movies.ts               # Kiểu response Movie API
 ```
 
 ## Quy ước về file và thư mục chưa có

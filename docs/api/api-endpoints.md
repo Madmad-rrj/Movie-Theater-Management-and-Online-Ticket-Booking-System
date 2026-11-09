@@ -2,9 +2,9 @@
 
 ## Phạm vi và cách đọc
 
-Catalogue **Proposed**, đối chiếu Use-Case Specifications v2.4 và SAD v3.15. Mỗi dòng là một method/path duy nhất, operationId duy nhất. Không xác nhận đã implement. Policy, HTTP/error envelope, idempotency và enum mapping theo [API Contract](api-contract.md); payload theo [DTO Specification](dto-specification.md).
+Catalogue đối chiếu Use-Case Specifications v2.4 và SAD v3.15. Các operation chưa ghi rõ trạng thái vẫn là **Proposed**; `browseMovies` là **Implemented (đã kiểm chứng với PostgreSQL local)**. Mỗi dòng là một method/path duy nhất, operationId duy nhất. Policy, HTTP/error envelope, idempotency và enum mapping theo [API Contract](api-contract.md); payload theo [DTO Specification](dto-specification.md).
 
-Path ID đều UUID trừ categoryCode Adult/Discounted. Request có `(query)` là query parameters; `—` là không body. Response là phần bên trong `data`; `Type[]` là collection, pagination chỉ khi request có page/pageSize. Không sử dụng request DTO cho GET body. Management collection chỉ trả records trong scope của người gọi.
+Path ID của các entity chưa triển khai vẫn theo UUID; riêng entity `movie`/`genre` dùng chuỗi số `bigint` trong các operation đã mapping. Request có `(query)` là query parameters; `—` là không body. Response là phần bên trong `data`; `Type[]` là collection, pagination chỉ khi request có page/pageSize. Không sử dụng request DTO cho GET body. Management collection chỉ trả records trong scope của người gọi.
 
 Common errors: mọi operation có thể 400 VALIDATION_ERROR, 429 RATE_LIMITED, 500 INTERNAL_ERROR; operation protected có 401 UNAUTHENTICATED, 403 FORBIDDEN/CSRF_REJECTED, 404 NOT_FOUND. Mutations có 409 IDEMPOTENCY_KEY_CONFLICT/OPERATION_IN_PROGRESS/STATE_CONFLICT và 422 BUSINESS_RULE_VIOLATION; versioned edit thêm VERSION_CONFLICT. Chỉ trả code phù hợp điều kiện thực tế, không coi bảng là mọi lỗi đều xảy ra ở mọi endpoint. Provider webhook là ngoại lệ protocol.
 
@@ -30,7 +30,7 @@ Common errors: mọi operation có thể 400 VALIDATION_ERROR, 429 RATE_LIMITED,
 
 | Operation ID | Method | Path | UC | Policy | Request | Response | Success |
 |---|---|---|---|---|---|---|---|
-| `browseMovies` | GET | `/api/movies` | UC-06A | PUBLIC | `MovieQuery (query)` | `Movie[]` | 200 |
+| `browseMovies` | GET | `/api/movies` | UC-06A | PUBLIC | `MovieQuery (query)` | `Movie[]` + pagination | 200 — **Implemented** |
 | `movieDetail` | GET | `/api/movies/{movieId}` | UC-06B | PUBLIC | `—` | `Movie` | 200 |
 | `publicGenres` | GET | `/api/genres` | UC-06A | PUBLIC | `—` | `Genre[]` | 200 |
 | `publicCinemas` | GET | `/api/cinemas` | UC-07 | PUBLIC | `—` | `Cinema[]` | 200 |

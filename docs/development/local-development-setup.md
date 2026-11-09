@@ -1,6 +1,6 @@
 # Local Development Setup — Promethe-Phos
 
-Ngày rà soát: 09/11/2026. Phạm vi đã kiểm chứng trong nhiệm vụ này: PostgreSQL local bằng Docker Compose, bootstrap schema, seed và truy vấn phim. Backend/frontend, Supabase, booking và payment chưa thuộc demo.
+Ngày rà soát: 09/11/2026. Phạm vi đã kiểm chứng trong nhiệm vụ này: PostgreSQL local bằng Docker Compose, backend `GET /api/movies` và frontend trang chủ đọc dữ liệu qua Vite proxy. Supabase, booking và payment chưa thuộc demo.
 
 ## 1. Phạm vi và mức độ xác minh
 
@@ -10,6 +10,7 @@ Hướng dẫn dành cho Windows PowerShell tại repository của nhóm. Phần
 |---|---|
 | Stack | React + Vite + TypeScript; ASP.NET Core Web API + Identity + EF Core/Npgsql + PostgreSQL theo SAD |
 | Local DB | PostgreSQL 16.4 bằng Docker Compose; demo đã chạy trên port 55433 vì port mặc định 5433 đang bận |
+| Local frontend | React + Vite + TypeScript; Vite tại `http://127.0.0.1:5173`, proxy `/api` tới backend `http://127.0.0.1:5080` |
 | Cloud DB | Supabase PostgreSQL; không đồng nghĩa sử dụng Supabase Auth |
 | Email | Nhóm báo đã thử Brevo API và gửi thành công; chưa chứng minh app outbox/retry đã tích hợp |
 | Payment | MoMo hướng tới demo, chưa thử; phải ghi rõ mock hoặc sandbox khi chạy |
@@ -161,6 +162,8 @@ Khi cần cloud test, lấy host/port/username/TLS requirements từ project Sup
 
 ## 5. Backend ASP.NET Core
 
+Phạm vi đã triển khai trong demo backend: `GET /api/movies`. Endpoint đọc trực tiếp các bảng `cinema.movie`, `cinema.genre` và `cinema.movie_genre` bằng EF Core/Npgsql; không chạy `EnsureCreated`, migration hoặc seed. Movie/genre IDs và `version` là PK/cột `bigint` nên response serialize chúng thành chuỗi số.
+
 ### 5.1 Restore và cấu hình connection
 
 ```powershell
@@ -169,7 +172,7 @@ dotnet restore $apiProject
 dotnet build $apiProject --no-restore
 ```
 
-Đọc `Program.cs`, options binding và project `UserSecretsId`. Nếu chưa có UserSecretsId và nhóm chọn dùng User Secrets, `dotnet user-secrets init --project $apiProject` là thay đổi project cần lưu theo workflow repo. Sau đó dùng editor để thiết lập key thật mà backend đọc, ví dụ:
+Backend không tự đọc `.env` ở repository root. Cấu hình local truyền qua biến môi trường `ConnectionStrings__DefaultConnection`; giá trị này không được commit hoặc in ra terminal. Dùng port thực tế của PostgreSQL Docker (ví dụ `55433` khi `5433` bị chiếm):
 
 ```json
 {
@@ -179,24 +182,51 @@ dotnet build $apiProject --no-restore
 }
 ```
 
-Đây là placeholder, không phải credential chạy được. Backend phải đăng ký DbContext với Npgsql và đọc đúng configuration key; việc thêm JSON không tự cấu hình dependency injection. Môi trường Development phải được thiết lập trước khi chạy EF nếu cần User Secrets.
-
-### 5.2 Chạy backend
-
-Ưu tiên launch profile đã review trong `Properties/launchSettings.json`. Phương án explicit local URLs sau chỉ dùng khi app/Kestrel hỗ trợ cấu hình đó và certificate dev đã sẵn sàng:
+Đoạn JSON chỉ minh họa, không tạo file chứa password. Có thể đặt biến cho đúng tiến trình PowerShell rồi chạy API:
 
 ```powershell
-$env:ASPNETCORE_ENVIRONMENT = 'Development'
-$env:DOTNET_ENVIRONMENT = 'Development'
-dotnet dev-certs https --trust
-dotnet run --project $apiProject --no-launch-profile --urls "https://localhost:7001;http://localhost:5000"
+$env:ConnectionStrings__DefaultConnection = 'Host=localhost;Port=55433;Database=cinema_demo;Username=cinema_demo;Password=<local-password>'
+$env:ASPNETCORE_URLS = 'http://127.0.0.1:5080'
+dotnet run --project $apiProject --no-launch-profile
 ```
 
-Đọc dòng “Now listening on” để lấy URL thực tế. Kestrel/code config có thể thay đổi listener. Không tự khẳng định `/swagger`, `/health` hoặc endpoint API có tồn tại: đọc mapping trong code/OpenAPI đã triển khai. Build pass chỉ chứng minh compile, không chứng minh DB, authorization hoặc provider hoạt động.
+Nếu dùng `.env` cho Compose, phải đọc các giá trị tương ứng và tạo connection string cho tiến trình backend; Docker Compose không tự truyền `.env` vào `dotnet` chạy trên host. Không dùng connection string Supabase cho demo local.
+
+### 5.2 Chạy backend và gọi API
+
+Lệnh trên lắng nghe `http://127.0.0.1:5080`. Gọi endpoint bằng PowerShell:
+
+```powershell
+$response = Invoke-RestMethod 'http://127.0.0.1:5080/api/movies'
+$response.pagination
+$response.data | Select-Object movieId,title,durationMinutes,status,genres
+```
+
+Response mặc định hiện có 6 phim seed, `pageSize` mặc định 12, public status chỉ gồm `coming_soon` và `now_showing`. Các filter đã triển khai: `query`, `genreId` dạng chuỗi số `bigint`, `status`; pagination `page`/`pageSize` với `pageSize` tối đa 100. `GET /api/movies/{movieId}` và các endpoint khác vẫn Proposed/chưa triển khai.
+
+Đọc dòng “Now listening on” để lấy URL thực tế nếu đổi `ASPNETCORE_URLS`. Build pass không thay thế kiểm tra DB; khi database dừng, API trả `INTERNAL_ERROR` mà không lộ SQL, stack trace hoặc password.
+
+## 6. Frontend React + Vite
+
+Trang chủ hiện tại gọi `GET /api/movies` qua Vite development proxy và hiển thị dữ liệu thật từ PostgreSQL. Không đưa connection string, password hoặc provider key vào frontend. `VITE_API_PROXY_TARGET` chỉ là địa chỉ public của backend local dành cho proxy development.
+
+### 6.1 Cài đặt và khởi động
+
+```powershell
+Set-Location -LiteralPath (Join-Path $cinemaRepo 'src/frontend/cinema-ticket-booking-ui')
+npm install
+npm run lint
+npm run build
+npm run dev -- --host 127.0.0.1
+```
+
+Khởi động PostgreSQL và backend trước theo Mục 4 và Mục 5. Sau đó mở `http://127.0.0.1:5173/`. Vite chuyển tiếp request `/api/movies` tới `http://127.0.0.1:5080/api/movies`; proxy này chỉ dành cho development và chưa phải cấu hình deployment.
+
+Trang chủ có header, hero, mục phim đang chiếu và footer. Movie card dùng title, duration, genres, age rating nếu có và giữ ID dạng chuỗi; poster null hoặc tải lỗi dùng fallback cục bộ bằng CSS. Loading, error với nút thử lại và empty state được xử lý riêng. Chưa có movie detail, routing, đăng nhập, đặt vé hoặc payment.
 
 Session test phải kiểm server revocation, current roles/assignments, explicit session-replacement challenge và refresh rotation theo SAD C03. Không bỏ các kiểm tra đó vì JWT signature còn hợp lệ.
 
-## 6. Frontend React + Vite
+## 7. Frontend React + Vite mở rộng
 
 Mở terminal PowerShell khác; khai báo lại `$cinemaRepo`/`$uiRoot` từ mục 2 nếu dùng terminal mới.
 
@@ -231,7 +261,7 @@ npm run build
 
 Frontend render được không chứng minh backend integration. Mở Browser Network để kiểm URL, status và payload thật; không suy ra booking confirmed từ success-page navigation.
 
-## 7. Giao tiếp frontend/backend và authentication
+## 8. Giao tiếp frontend/backend và authentication
 
 | Hạng mục | Thiết lập cần kiểm |
 |---|---|
@@ -245,7 +275,7 @@ Frontend render được không chứng minh backend integration. Mở Browser N
 
 API documents hiện là thiết kế Proposed nếu chưa có evidence implementation. Các draft cần đồng bộ explicit replacement challenge, refresh, withdrawal và lifecycle đầy đủ; không làm code yếu hơn SAD chỉ để khớp draft cũ.
 
-## 8. Brevo, MoMo và background execution
+## 9. Brevo, MoMo và background execution
 
 ### 8.1 Brevo
 
@@ -272,7 +302,7 @@ Theo SAD, C14 có thể chạy BackgroundService trong backend modular monolith,
 
 Promethe-Nous informational-only. Bounded history ở backend memory theo C12; không yêu cầu pgvector/RAG hoặc persistence hội thoại khi nguồn chưa chốt. Nếu chưa cấu hình provider, hiển thị trạng thái chưa khả dụng thay vì trả dữ liệu bịa.
 
-## 9. Trình tự khởi động và bằng chứng cần ghi
+## 10. Trình tự khởi động và bằng chứng cần ghi
 
 1. Kiểm branch, manifest, tool versions, configuration keys và database đích.
 2. Start PostgreSQL, kiểm readiness và connection từ backend.

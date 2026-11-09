@@ -32,7 +32,7 @@ Ví dụ khác biệt đã thấy: CGV ghi ngày chiếu lại Interstellar 28/0
 
 ## 3. Poster và trailer kế thừa cần kiểm tra
 
-Các URL sau được giữ làm **candidates từ file người dùng**, chưa kiểm accessibility, đúng phim/edition, quyền sử dụng/hotlink hoặc tính ổn định. Seed không đưa các URL này vào DB như tài sản đã duyệt; `poster_url/trailer_url` NULL. Có thể dùng UI placeholder và bổ sung assets được phép sau.
+Các poster dưới đây là **URL do người dùng cung cấp cho demo**. Chúng được đưa vào `poster_url` để trang chủ có thể hiển thị artwork; việc seed URL không chứng minh accessibility, đúng edition, quyền sử dụng/hotlink hoặc tính ổn định cho production. `trailer_url` vẫn NULL và UI phải giữ fallback khi poster không tải được.
 
 | Phim | Poster candidate | Trailer candidate |
 |---|---|---|
@@ -66,4 +66,4 @@ Các URL sau được giữ làm **candidates từ file người dùng**, chưa 
 
 ## 6. Revision note
 
-Separated researched movie metadata from synthetic screening, pricing and catalogue data. Recorded runtime discrepancies and edition/market limitations, retained unverified media URLs as candidates, and aligned the six-movie fixture with the new single-seat, two-category schema. No actual November 2026 screening availability or local age classification is asserted.
+Separated researched movie metadata from synthetic screening, pricing and catalogue data. Recorded runtime discrepancies and edition/market limitations, seeded the user-provided demo poster URLs with fallback behavior, and aligned the six-movie fixture with the new single-seat, two-category schema. No actual November 2026 screening availability or local age classification is asserted.
