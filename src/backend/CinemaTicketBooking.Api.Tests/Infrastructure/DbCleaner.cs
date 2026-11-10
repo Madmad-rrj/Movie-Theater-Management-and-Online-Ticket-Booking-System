@@ -7,6 +7,9 @@ public sealed class DbCleaner
     private readonly string _connectionString;
     private readonly List<long> _movieIds = new();
     private readonly List<long> _genreIds = new();
+    private readonly List<long> _cinemaIds = new();
+    private readonly List<long> _roomIds = new();
+    private readonly List<long> _showtimeIds = new();
 
     public DbCleaner(string connectionString)
     {
@@ -15,6 +18,9 @@ public sealed class DbCleaner
 
     public void TrackMovie(long id) => _movieIds.Add(id);
     public void TrackGenre(long id) => _genreIds.Add(id);
+    public void TrackCinema(long id) => _cinemaIds.Add(id);
+    public void TrackRoom(long id) => _roomIds.Add(id);
+    public void TrackShowtime(long id) => _showtimeIds.Add(id);
 
     public async Task<NpgsqlConnection> OpenConnectionAsync()
     {
@@ -76,10 +82,81 @@ RETURNING id;";
         await cmd.ExecuteNonQueryAsync();
     }
 
+    public async Task<long> InsertCinemaAsync(NpgsqlConnection conn, string code, string name, string address,
+        string timezone = "Asia/Ho_Chi_Minh", string status = "active", short minimumTurnaroundMinutes = 15)
+    {
+        if (code.Length > 40) code = code[..40];
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+INSERT INTO cinema.cinema (code,name,address,timezone,status,minimum_turnaround_minutes)
+VALUES (@code,@name,@addr,@tz,@status,@turn)
+RETURNING id;";
+        cmd.Parameters.AddWithValue("code", code);
+        cmd.Parameters.AddWithValue("name", name);
+        cmd.Parameters.AddWithValue("addr", address);
+        cmd.Parameters.AddWithValue("tz", timezone);
+        cmd.Parameters.AddWithValue("status", status);
+        cmd.Parameters.AddWithValue("turn", minimumTurnaroundMinutes);
+        var id = (long)(await cmd.ExecuteScalarAsync())!;
+        _cinemaIds.Add(id);
+        return id;
+    }
+
+    public async Task<long> InsertRoomAsync(NpgsqlConnection conn, long cinemaId, string code, string name, string status = "active")
+    {
+        if (code.Length > 30) code = code[..30];
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+INSERT INTO cinema.cinema_room (cinema_id,code,name,status)
+VALUES (@cid,@code,@name,@status)
+RETURNING id;";
+        cmd.Parameters.AddWithValue("cid", cinemaId);
+        cmd.Parameters.AddWithValue("code", code);
+        cmd.Parameters.AddWithValue("name", name);
+        cmd.Parameters.AddWithValue("status", status);
+        var id = (long)(await cmd.ExecuteScalarAsync())!;
+        _roomIds.Add(id);
+        return id;
+    }
+
+    public async Task<long> InsertShowtimeAsync(NpgsqlConnection conn, long movieId, long roomId, DateTimeOffset startsAt,
+        short durationMinutes = 120, short turnaroundMinutes = 15, string status = "scheduled", string? seedKey = null,
+        DateTimeOffset? cancelledAt = null, string? cancellationReason = null)
+    {
+        var endsAt = startsAt.AddMinutes(durationMinutes);
+        var roomAvailableAt = endsAt.AddMinutes(turnaroundMinutes);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+INSERT INTO cinema.showtime (seed_key,movie_id,cinema_room_id,duration_minutes_snapshot,turnaround_minutes_applied,starts_at,ends_at,room_available_at,status,cancelled_at,cancellation_reason)
+VALUES (@seed,@mid,@rid,@dur,@turn,@start,@end,@avail,@status,@cat,@creason)
+RETURNING id;";
+        cmd.Parameters.AddWithValue("seed", (object?)seedKey ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("mid", movieId);
+        cmd.Parameters.AddWithValue("rid", roomId);
+        cmd.Parameters.AddWithValue("dur", durationMinutes);
+        cmd.Parameters.AddWithValue("turn", turnaroundMinutes);
+        cmd.Parameters.AddWithValue("start", startsAt);
+        cmd.Parameters.AddWithValue("end", endsAt);
+        cmd.Parameters.AddWithValue("avail", roomAvailableAt);
+        cmd.Parameters.AddWithValue("status", status);
+        cmd.Parameters.AddWithValue("cat", (object?)cancelledAt ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("creason", (object?)cancellationReason ?? DBNull.Value);
+        var id = (long)(await cmd.ExecuteScalarAsync())!;
+        _showtimeIds.Add(id);
+        return id;
+    }
+
     public async Task CleanupAsync()
     {
         await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync();
+        if (_showtimeIds.Count > 0)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM cinema.showtime WHERE id = ANY(@ids);";
+            cmd.Parameters.AddWithValue("ids", _showtimeIds.ToArray());
+            await cmd.ExecuteNonQueryAsync();
+        }
         if (_movieIds.Count > 0)
         {
             await using (var cmd = conn.CreateCommand())
@@ -102,9 +179,23 @@ RETURNING id;";
             cmd.Parameters.AddWithValue("ids", _genreIds.ToArray());
             await cmd.ExecuteNonQueryAsync();
         }
+        if (_roomIds.Count > 0)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM cinema.cinema_room WHERE id = ANY(@ids);";
+            cmd.Parameters.AddWithValue("ids", _roomIds.ToArray());
+            await cmd.ExecuteNonQueryAsync();
+        }
+        if (_cinemaIds.Count > 0)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM cinema.cinema WHERE id = ANY(@ids);";
+            cmd.Parameters.AddWithValue("ids", _cinemaIds.ToArray());
+            await cmd.ExecuteNonQueryAsync();
+        }
     }
 
-    public static async Task<(long movies, long genres, long movieGenres)> CountMovieTablesAsync(string connectionString)
+    public static async Task<(long movies, long genres, long movieGenres, long cinemas, long rooms, long showtimes)> CountCoreTablesAsync(string connectionString)
     {
         await using var conn = new NpgsqlConnection(connectionString);
         await conn.OpenAsync();
@@ -114,9 +205,13 @@ RETURNING id;";
             cmd.CommandText = $"SELECT count(*) FROM {table};";
             return (long)(await cmd.ExecuteScalarAsync())!;
         }
-        var movies = await Count("cinema.movie");
-        var genres = await Count("cinema.genre");
-        var links = await Count("cinema.movie_genre");
-        return (movies, genres, links);
+        return (
+            await Count("cinema.movie"),
+            await Count("cinema.genre"),
+            await Count("cinema.movie_genre"),
+            await Count("cinema.cinema"),
+            await Count("cinema.cinema_room"),
+            await Count("cinema.showtime")
+        );
     }
 }

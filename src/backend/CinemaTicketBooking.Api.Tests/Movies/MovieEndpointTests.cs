@@ -186,12 +186,15 @@ public sealed class MovieEndpointTests
     }
 
     [Fact]
-    public async Task MovieTables_HaveNoLeftoverRows_AfterCleanups()
+    public async Task CoreTables_HaveNoLeftoverRows_AfterCleanups()
     {
-        var (movies, genres, links) = await DbCleaner.CountMovieTablesAsync(_connectionString);
+        var (movies, genres, links, cinemas, rooms, showtimes) = await DbCleaner.CountCoreTablesAsync(_connectionString);
         Assert.Equal(0, movies);
         Assert.Equal(0, genres);
         Assert.Equal(0, links);
+        Assert.Equal(0, cinemas);
+        Assert.Equal(0, rooms);
+        Assert.Equal(0, showtimes);
     }
 
     private static async Task<JsonDocument> AssertErrorAsync(HttpResponseMessage response, HttpStatusCode expectedStatus, string expectedCode)
