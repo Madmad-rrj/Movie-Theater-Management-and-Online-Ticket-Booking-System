@@ -91,55 +91,74 @@ Movie Theater Management and Online Ticket Booking System/
 │
 └── src/
     ├── backend/
-    │   └── CinemaTicketBooking.Api/
-    │       ├── CinemaTicketBooking.Api.csproj # Project ASP.NET Core Web API
-    │       ├── Program.cs                    # Entry point, DI và middleware
-    │       ├── appsettings.Development.json  # Cấu hình môi trường development
-    │       ├── Controllers/
-    │       │   ├── CinemasController.cs       # GET /api/cinemas
-    │       │   ├── MoviesController.cs        # GET /api/movies, GET /api/movies/{movieId}
-    │       │   ├── PricingController.cs       # GET /api/ticket-categories, GET /api/cinemas/{cinemaId}/ticket-pricing
-    │       │   ├── SeatMapController.cs       # GET /api/showtimes/{showtimeId}/seats
-    │       │   └── ShowtimesController.cs     # GET /api/movies/{movieId}/showtimes, GET /api/showtimes/{showtimeId}
-    │       ├── Data/
-    │       │   └── ApplicationDbContext.cs   # EF Core DbContext và mapping schema cinema
-    │       ├── DTOs/
-    │       │   ├── CommonDtos.cs              # ApiResponse, ApiError, PaginationDto, MoneyDto
-    │       │   ├── Cinemas/
-    │       │   │   └── CinemaDtos.cs          # Cinema DTO
-    │       │   ├── Movies/
-    │       │   │   ├── MovieDtos.cs           # Movie, Genre DTO
-    │       │   │   └── MovieQuery.cs          # Query/filter/pagination input phim
-    │       │   ├── Pricing/
-    │       │   │   └── PricingDtos.cs         # TicketCategory, CinemaPricing DTO
-    │       │   ├── Seats/
-    │       │   │   └── SeatDtos.cs            # SeatType, Seat, SeatMap DTO
-    │       │   └── Showtimes/
-    │       │       └── ShowtimeDtos.cs        # Showtime DTO và query lịch chiếu
-    │       ├── Models/
-    │       │   ├── BookingSeat.cs             # Entity cinema.booking_seat (đọc allocation)
-    │       │   ├── Cinema.cs                  # Entity cinema.cinema
-    │       │   ├── CinemaRoom.cs              # Entity cinema.cinema_room
-    │       │   ├── CinemaTicketPrice.cs       # Entity cinema.cinema_ticket_price
-    │       │   ├── Genre.cs                   # Entity cinema.genre
-    │       │   ├── Movie.cs                   # Entity cinema.movie
-    │       │   ├── MovieGenre.cs              # Entity cinema.movie_genre
-    │       │   ├── Seat.cs                    # Entity cinema.seat
-    │       │   ├── SeatType.cs                # Entity cinema.seat_type
-    │       │   ├── Showtime.cs                # Entity cinema.showtime
-    │       │   └── TicketCategory.cs          # Entity cinema.ticket_category
-    │       └── Services/
-    │           ├── ApiExceptions.cs            # Exception nghiệp vụ/API dùng chung
-    │           ├── CinemaService.cs           # Truy vấn rạp công khai
-    │           ├── ICinemaService.cs          # Contract service rạp
-    │           ├── IMovieService.cs           # Contract service phim
-    │           ├── IPricingService.cs         # Contract service loại vé/giá
-    │           ├── ISeatMapService.cs         # Contract service sơ đồ ghế
-    │           ├── IShowtimeService.cs        # Contract service suất chiếu
-    │           ├── MovieService.cs            # Truy vấn phim (browse/detail)
-    │           ├── PricingService.cs          # Truy vấn loại vé và giá rạp
-    │           ├── SeatMapService.cs          # Truy vấn sơ đồ ghế theo suất
-    │           └── ShowtimeService.cs         # Truy vấn suất chiếu
+    │   ├── CinemaTicketBooking.Api/
+    │   │   ├── CinemaTicketBooking.Api.csproj # Project ASP.NET Core Web API
+    │   │   ├── GlobalExceptionHandler.cs      # Exception handler → error envelope {error:{code,message,details,traceId}}
+    │   │   ├── Program.cs                    # Entry point, DI và middleware
+    │   │   ├── Program.Public.cs              # `public partial class Program` (phục vụ integration test)
+    │   │   ├── appsettings.Development.json  # Cấu hình môi trường development
+    │   │   ├── Controllers/
+    │   │   │   ├── CinemasController.cs       # GET /api/cinemas
+    │   │   │   ├── MoviesController.cs        # GET /api/movies, GET /api/movies/{movieId}
+    │   │   │   ├── PricingController.cs       # GET /api/ticket-categories, GET /api/cinemas/{cinemaId}/ticket-pricing
+    │   │   │   ├── SeatMapController.cs       # GET /api/showtimes/{showtimeId}/seats
+    │   │   │   └── ShowtimesController.cs     # GET /api/movies/{movieId}/showtimes, GET /api/showtimes/{showtimeId}
+    │   │   ├── Data/
+    │   │   │   └── ApplicationDbContext.cs   # EF Core DbContext và mapping schema cinema
+    │   │   ├── DTOs/
+    │   │   │   ├── CommonDtos.cs              # ApiResponse, PaginationDto, MoneyDto
+    │   │   │   ├── Cinemas/
+    │   │   │   │   └── CinemaDtos.cs          # Cinema DTO
+    │   │   │   ├── Movies/
+    │   │   │   │   ├── MovieDtos.cs           # Movie, Genre DTO
+    │   │   │   │   └── MovieQuery.cs          # Query/filter/pagination input phim
+    │   │   │   ├── Pricing/
+    │   │   │   │   └── PricingDtos.cs         # TicketCategory, CinemaPricing DTO
+    │   │   │   ├── Seats/
+    │   │   │   │   └── SeatDtos.cs            # SeatType, Seat, SeatMap DTO
+    │   │   │   └── Showtimes/
+    │   │   │       └── ShowtimeDtos.cs        # Showtime DTO và query lịch chiếu
+    │   │   ├── Models/
+    │   │   │   ├── BookingSeat.cs             # Entity cinema.booking_seat (đọc allocation)
+    │   │   │   ├── Cinema.cs                  # Entity cinema.cinema
+    │   │   │   ├── CinemaRoom.cs              # Entity cinema.cinema_room
+    │   │   │   ├── CinemaTicketPrice.cs       # Entity cinema.cinema_ticket_price
+    │   │   │   ├── Genre.cs                   # Entity cinema.genre
+    │   │   │   ├── Movie.cs                   # Entity cinema.movie
+    │   │   │   ├── MovieGenre.cs              # Entity cinema.movie_genre
+    │   │   │   ├── Seat.cs                    # Entity cinema.seat
+    │   │   │   ├── SeatType.cs                # Entity cinema.seat_type
+    │   │   │   ├── Showtime.cs                # Entity cinema.showtime
+    │   │   │   └── TicketCategory.cs          # Entity cinema.ticket_category
+    │   │   └── Services/
+    │   │       ├── ApiExceptions.cs            # Exception nghiệp vụ/API dùng chung
+    │   │       ├── CinemaService.cs           # Truy vấn rạp công khai
+    │   │       ├── ICinemaService.cs          # Contract service rạp
+    │   │       ├── IMovieService.cs           # Contract service phim
+    │   │       ├── IPricingService.cs         # Contract service loại vé/giá
+    │   │       ├── ISeatMapService.cs         # Contract service sơ đồ ghế
+    │   │       ├── IShowtimeService.cs        # Contract service suất chiếu
+    │   │       ├── MovieService.cs            # Truy vấn phim (browse/detail)
+    │   │       ├── PricingService.cs          # Truy vấn loại vé và giá rạp
+    │   │       ├── SeatMapService.cs          # Truy vấn sơ đồ ghế theo suất
+    │   │       └── ShowtimeService.cs         # Truy vấn suất chiếu
+    │   │
+    │   └── CinemaTicketBooking.Api.Tests/
+    │       ├── CinemaTicketBooking.Api.Tests.csproj # Project test (xUnit, WebApplicationFactory, Testcontainers)
+    │       ├── Infrastructure/
+    │       │   ├── ApiFactory.cs              # WebApplicationFactory<Program> trỏ DB test
+    │       │   ├── DbCleaner.cs               # Helper tạo/dọn dữ liệu fixture theo test
+    │       │   └── PostgresFixture.cs         # Collection fixture: PostgreSQL 16.4 + nạp schema 1 lần/lượt
+    │       ├── Movies/
+    │       │   └── MovieEndpointTests.cs      # Test browse/detail phim, ID/visibility
+    │       ├── Pricing/
+    │       │   └── PricingEndpointTests.cs    # Test ticket-categories và cinema pricing
+    │       ├── Seats/
+    │       │   └── SeatMapEndpointTests.cs    # Test seat map, availability, isolation
+    │       ├── Showtimes/
+    │       │   └── ShowtimeEndpointTests.cs   # Test showtimes, filter, timezone boundary
+    │       └── Smoke/
+    │           └── MoviesSmokeTests.cs        # Smoke GET /api/movies
     │
     └── frontend/
         └── cinema-ticket-booking-ui/
