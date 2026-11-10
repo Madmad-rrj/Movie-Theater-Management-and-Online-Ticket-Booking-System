@@ -1,4 +1,4 @@
-﻿using CinemaTicketBooking.Api.Models;
+using CinemaTicketBooking.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace CinemaTicketBooking.Api.Data;
@@ -11,6 +11,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<MovieGenre> MovieGenres => Set<MovieGenre>();
     public DbSet<Cinema> Cinemas => Set<Cinema>();
     public DbSet<CinemaRoom> CinemaRooms => Set<CinemaRoom>();
+    public DbSet<Showtime> Showtimes => Set<Showtime>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -87,6 +88,31 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             entity.HasOne(r => r.Cinema)
                 .WithMany(c => c.Rooms)
                 .HasForeignKey(r => r.CinemaId);
+        });
+
+        modelBuilder.Entity<Showtime>(entity =>
+        {
+            entity.ToTable("showtime");
+            entity.HasKey(s => s.Id);
+            entity.Property(s => s.Id).HasColumnName("id");
+            entity.Property(s => s.SeedKey).HasColumnName("seed_key");
+            entity.Property(s => s.MovieId).HasColumnName("movie_id").IsRequired();
+            entity.Property(s => s.CinemaRoomId).HasColumnName("cinema_room_id").IsRequired();
+            entity.Property(s => s.DurationMinutesSnapshot).HasColumnName("duration_minutes_snapshot").IsRequired();
+            entity.Property(s => s.TurnaroundMinutesApplied).HasColumnName("turnaround_minutes_applied").IsRequired();
+            entity.Property(s => s.StartsAt).HasColumnName("starts_at").IsRequired();
+            entity.Property(s => s.EndsAt).HasColumnName("ends_at").IsRequired();
+            entity.Property(s => s.RoomAvailableAt).HasColumnName("room_available_at").IsRequired();
+            entity.Property(s => s.Status).HasColumnName("status").HasMaxLength(16).IsRequired();
+            entity.Property(s => s.CancelledAt).HasColumnName("cancelled_at");
+            entity.Property(s => s.CancellationReason).HasColumnName("cancellation_reason");
+            entity.Property(s => s.Version).HasColumnName("version").IsRequired();
+            entity.HasOne(s => s.Movie)
+                .WithMany()
+                .HasForeignKey(s => s.MovieId);
+            entity.HasOne(s => s.CinemaRoom)
+                .WithMany(r => r.Showtimes)
+                .HasForeignKey(s => s.CinemaRoomId);
         });
     }
 }

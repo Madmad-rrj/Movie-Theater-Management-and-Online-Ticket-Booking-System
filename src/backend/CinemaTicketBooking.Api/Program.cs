@@ -1,4 +1,4 @@
-﻿using CinemaTicketBooking.Api.Data;
+using CinemaTicketBooking.Api.Data;
 using CinemaTicketBooking.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
@@ -15,6 +15,7 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString, npgsql => npgsql.EnableRetryOnFailure(3)));
 builder.Services.AddScoped<IMovieService, MovieService>();
 builder.Services.AddScoped<ICinemaService, CinemaService>();
+builder.Services.AddScoped<IShowtimeService, ShowtimeService>();
 builder.Services.AddControllers();
 
 builder.Services.AddProblemDetails();

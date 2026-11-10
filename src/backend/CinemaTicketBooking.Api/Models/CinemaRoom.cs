@@ -1,4 +1,4 @@
-﻿namespace CinemaTicketBooking.Api.Models;
+namespace CinemaTicketBooking.Api.Models;
 
 public sealed class CinemaRoom
 {
@@ -9,4 +9,5 @@ public sealed class CinemaRoom
     public string Status { get; set; } = "active";
     public long Version { get; set; }
     public Cinema Cinema { get; set; } = null!;
+    public ICollection<Showtime> Showtimes { get; set; } = [];
 }
