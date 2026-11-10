@@ -8,7 +8,8 @@ namespace CinemaTicketBooking.Api.Services;
 public sealed class ShowtimeService(ApplicationDbContext db) : IShowtimeService
 {
     private static readonly string[] PublicMovieStatuses = ["coming_soon", "now_showing", "ended"];
-    private static readonly string[] PublicShowtimeStatuses = ["scheduled", "in_progress", "completed"];
+    // UC-07: diễn giải "suất đang bán" -> chỉ scheduled (không gồm draft, in_progress, completed, cancelled).
+    private static readonly string[] PublicShowtimeStatuses = ["scheduled"];
 
     public async Task<ApiResponse<IReadOnlyList<ShowtimeDto>>> BrowseByMovieAsync(
         string movieId,
@@ -18,14 +19,6 @@ public sealed class ShowtimeService(ApplicationDbContext db) : IShowtimeService
         if (!TryParsePositiveLong(movieId, out var movieIdValue))
         {
             throw ApiValidation.Error("movieId", "invalid_format", "movieId phải là chuỗi số nguyên dương.");
-        }
-
-        var movieExists = await db.Movies
-            .AsNoTracking()
-            .AnyAsync(m => m.Id == movieIdValue && PublicMovieStatuses.Contains(m.Status), cancellationToken);
-        if (!movieExists)
-        {
-            throw new NotFoundApiException("Không tìm thấy phim.");
         }
 
         if (query.Page < 1)
@@ -48,14 +41,22 @@ public sealed class ShowtimeService(ApplicationDbContext db) : IShowtimeService
             cinemaIdValue = parsedCinemaId;
         }
 
-        DateOnly? filterDate = null;
-        if (!string.IsNullOrWhiteSpace(query.Date))
+        if (string.IsNullOrWhiteSpace(query.Date))
         {
-            if (!DateOnly.TryParse(query.Date, out var parsedDate))
-            {
-                throw ApiValidation.Error("date", "invalid_format", "date phải có định dạng YYYY-MM-DD.");
-            }
-            filterDate = parsedDate;
+            throw ApiValidation.Error("date", "required", "date là bắt buộc.");
+        }
+
+        if (!DateOnly.TryParse(query.Date, out var filterDate))
+        {
+            throw ApiValidation.Error("date", "invalid_format", "date phải có định dạng YYYY-MM-DD.");
+        }
+
+        var movieExists = await db.Movies
+            .AsNoTracking()
+            .AnyAsync(m => m.Id == movieIdValue && PublicMovieStatuses.Contains(m.Status), cancellationToken);
+        if (!movieExists)
+        {
+            throw new NotFoundApiException("Không tìm thấy phim.");
         }
 
         IQueryable<Models.Showtime> showtimes = db.Showtimes
@@ -88,11 +89,8 @@ public sealed class ShowtimeService(ApplicationDbContext db) : IShowtimeService
             })
             .ToListAsync(cancellationToken);
 
-        IEnumerable<dynamic> filtered = all;
-        if (filterDate.HasValue)
-        {
-            filtered = all.Where(s => ToCinemaDate((DateTimeOffset)s.StartsAt, (string)s.CinemaTimezone) == filterDate.Value);
-        }
+        IEnumerable<dynamic> filtered = all.Where(s =>
+            ToCinemaDate((DateTimeOffset)s.StartsAt, (string)s.CinemaTimezone) == filterDate);
 
         var ordered = filtered
             .OrderBy(s => s.StartsAt)

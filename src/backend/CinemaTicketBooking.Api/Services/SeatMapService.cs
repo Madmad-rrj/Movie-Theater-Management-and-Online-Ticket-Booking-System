@@ -58,10 +58,13 @@ public sealed class SeatMapService(ApplicationDbContext db) : ISeatMapService
         var allocationStatuses = await db.BookingSeats
             .AsNoTracking()
             .Where(bs => bs.ShowtimeId == id && (bs.AllocationStatus == "held" || bs.AllocationStatus == "sold"))
-            .GroupBy(bs => bs.SeatId)
-            .Select(g => new { SeatId = g.Key, Status = g.Max(x => x.AllocationStatus) })
+            .Select(bs => new { bs.SeatId, bs.AllocationStatus })
             .ToListAsync(cancellationToken);
-        var statusBySeat = allocationStatuses.ToDictionary(x => x.SeatId, x => x.Status);
+        var statusBySeat = allocationStatuses
+            .GroupBy(x => x.SeatId)
+            .ToDictionary(
+                g => g.Key,
+                g => g.Any(x => x.AllocationStatus == "sold") ? "sold" : "held");
 
         var serverTime = DateTimeOffset.UtcNow;
         var items = seats.Select(seat =>

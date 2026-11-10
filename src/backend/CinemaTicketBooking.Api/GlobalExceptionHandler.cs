@@ -4,7 +4,7 @@ using System.Diagnostics;
 
 namespace CinemaTicketBooking.Api;
 
-public sealed class GlobalExceptionHandler : IExceptionHandler
+public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logger) : IExceptionHandler
 {
     public async ValueTask<bool> TryHandleAsync(
         HttpContext httpContext,
@@ -44,6 +44,7 @@ public sealed class GlobalExceptionHandler : IExceptionHandler
                 code = "INTERNAL_ERROR";
                 message = "Đã xảy ra lỗi khi xử lý yêu cầu.";
                 details = new { };
+                logger.LogError(exception, "Unhandled exception. TraceId: {TraceId}", traceId);
                 break;
         }
 
