@@ -1,4 +1,4 @@
-using CinemaTicketBooking.Api.Data;
+﻿using CinemaTicketBooking.Api.Data;
 using CinemaTicketBooking.Api.Services;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,6 +14,7 @@ if (string.IsNullOrWhiteSpace(connectionString))
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString, npgsql => npgsql.EnableRetryOnFailure(3)));
 builder.Services.AddScoped<IMovieService, MovieService>();
+builder.Services.AddScoped<ICinemaService, CinemaService>();
 builder.Services.AddControllers();
 
 builder.Services.AddProblemDetails();

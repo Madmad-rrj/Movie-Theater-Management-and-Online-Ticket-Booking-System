@@ -1,4 +1,4 @@
-using CinemaTicketBooking.Api.Models;
+﻿using CinemaTicketBooking.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace CinemaTicketBooking.Api.Data;
@@ -9,6 +9,8 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<Movie> Movies => Set<Movie>();
     public DbSet<Genre> Genres => Set<Genre>();
     public DbSet<MovieGenre> MovieGenres => Set<MovieGenre>();
+    public DbSet<Cinema> Cinemas => Set<Cinema>();
+    public DbSet<CinemaRoom> CinemaRooms => Set<CinemaRoom>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -55,6 +57,36 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             entity.HasOne(movieGenre => movieGenre.Genre)
                 .WithMany(genre => genre.MovieGenres)
                 .HasForeignKey(movieGenre => movieGenre.GenreId);
+        });
+
+        modelBuilder.Entity<Cinema>(entity =>
+        {
+            entity.ToTable("cinema");
+            entity.HasKey(c => c.Id);
+            entity.Property(c => c.Id).HasColumnName("id");
+            entity.Property(c => c.Code).HasColumnName("code").HasMaxLength(40).IsRequired();
+            entity.Property(c => c.Name).HasColumnName("name").HasMaxLength(150).IsRequired();
+            entity.Property(c => c.Address).HasColumnName("address").IsRequired();
+            entity.Property(c => c.Phone).HasColumnName("phone");
+            entity.Property(c => c.Timezone).HasColumnName("timezone").HasMaxLength(64).IsRequired();
+            entity.Property(c => c.Status).HasColumnName("status").HasMaxLength(16).IsRequired();
+            entity.Property(c => c.MinimumTurnaroundMinutes).HasColumnName("minimum_turnaround_minutes").IsRequired();
+            entity.Property(c => c.Version).HasColumnName("version").IsRequired();
+        });
+
+        modelBuilder.Entity<CinemaRoom>(entity =>
+        {
+            entity.ToTable("cinema_room");
+            entity.HasKey(r => r.Id);
+            entity.Property(r => r.Id).HasColumnName("id");
+            entity.Property(r => r.CinemaId).HasColumnName("cinema_id").IsRequired();
+            entity.Property(r => r.Code).HasColumnName("code").HasMaxLength(30).IsRequired();
+            entity.Property(r => r.Name).HasColumnName("name").HasMaxLength(100).IsRequired();
+            entity.Property(r => r.Status).HasColumnName("status").HasMaxLength(16).IsRequired();
+            entity.Property(r => r.Version).HasColumnName("version").IsRequired();
+            entity.HasOne(r => r.Cinema)
+                .WithMany(c => c.Rooms)
+                .HasForeignKey(r => r.CinemaId);
         });
     }
 }
