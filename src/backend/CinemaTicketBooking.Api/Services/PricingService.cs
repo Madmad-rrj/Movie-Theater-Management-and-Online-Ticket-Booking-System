@@ -27,7 +27,7 @@ public sealed class PricingService(ApplicationDbContext db) : IPricingService
     {
         if (!long.TryParse(cinemaId, out var id) || id <= 0)
         {
-            throw new ApiRequestException("VALIDATION_ERROR", "cinemaId phải là chuỗi số nguyên dương.");
+            throw ApiValidation.Error("cinemaId", "invalid_format", "cinemaId phải là chuỗi số nguyên dương.");
         }
 
         var cinemaExists = await db.Cinemas.AsNoTracking().AnyAsync(c => c.Id == id && c.Status == "active", cancellationToken);
@@ -45,7 +45,10 @@ public sealed class PricingService(ApplicationDbContext db) : IPricingService
         var discounted = prices.FirstOrDefault(p => p.CategoryCode == "Discounted");
         if (adult is null || discounted is null)
         {
-            throw new ApiRequestException("STATE_CONFLICT", "Rạp chưa được cấu hình đầy đủ giá vé.");
+            throw new ApiRequestException(
+                "STATE_CONFLICT",
+                "Rạp chưa được cấu hình đầy đủ giá vé.",
+                StatusCodes.Status409Conflict);
         }
 
         var version = Math.Max(adult.Version, discounted.Version).ToString();

@@ -17,7 +17,7 @@ public sealed class ShowtimeService(ApplicationDbContext db) : IShowtimeService
     {
         if (!TryParsePositiveLong(movieId, out var movieIdValue))
         {
-            throw new ApiRequestException("VALIDATION_ERROR", "movieId phải là chuỗi số nguyên dương.");
+            throw ApiValidation.Error("movieId", "invalid_format", "movieId phải là chuỗi số nguyên dương.");
         }
 
         var movieExists = await db.Movies
@@ -30,12 +30,12 @@ public sealed class ShowtimeService(ApplicationDbContext db) : IShowtimeService
 
         if (query.Page < 1)
         {
-            throw new ApiRequestException("VALIDATION_ERROR", "page phải lớn hơn hoặc bằng 1.");
+            throw ApiValidation.Error("page", "min_value", "page phải lớn hơn hoặc bằng 1.");
         }
 
         if (query.PageSize is < 1 or > 100)
         {
-            throw new ApiRequestException("VALIDATION_ERROR", "pageSize phải nằm trong khoảng 1 đến 100.");
+            throw ApiValidation.Error("pageSize", "out_of_range", "pageSize phải nằm trong khoảng 1 đến 100.");
         }
 
         long? cinemaIdValue = null;
@@ -43,7 +43,7 @@ public sealed class ShowtimeService(ApplicationDbContext db) : IShowtimeService
         {
             if (!TryParsePositiveLong(query.CinemaId, out var parsedCinemaId))
             {
-                throw new ApiRequestException("VALIDATION_ERROR", "cinemaId phải là chuỗi số nguyên dương.");
+                throw ApiValidation.Error("cinemaId", "invalid_format", "cinemaId phải là chuỗi số nguyên dương.");
             }
             cinemaIdValue = parsedCinemaId;
         }
@@ -53,7 +53,7 @@ public sealed class ShowtimeService(ApplicationDbContext db) : IShowtimeService
         {
             if (!DateOnly.TryParse(query.Date, out var parsedDate))
             {
-                throw new ApiRequestException("VALIDATION_ERROR", "date phải có định dạng YYYY-MM-DD.");
+                throw ApiValidation.Error("date", "invalid_format", "date phải có định dạng YYYY-MM-DD.");
             }
             filterDate = parsedDate;
         }
@@ -128,7 +128,7 @@ public sealed class ShowtimeService(ApplicationDbContext db) : IShowtimeService
     {
         if (!TryParsePositiveLong(showtimeId, out var id))
         {
-            throw new ApiRequestException("VALIDATION_ERROR", "showtimeId phải là chuỗi số nguyên dương.");
+            throw ApiValidation.Error("showtimeId", "invalid_format", "showtimeId phải là chuỗi số nguyên dương.");
         }
 
         var serverTime = DateTimeOffset.UtcNow;

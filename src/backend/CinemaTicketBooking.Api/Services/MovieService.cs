@@ -14,6 +14,22 @@ public sealed class MovieService(ApplicationDbContext db) : IMovieService
         MovieQuery query,
         CancellationToken cancellationToken)
     {
+        if (query.Page < 1)
+        {
+            throw ApiValidation.Error("page", "min_value", "page phải lớn hơn hoặc bằng 1.");
+        }
+
+        if (query.PageSize is < 1 or > 100)
+        {
+            throw ApiValidation.Error("pageSize", "out_of_range", "pageSize phải nằm trong khoảng 1 đến 100.");
+        }
+
+        if (!string.IsNullOrWhiteSpace(query.Status) &&
+            query.Status is not ("coming_soon" or "now_showing"))
+        {
+            throw ApiValidation.Error("status", "invalid_value", "status chỉ nhận coming_soon hoặc now_showing.");
+        }
+
         IQueryable<Models.Movie> movies = db.Movies
             .AsNoTracking()
             .Where(movie => PublicStatuses.Contains(movie.Status));
@@ -33,7 +49,7 @@ public sealed class MovieService(ApplicationDbContext db) : IMovieService
         {
             if (!long.TryParse(query.GenreId, out var genreId) || genreId <= 0)
             {
-                throw new MovieQueryException("INVALID_GENRE_ID", "genreId phải là chuỗi số nguyên dương.");
+                throw ApiValidation.Error("genreId", "invalid_format", "genreId phải là chuỗi số nguyên dương.");
             }
 
             movies = movies.Where(movie => movie.MovieGenres.Any(movieGenre => movieGenre.GenreId == genreId));
@@ -82,7 +98,7 @@ public sealed class MovieService(ApplicationDbContext db) : IMovieService
     {
         if (!long.TryParse(movieId, out var id) || id <= 0)
         {
-            throw new MovieQueryException("VALIDATION_ERROR", "movieId phải là chuỗi số nguyên dương.");
+            throw ApiValidation.Error("movieId", "invalid_format", "movieId phải là chuỗi số nguyên dương.");
         }
 
         var movie = await db.Movies
@@ -113,16 +129,9 @@ public sealed class MovieService(ApplicationDbContext db) : IMovieService
 
         if (movie is null)
         {
-            throw new MovieNotFoundException();
+            throw new NotFoundApiException("Không tìm thấy phim.");
         }
 
         return movie;
     }
 }
-
-public sealed class MovieQueryException(string code, string message) : Exception(message)
-{
-    public string Code { get; } = code;
-}
-
-public sealed class MovieNotFoundException : Exception;

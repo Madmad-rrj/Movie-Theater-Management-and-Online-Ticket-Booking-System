@@ -1,3 +1,4 @@
+using CinemaTicketBooking.Api;
 using CinemaTicketBooking.Api.Data;
 using CinemaTicketBooking.Api.Services;
 using Microsoft.EntityFrameworkCore;
@@ -18,28 +19,13 @@ builder.Services.AddScoped<ICinemaService, CinemaService>();
 builder.Services.AddScoped<IShowtimeService, ShowtimeService>();
 builder.Services.AddScoped<IPricingService, PricingService>();
 builder.Services.AddScoped<ISeatMapService, SeatMapService>();
-builder.Services.AddControllers();
-
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
+builder.Services.AddControllers();
 
 var app = builder.Build();
 
-app.UseExceptionHandler(exceptionApp =>
-{
-    exceptionApp.Run(async context =>
-    {
-        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
-        context.Response.ContentType = "application/json";
-        await context.Response.WriteAsJsonAsync(new
-        {
-            error = new
-            {
-                code = "INTERNAL_ERROR",
-                message = "Đã xảy ra lỗi khi xử lý yêu cầu."
-            }
-        });
-    });
-});
+app.UseExceptionHandler();
 
 app.MapControllers();
 

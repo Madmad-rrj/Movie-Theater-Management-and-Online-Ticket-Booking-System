@@ -14,7 +14,7 @@ public sealed class SeatMapService(ApplicationDbContext db) : ISeatMapService
     {
         if (!long.TryParse(showtimeId, out var id) || id <= 0)
         {
-            throw new ApiRequestException("VALIDATION_ERROR", "showtimeId phải là chuỗi số nguyên dương.");
+            throw ApiValidation.Error("showtimeId", "invalid_format", "showtimeId phải là chuỗi số nguyên dương.");
         }
 
         var showtime = await db.Showtimes
