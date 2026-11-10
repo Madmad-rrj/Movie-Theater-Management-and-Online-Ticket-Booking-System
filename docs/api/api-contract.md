@@ -2,7 +2,7 @@
 
 ## Mục đích, nguồn và trạng thái
 
-Bản soạn ngày 09/11/2026 cho C01 Web Application ↔ C02 Backend API của hệ thống quản lý rạp và đặt vé. Phần lớn catalogue vẫn là **thiết kế Proposed**. Các endpoint đọc công khai BE1 đã có implementation; `GET /api/movies` đã được kiểm chứng với PostgreSQL local, và bộ endpoint BE1 đã được kiểm chứng bằng integration test trên PostgreSQL Docker riêng (Testcontainers, 65 test, 2026-11-11) theo log và [API Endpoints](api-endpoints.md). Trạng thái chi tiết (đã triển khai / đã kiểm chứng) xem tại [API Endpoints](api-endpoints.md).
+Bản soạn ngày 09/11/2026 cho C01 Web Application ↔ C02 Backend API của hệ thống quản lý rạp và đặt vé. Phần lớn catalogue vẫn là **thiết kế Proposed**. Các endpoint đọc công khai BE1 đã có implementation; `GET /api/movies` đã được kiểm chứng với PostgreSQL local, và bộ endpoint BE1 đã được kiểm chứng bằng integration test trên PostgreSQL Docker riêng (Testcontainers, 68 test, 2026-11-11) theo log và [API Endpoints](api-endpoints.md). Trạng thái chi tiết (đã triển khai / đã kiểm chứng) xem tại [API Endpoints](api-endpoints.md).
 
 Nguồn đối chiếu: **Use-Case Specifications v2.4** (`rup_ucspec-v2.4_final(5).docx`, bản đính kèm) và **SAD v3.15** (`rup_sad(1).docx`). Trong repository, đối chiếu bản tương ứng ở `pa/PA3-Group15/` theo version/nội dung, không chỉ theo tên. Use-case quyết định hành vi; SAD quyết định component và ranh giới giao tiếp. Không dùng schema/Markdown cũ để khôi phục nghiệp vụ đã bị thay thế. Chưa kiểm tra repository hiện tại trong lần soạn này, nên không khẳng định source/schema vẫn là skeleton hoặc tất cả endpoint chưa tồn tại.
 

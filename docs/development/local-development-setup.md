@@ -218,7 +218,7 @@ Các endpoint đọc công khai BE1 (movies, cinemas, showtimes, pricing, ticket
 dotnet test .\src\backend\CinemaTicketBooking.Api.Tests\CinemaTicketBooking.Api.Tests.csproj
 ```
 
-- **Phạm vi đã kiểm chứng (2026-11-11):** 65 test (Passed 65, Failed 0, Skipped 0) chạy 2 lần liên tiếp trên PostgreSQL Docker riêng (Testcontainers). Trạng thái chi tiết và giới hạn: xem [API Endpoints](../api/api-endpoints.md), [BE1 handoff](../api/be1-handoff.md) và log `docs/management/ai-usage/0255.md`.
+- **Phạm vi đã kiểm chứng (2026-11-11):** 68 test (Passed 68, Failed 0, Skipped 0) chạy 2 lần liên tiếp trên PostgreSQL Docker riêng (Testcontainers). Trạng thái chi tiết và giới hạn: xem [API Endpoints](../api/api-endpoints.md), [BE1 handoff](../api/be1-handoff.md) và log `docs/management/ai-usage/0255.md`.
 
 ## 6. Frontend React + Vite
 

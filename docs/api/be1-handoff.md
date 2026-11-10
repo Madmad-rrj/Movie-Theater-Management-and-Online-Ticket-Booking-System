@@ -1,6 +1,6 @@
 # BE1 Handoff — Public Read API (đã kiểm chứng)
 
-**Phạm vi:** 7 endpoint đọc công khai BE1 được kiểm chứng bằng integration test trên PostgreSQL Docker riêng (Testcontainers `postgres:16.4`, 65 test, chạy 2026-11-11). `GET /api/movies` (browse) cũng nằm trong bộ test và đã có kiểm chứng local trước đó. Không gồm booking/giữ ghế/Guest context/selection/payment (thuộc BE2).
+**Phạm vi:** 7 endpoint đọc công khai BE1 được kiểm chứng bằng integration test trên PostgreSQL Docker riêng (Testcontainers `postgres:16.4`, 68 test, chạy 2026-11-11). `GET /api/movies` (browse) cũng nằm trong bộ test và đã có kiểm chứng local trước đó. Không gồm booking/giữ ghế/Guest context/selection/payment (thuộc BE2).
 
 **Trạng thái & giới hạn (tóm tắt):** endpoint trong bảng đã triển khai và đã kiểm chứng (xem [api-endpoints.md](api-endpoints.md)). Giới hạn đã ghi nhận: hành vi khi `date` có khoảng trắng đầu/cuối (browse showtimes) **chưa được contract quy định và chưa có test**; case hai allocation active “sold + held” cùng ghế/suất **không có test** vì ràng buộc DB `ux_active_seat` chặn insert (`released + held` cùng ghế đã kiểm chứng → `held`). Error envelope: `{ "error": { "code", "message", "details", "traceId" } }` (`details` là object, `{}` nếu trống; validation có `details.violations`).
 
