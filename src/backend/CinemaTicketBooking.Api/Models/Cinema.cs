@@ -1,4 +1,4 @@
-namespace CinemaTicketBooking.Api.Models;
+﻿namespace CinemaTicketBooking.Api.Models;
 
 public sealed class Cinema
 {
@@ -12,4 +12,5 @@ public sealed class Cinema
     public short MinimumTurnaroundMinutes { get; set; }
     public long Version { get; set; }
     public ICollection<CinemaRoom> Rooms { get; set; } = [];
+    public ICollection<CinemaTicketPrice> TicketPrices { get; set; } = [];
 }

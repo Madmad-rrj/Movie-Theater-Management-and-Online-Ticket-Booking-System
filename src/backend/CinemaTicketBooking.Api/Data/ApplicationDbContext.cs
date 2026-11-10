@@ -12,6 +12,8 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<Cinema> Cinemas => Set<Cinema>();
     public DbSet<CinemaRoom> CinemaRooms => Set<CinemaRoom>();
     public DbSet<Showtime> Showtimes => Set<Showtime>();
+    public DbSet<TicketCategory> TicketCategories => Set<TicketCategory>();
+    public DbSet<CinemaTicketPrice> CinemaTicketPrices => Set<CinemaTicketPrice>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -113,6 +115,34 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             entity.HasOne(s => s.CinemaRoom)
                 .WithMany(r => r.Showtimes)
                 .HasForeignKey(s => s.CinemaRoomId);
+        });
+
+        modelBuilder.Entity<TicketCategory>(entity =>
+        {
+            entity.ToTable("ticket_category");
+            entity.HasKey(t => t.Code);
+            entity.Property(t => t.Code).HasColumnName("code").HasMaxLength(16);
+            entity.Property(t => t.DisplayName).HasColumnName("display_name").HasMaxLength(100).IsRequired();
+            entity.Property(t => t.EligibilityDescription).HasColumnName("eligibility_description").IsRequired();
+            entity.Property(t => t.Version).HasColumnName("version").IsRequired();
+        });
+
+        modelBuilder.Entity<CinemaTicketPrice>(entity =>
+        {
+            entity.ToTable("cinema_ticket_price");
+            entity.HasKey(p => new { p.CinemaId, p.CategoryCode });
+            entity.Property(p => p.CinemaId).HasColumnName("cinema_id");
+            entity.Property(p => p.CategoryCode).HasColumnName("category_code").HasMaxLength(16);
+            entity.Property(p => p.Amount).HasColumnName("amount").HasColumnType("numeric").IsRequired();
+            entity.Property(p => p.Currency).HasColumnName("currency").HasMaxLength(3).IsRequired();
+            entity.Property(p => p.UpdatedAt).HasColumnName("updated_at").IsRequired();
+            entity.Property(p => p.Version).HasColumnName("version").IsRequired();
+            entity.HasOne(p => p.Cinema)
+                .WithMany(c => c.TicketPrices)
+                .HasForeignKey(p => p.CinemaId);
+            entity.HasOne(p => p.Category)
+                .WithMany(c => c.CinemaTicketPrices)
+                .HasForeignKey(p => p.CategoryCode);
         });
     }
 }
