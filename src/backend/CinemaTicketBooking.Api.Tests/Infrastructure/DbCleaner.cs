@@ -11,6 +11,12 @@ public sealed class DbCleaner
     private readonly List<long> _roomIds = new();
     private readonly List<long> _showtimeIds = new();
     private readonly List<long> _priceCinemaIds = new();
+    private readonly List<long> _seatTypeIds = new();
+    private readonly List<long> _seatIds = new();
+    private readonly List<Guid> _checkoutIdentityIds = new();
+    private readonly List<Guid> _selectionSessionIds = new();
+    private readonly List<long> _bookingIds = new();
+    private readonly List<long> _bookingSeatIds = new();
 
     public DbCleaner(string connectionString)
     {
@@ -161,15 +167,195 @@ VALUES (@cid,@cat,@amount,@cur);";
         if (!_priceCinemaIds.Contains(cinemaId)) _priceCinemaIds.Add(cinemaId);
     }
 
+    public async Task<long> InsertSeatTypeAsync(NpgsqlConnection conn, string code, string name, long surchargeAmount = 0, bool isActive = true)
+    {
+        if (code.Length > 30) code = code[..30];
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+INSERT INTO cinema.seat_type (code,name,surcharge_amount,is_active)
+VALUES (@code,@name,@surcharge,@active)
+RETURNING id;";
+        cmd.Parameters.AddWithValue("code", code);
+        cmd.Parameters.AddWithValue("name", name);
+        cmd.Parameters.AddWithValue("surcharge", surchargeAmount);
+        cmd.Parameters.AddWithValue("active", isActive);
+        var id = (long)(await cmd.ExecuteScalarAsync())!;
+        _seatTypeIds.Add(id);
+        return id;
+    }
+
+    public async Task<long> InsertSeatAsync(NpgsqlConnection conn, long roomId, long seatTypeId, string rowLabel, short seatNumber,
+        int x, int y, string operationalState = "active", DateTimeOffset? retiredAt = null)
+    {
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+INSERT INTO cinema.seat (cinema_room_id,seat_type_id,row_label,seat_number,x_position,y_position,operational_state,retired_at)
+VALUES (@rid,@stid,@row,@num,@x,@y,@state,@ret)
+RETURNING id;";
+        cmd.Parameters.AddWithValue("rid", roomId);
+        cmd.Parameters.AddWithValue("stid", seatTypeId);
+        cmd.Parameters.AddWithValue("row", rowLabel);
+        cmd.Parameters.AddWithValue("num", seatNumber);
+        cmd.Parameters.AddWithValue("x", x);
+        cmd.Parameters.AddWithValue("y", y);
+        cmd.Parameters.AddWithValue("state", operationalState);
+        cmd.Parameters.AddWithValue("ret", (object?)retiredAt ?? DBNull.Value);
+        var id = (long)(await cmd.ExecuteScalarAsync())!;
+        _seatIds.Add(id);
+        return id;
+    }
+
+    public async Task<Guid> InsertCheckoutIdentityAsync(NpgsqlConnection conn, DateTimeOffset createdAt, DateTimeOffset guestExpiresAt)
+    {
+        var id = Guid.NewGuid();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+INSERT INTO cinema.checkout_identity (id,user_id,guest_credential_hash,guest_expires_at,revoked_at,created_at)
+VALUES (@id,NULL,@hash,@exp,NULL,@created);";
+        cmd.Parameters.AddWithValue("id", id);
+        cmd.Parameters.AddWithValue("hash", $"hash_{id:N}");
+        cmd.Parameters.AddWithValue("exp", guestExpiresAt);
+        cmd.Parameters.AddWithValue("created", createdAt);
+        await cmd.ExecuteNonQueryAsync();
+        _checkoutIdentityIds.Add(id);
+        return id;
+    }
+
+    public async Task<Guid> InsertSelectionSessionAsync(NpgsqlConnection conn, Guid checkoutIdentityId, long showtimeId, long roomId,
+        DateTimeOffset startedAt, string state = "consumed", int adultQty = 1, int discountedQty = 0)
+    {
+        var id = Guid.NewGuid();
+        var expiresAt = startedAt.AddSeconds(300);
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+INSERT INTO cinema.selection_session (id,checkout_identity_id,showtime_id,cinema_room_id,started_at,expires_at,adult_quantity,discounted_quantity,state)
+VALUES (@id,@cid,@sid,@rid,@start,@exp,@aq,@dq,@state);";
+        cmd.Parameters.AddWithValue("id", id);
+        cmd.Parameters.AddWithValue("cid", checkoutIdentityId);
+        cmd.Parameters.AddWithValue("sid", showtimeId);
+        cmd.Parameters.AddWithValue("rid", roomId);
+        cmd.Parameters.AddWithValue("start", startedAt);
+        cmd.Parameters.AddWithValue("exp", expiresAt);
+        cmd.Parameters.AddWithValue("aq", adultQty);
+        cmd.Parameters.AddWithValue("dq", discountedQty);
+        cmd.Parameters.AddWithValue("state", state);
+        await cmd.ExecuteNonQueryAsync();
+        _selectionSessionIds.Add(id);
+        return id;
+    }
+
+    public async Task<long> InsertBookingAsync(NpgsqlConnection conn, Guid checkoutIdentityId, Guid selectionSessionId,
+        long showtimeId, long roomId, DateTimeOffset createdAt, DateTimeOffset reservationExpiresAt, string status = "pending",
+        string movieTitle = "Movie", string roomName = "Room", long totalAmount = 100000)
+    {
+        var now = createdAt;
+        DateTimeOffset? confirmedAt = status == "confirmed" ? now : null;
+        DateTimeOffset? cancelledAt = status == "cancelled" ? now : null;
+        string? cancellationReason = status == "cancelled" ? "test cancel" : null;
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+INSERT INTO cinema.booking (booking_code,checkout_identity_id,selection_session_id,showtime_id,cinema_room_id,contact_full_name,contact_phone,contact_email,terms_accepted_at,age_acknowledged_at,purchased_start_at,movie_title_snapshot,room_name_snapshot,reservation_expires_at,maximum_tickets_snapshot,total_amount,currency,status,created_at,confirmed_at,cancelled_at,cancellation_reason)
+VALUES (@code,@cid,@ssid,@sid,@rid,@name,@phone,@mail,@terms,@age,@pstart,@mtitle,@rname,@rexp,8,@total,'VND',@status,@created,@conf,@canc,@creason)
+RETURNING id;";
+        cmd.Parameters.AddWithValue("code", Guid.NewGuid());
+        cmd.Parameters.AddWithValue("cid", checkoutIdentityId);
+        cmd.Parameters.AddWithValue("ssid", selectionSessionId);
+        cmd.Parameters.AddWithValue("sid", showtimeId);
+        cmd.Parameters.AddWithValue("rid", roomId);
+        cmd.Parameters.AddWithValue("name", "Test User");
+        cmd.Parameters.AddWithValue("phone", "0900000000");
+        cmd.Parameters.AddWithValue("mail", "test@example.com");
+        cmd.Parameters.AddWithValue("terms", now);
+        cmd.Parameters.AddWithValue("age", now);
+        cmd.Parameters.AddWithValue("pstart", now);
+        cmd.Parameters.AddWithValue("mtitle", movieTitle);
+        cmd.Parameters.AddWithValue("rname", roomName);
+        cmd.Parameters.AddWithValue("rexp", reservationExpiresAt);
+        cmd.Parameters.AddWithValue("total", totalAmount);
+        cmd.Parameters.AddWithValue("status", status);
+        cmd.Parameters.AddWithValue("created", createdAt);
+        cmd.Parameters.AddWithValue("conf", (object?)confirmedAt ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("canc", (object?)cancelledAt ?? DBNull.Value);
+        cmd.Parameters.AddWithValue("creason", (object?)cancellationReason ?? DBNull.Value);
+        var id = (long)(await cmd.ExecuteScalarAsync())!;
+        _bookingIds.Add(id);
+        return id;
+    }
+
+    public async Task<long> InsertBookingSeatAsync(NpgsqlConnection conn, long bookingId, long showtimeId, long roomId, long seatId,
+        string seatLabel, string seatTypeName, long surchargeSnapshot, string allocationStatus)
+    {
+        DateTimeOffset? releasedAt = allocationStatus == "released" ? DateTimeOffset.UtcNow : null;
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+INSERT INTO cinema.booking_seat (booking_id,showtime_id,cinema_room_id,seat_id,seat_label_snapshot,seat_type_name_snapshot,surcharge_snapshot,allocation_status,released_at)
+VALUES (@bid,@sid,@rid,@seatid,@label,@stype,@surcharge,@status,@rel)
+RETURNING id;";
+        cmd.Parameters.AddWithValue("bid", bookingId);
+        cmd.Parameters.AddWithValue("sid", showtimeId);
+        cmd.Parameters.AddWithValue("rid", roomId);
+        cmd.Parameters.AddWithValue("seatid", seatId);
+        cmd.Parameters.AddWithValue("label", seatLabel);
+        cmd.Parameters.AddWithValue("stype", seatTypeName);
+        cmd.Parameters.AddWithValue("surcharge", surchargeSnapshot);
+        cmd.Parameters.AddWithValue("status", allocationStatus);
+        cmd.Parameters.AddWithValue("rel", (object?)releasedAt ?? DBNull.Value);
+        var id = (long)(await cmd.ExecuteScalarAsync())!;
+        _bookingSeatIds.Add(id);
+        return id;
+    }
+
     public async Task CleanupAsync()
     {
         await using var conn = new NpgsqlConnection(_connectionString);
         await conn.OpenAsync();
+        if (_bookingSeatIds.Count > 0)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM cinema.booking_seat WHERE id = ANY(@ids);";
+            cmd.Parameters.AddWithValue("ids", _bookingSeatIds.ToArray());
+            await cmd.ExecuteNonQueryAsync();
+        }
+        if (_bookingIds.Count > 0)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM cinema.booking WHERE id = ANY(@ids);";
+            cmd.Parameters.AddWithValue("ids", _bookingIds.ToArray());
+            await cmd.ExecuteNonQueryAsync();
+        }
+        if (_selectionSessionIds.Count > 0)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM cinema.selection_session WHERE id = ANY(@ids);";
+            cmd.Parameters.AddWithValue("ids", _selectionSessionIds.ToArray());
+            await cmd.ExecuteNonQueryAsync();
+        }
+        if (_checkoutIdentityIds.Count > 0)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM cinema.checkout_identity WHERE id = ANY(@ids);";
+            cmd.Parameters.AddWithValue("ids", _checkoutIdentityIds.ToArray());
+            await cmd.ExecuteNonQueryAsync();
+        }
         if (_showtimeIds.Count > 0)
         {
             await using var cmd = conn.CreateCommand();
             cmd.CommandText = "DELETE FROM cinema.showtime WHERE id = ANY(@ids);";
             cmd.Parameters.AddWithValue("ids", _showtimeIds.ToArray());
+            await cmd.ExecuteNonQueryAsync();
+        }
+        if (_seatIds.Count > 0)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM cinema.seat WHERE id = ANY(@ids);";
+            cmd.Parameters.AddWithValue("ids", _seatIds.ToArray());
+            await cmd.ExecuteNonQueryAsync();
+        }
+        if (_seatTypeIds.Count > 0)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM cinema.seat_type WHERE id = ANY(@ids);";
+            cmd.Parameters.AddWithValue("ids", _seatTypeIds.ToArray());
             await cmd.ExecuteNonQueryAsync();
         }
         if (_movieIds.Count > 0)
@@ -245,6 +431,28 @@ VALUES (@cid,@cat,@amount,@cur);";
         await using var cmd = conn.CreateCommand();
         cmd.CommandText = $"SELECT count(*) FROM {table};";
         return (long)(await cmd.ExecuteScalarAsync())!;
+    }
+
+    public static async Task<(long seats, long seatTypes, long bookingSeats, long bookings, long showtimes, long rooms, long cinemas, long movies)> CountSeatRelatedTablesAsync(string connectionString)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        async Task<long> Count(string table)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = $"SELECT count(*) FROM {table};";
+            return (long)(await cmd.ExecuteScalarAsync())!;
+        }
+        return (
+            await Count("cinema.seat"),
+            await Count("cinema.seat_type"),
+            await Count("cinema.booking_seat"),
+            await Count("cinema.booking"),
+            await Count("cinema.showtime"),
+            await Count("cinema.cinema_room"),
+            await Count("cinema.cinema"),
+            await Count("cinema.movie")
+        );
     }
 
     public static async Task<List<(string Code, string Name, string Description, long Version)>> GetTicketCategoriesAsync(string connectionString)
