@@ -33,10 +33,23 @@ public sealed class PostgresFixture : IAsyncLifetime
     {
         var schemaPath = FindSchemaPath();
         var script = await File.ReadAllTextAsync(schemaPath);
-        await using var dataSource = NpgsqlDataSource.Create(ConnectionString);
-        await using var cmd = dataSource.CreateCommand(script);
-        cmd.CommandTimeout = 120;
-        await cmd.ExecuteNonQueryAsync();
+
+        const int maxAttempts = 5;
+        for (var attempt = 1; attempt <= maxAttempts; attempt++)
+        {
+            try
+            {
+                await using var dataSource = NpgsqlDataSource.Create(ConnectionString);
+                await using var cmd = dataSource.CreateCommand(script);
+                cmd.CommandTimeout = 120;
+                await cmd.ExecuteNonQueryAsync();
+                return;
+            }
+            catch (Exception) when (attempt < maxAttempts)
+            {
+                await Task.Delay(1000);
+            }
+        }
     }
 
     private static string FindSchemaPath()
