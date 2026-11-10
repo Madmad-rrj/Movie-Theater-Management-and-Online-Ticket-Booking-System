@@ -211,10 +211,3 @@ public sealed class ShowtimeService(ApplicationDbContext db) : IShowtimeService
         return long.TryParse(value, out result) && result > 0;
     }
 }
-
-public sealed class ApiRequestException(string code, string message) : Exception(message)
-{
-    public string Code { get; } = code;
-}
-
-public sealed class NotFoundApiException(string message) : Exception(message);
