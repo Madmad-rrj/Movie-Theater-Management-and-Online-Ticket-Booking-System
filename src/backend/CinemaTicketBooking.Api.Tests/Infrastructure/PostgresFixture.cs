@@ -9,6 +9,8 @@ public sealed class PostgresFixture : IAsyncLifetime
 {
     public PostgreSqlContainer Container { get; private set; } = null!;
     public string ConnectionString => Container.GetConnectionString();
+    public ApiFactory Factory { get; private set; } = null!;
+    public HttpClient Client { get; private set; } = null!;
 
     public async Task InitializeAsync()
     {
@@ -23,6 +25,8 @@ public sealed class PostgresFixture : IAsyncLifetime
 
         await Container.StartAsync();
         await ApplySchemaAsync();
+        Factory = new ApiFactory(ConnectionString);
+        Client = Factory.CreateClient();
     }
 
     private async Task ApplySchemaAsync()
@@ -52,6 +56,11 @@ public sealed class PostgresFixture : IAsyncLifetime
 
     public async Task DisposeAsync()
     {
+        Client?.Dispose();
+        if (Factory is not null)
+        {
+            await Factory.DisposeAsync();
+        }
         if (Container is not null)
         {
             await Container.DisposeAsync();

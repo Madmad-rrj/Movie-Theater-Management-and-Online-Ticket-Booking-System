@@ -16,7 +16,7 @@ public sealed class MovieEndpointTests
     public MovieEndpointTests(PostgresFixture fixture)
     {
         _connectionString = fixture.ConnectionString;
-        _client = new ApiFactory(fixture.ConnectionString).CreateClient();
+        _client = fixture.Client;
     }
 
     [Fact]

@@ -13,8 +13,7 @@ public sealed class MoviesSmokeTests
 
     public MoviesSmokeTests(PostgresFixture fixture)
     {
-        var factory = new ApiFactory(fixture.ConnectionString);
-        _client = factory.CreateClient();
+        _client = fixture.Client;
     }
 
     [Fact]

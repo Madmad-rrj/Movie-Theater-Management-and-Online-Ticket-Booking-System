@@ -15,7 +15,7 @@ public sealed class ShowtimeEndpointTests
     public ShowtimeEndpointTests(PostgresFixture fixture)
     {
         _connectionString = fixture.ConnectionString;
-        _client = new ApiFactory(fixture.ConnectionString).CreateClient();
+        _client = fixture.Client;
     }
 
     [Fact]
@@ -171,26 +171,27 @@ public sealed class ShowtimeEndpointTests
 
             // 2026-11-14T16:59:59Z = 2026-11-14 23:59:59+07 (HCM day 14)
             var hcmDay14 = await cleaner.InsertShowtimeAsync(conn, movieId, roomH, new DateTimeOffset(2026, 11, 14, 16, 59, 59, TimeSpan.Zero), status: "scheduled", seedKey: $"SH14_{tag}");
-            // 2026-11-14T17:00:00Z = 2026-11-15 00:00:00+07 (HCM day 15) - different day in same room, spaced 1s but use different room slot not possible; place in separate room-safe way by spacing far apart? better use another HCM room for day15 boundary to avoid overlap in roomH
+            // 2026-11-14T17:00:00Z = 2026-11-15 00:00:00+07 (HCM day 15), placed in another room to avoid overlap
             var roomH2 = await cleaner.InsertRoomAsync(conn, hcmCinema, $"RH2_{tag}", "Room H2");
             var hcmDay15 = await cleaner.InsertShowtimeAsync(conn, movieId, roomH2, new DateTimeOffset(2026, 11, 14, 17, 0, 0, TimeSpan.Zero), status: "scheduled", seedKey: $"SH15_{tag}");
 
-            // Both instants fall on 2026-11-14 in UTC, but they overlap in the same room window; place in separate UTC rooms to demonstrate timezone difference
+            // Both instants are on 2026-11-14 in UTC; placed in separate rooms to avoid overlap
             var roomU2 = await cleaner.InsertRoomAsync(conn, utcCinema, $"RU2_{tag}", "Room U2");
             var utcDay14a = await cleaner.InsertShowtimeAsync(conn, movieId, roomU, new DateTimeOffset(2026, 11, 14, 16, 59, 59, TimeSpan.Zero), status: "scheduled", seedKey: $"SUa_{tag}");
             var utcDay14b = await cleaner.InsertShowtimeAsync(conn, movieId, roomU2, new DateTimeOffset(2026, 11, 14, 17, 0, 0, TimeSpan.Zero), status: "scheduled", seedKey: $"SUb_{tag}");
 
-            // HCM cinema: date 14 -> only 16:59:59Z
+            // HCM cinema: date 14 -> only 16:59:59Z; date 15 -> only 17:00:00Z
             var rH14 = await GetDataAsync($"/api/movies/{movieId}/showtimes?date=2026-11-14&cinemaId={hcmCinema}");
             Assert.Equal(new[] { hcmDay14.ToString() }, rH14.Select(x => x.GetProperty("showtimeId").GetString()).ToArray());
-            // HCM cinema: date 15 -> only 17:00:00Z
             var rH15 = await GetDataAsync($"/api/movies/{movieId}/showtimes?date=2026-11-15&cinemaId={hcmCinema}");
             Assert.Equal(new[] { hcmDay15.ToString() }, rH15.Select(x => x.GetProperty("showtimeId").GetString()).ToArray());
 
-            // UTC cinema: date 14 -> both instants are on 2026-11-14 in UTC (demonstrates difference vs HCM day split)
+            // UTC cinema: date 14 -> both on 2026-11-14 UTC; date 15 -> empty
             var rU14 = await GetDataAsync($"/api/movies/{movieId}/showtimes?date=2026-11-14&cinemaId={utcCinema}");
             var uIds = rU14.Select(x => x.GetProperty("showtimeId").GetString()).OrderBy(x => x).ToArray();
             Assert.Equal(new[] { utcDay14a.ToString(), utcDay14b.ToString() }.OrderBy(x => x).ToArray(), uIds);
+            var rU15 = await GetDataAsync($"/api/movies/{movieId}/showtimes?date=2026-11-15&cinemaId={utcCinema}");
+            Assert.Empty(rU15);
 
             // No cinemaId: date interpreted per each cinema's timezone
             var rAll14 = await GetDataAsync($"/api/movies/{movieId}/showtimes?date=2026-11-14");
@@ -198,7 +199,12 @@ public sealed class ShowtimeEndpointTests
             Assert.Contains(hcmDay14.ToString(), all14Ids);
             Assert.Contains(utcDay14a.ToString(), all14Ids);
             Assert.Contains(utcDay14b.ToString(), all14Ids);
-            Assert.DoesNotContain(hcmDay15.ToString(), all14Ids); // HCM local day 15 excluded when asking for 14
+            Assert.DoesNotContain(hcmDay15.ToString(), all14Ids);
+            var rAll15 = await GetDataAsync($"/api/movies/{movieId}/showtimes?date=2026-11-15");
+            var all15Ids = rAll15.Select(x => x.GetProperty("showtimeId").GetString()!).ToHashSet();
+            Assert.Contains(hcmDay15.ToString(), all15Ids);
+            Assert.DoesNotContain(utcDay14a.ToString(), all15Ids);
+            Assert.DoesNotContain(utcDay14b.ToString(), all15Ids);
         }
         finally { await cleaner.CleanupAsync(); }
     }
@@ -334,6 +340,8 @@ public sealed class ShowtimeEndpointTests
             Assert.Equal(5, allIds.Count);
             Assert.Equal(5, allIds.Distinct().Count());
             Assert.True(created.All(id => allIds.Contains(id.ToString())));
+            // order by starts_at ascending matches creation order
+            Assert.Equal(created.Select(id => id.ToString()).ToArray(), allIds.ToArray());
 
             // stability: call again and compare first page order
             var firstPage1 = await GetDataAsync($"/api/movies/{movieId}/showtimes?date=2026-11-14&cinemaId={cinemaId}&page=1&pageSize=2");

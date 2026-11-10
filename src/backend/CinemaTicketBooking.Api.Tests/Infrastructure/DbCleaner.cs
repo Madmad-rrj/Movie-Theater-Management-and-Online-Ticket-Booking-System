@@ -10,6 +10,7 @@ public sealed class DbCleaner
     private readonly List<long> _cinemaIds = new();
     private readonly List<long> _roomIds = new();
     private readonly List<long> _showtimeIds = new();
+    private readonly List<long> _priceCinemaIds = new();
 
     public DbCleaner(string connectionString)
     {
@@ -146,6 +147,20 @@ RETURNING id;";
         return id;
     }
 
+    public async Task InsertCinemaTicketPriceAsync(NpgsqlConnection conn, long cinemaId, string categoryCode, long amount, string currency = "VND")
+    {
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = @"
+INSERT INTO cinema.cinema_ticket_price (cinema_id,category_code,amount,currency)
+VALUES (@cid,@cat,@amount,@cur);";
+        cmd.Parameters.AddWithValue("cid", cinemaId);
+        cmd.Parameters.AddWithValue("cat", categoryCode);
+        cmd.Parameters.AddWithValue("amount", amount);
+        cmd.Parameters.AddWithValue("cur", currency);
+        await cmd.ExecuteNonQueryAsync();
+        if (!_priceCinemaIds.Contains(cinemaId)) _priceCinemaIds.Add(cinemaId);
+    }
+
     public async Task CleanupAsync()
     {
         await using var conn = new NpgsqlConnection(_connectionString);
@@ -186,6 +201,14 @@ RETURNING id;";
             cmd.Parameters.AddWithValue("ids", _roomIds.ToArray());
             await cmd.ExecuteNonQueryAsync();
         }
+        var priceCinemaIds = _priceCinemaIds.Union(_cinemaIds).Distinct().ToArray();
+        if (priceCinemaIds.Length > 0)
+        {
+            await using var cmd = conn.CreateCommand();
+            cmd.CommandText = "DELETE FROM cinema.cinema_ticket_price WHERE cinema_id = ANY(@ids);";
+            cmd.Parameters.AddWithValue("ids", priceCinemaIds);
+            await cmd.ExecuteNonQueryAsync();
+        }
         if (_cinemaIds.Count > 0)
         {
             await using var cmd = conn.CreateCommand();
@@ -213,5 +236,29 @@ RETURNING id;";
             await Count("cinema.cinema_room"),
             await Count("cinema.showtime")
         );
+    }
+
+    public static async Task<long> CountTableAsync(string connectionString, string table)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = $"SELECT count(*) FROM {table};";
+        return (long)(await cmd.ExecuteScalarAsync())!;
+    }
+
+    public static async Task<List<(string Code, string Name, string Description, long Version)>> GetTicketCategoriesAsync(string connectionString)
+    {
+        await using var conn = new NpgsqlConnection(connectionString);
+        await conn.OpenAsync();
+        await using var cmd = conn.CreateCommand();
+        cmd.CommandText = "SELECT code, display_name, eligibility_description, version FROM cinema.ticket_category ORDER BY code;";
+        await using var reader = await cmd.ExecuteReaderAsync();
+        var list = new List<(string, string, string, long)>();
+        while (await reader.ReadAsync())
+        {
+            list.Add((reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt64(3)));
+        }
+        return list;
     }
 }
