@@ -1,3 +1,4 @@
+using CinemaTicketBooking.Api.DTOs;
 using CinemaTicketBooking.Api.DTOs.Movies;
 using CinemaTicketBooking.Api.Services;
 using Microsoft.AspNetCore.Mvc;
@@ -39,6 +40,28 @@ public sealed class MoviesController(IMovieService movieService) : ControllerBas
         catch (MovieQueryException exception)
         {
             return BadRequest(new { error = new ApiError(exception.Code, exception.Message) });
+        }
+    }
+
+    [HttpGet("{movieId}")]
+    [ProducesResponseType(typeof(ApiResponse<MovieDto>), StatusCodes.Status200OK)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status400BadRequest)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status404NotFound)]
+    [ProducesResponseType(typeof(ApiError), StatusCodes.Status500InternalServerError)]
+    public async Task<IActionResult> GetById(string movieId, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var movie = await movieService.GetPublicDetailAsync(movieId, cancellationToken);
+            return Ok(new ApiResponse<MovieDto>(movie));
+        }
+        catch (MovieQueryException exception)
+        {
+            return BadRequest(new { error = new ApiError(exception.Code, exception.Message) });
+        }
+        catch (MovieNotFoundException)
+        {
+            return NotFound(new { error = new ApiError("NOT_FOUND", "Không tìm thấy phim.") });
         }
     }
 }

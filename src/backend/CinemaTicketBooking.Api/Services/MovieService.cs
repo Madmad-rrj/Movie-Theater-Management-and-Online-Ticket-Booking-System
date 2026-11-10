@@ -1,4 +1,5 @@
 using CinemaTicketBooking.Api.Data;
+using CinemaTicketBooking.Api.DTOs;
 using CinemaTicketBooking.Api.DTOs.Movies;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,6 +8,7 @@ namespace CinemaTicketBooking.Api.Services;
 public sealed class MovieService(ApplicationDbContext db) : IMovieService
 {
     private static readonly string[] PublicStatuses = ["coming_soon", "now_showing"];
+    private static readonly string[] PublicDetailStatuses = ["coming_soon", "now_showing", "ended"];
 
     public async Task<ApiResponse<IReadOnlyList<MovieDto>>> BrowseAsync(
         MovieQuery query,
@@ -75,9 +77,52 @@ public sealed class MovieService(ApplicationDbContext db) : IMovieService
             rows,
             new PaginationDto(query.Page, query.PageSize, totalItems, totalPages));
     }
+
+    public async Task<MovieDto> GetPublicDetailAsync(string movieId, CancellationToken cancellationToken)
+    {
+        if (!long.TryParse(movieId, out var id) || id <= 0)
+        {
+            throw new MovieQueryException("VALIDATION_ERROR", "movieId phải là chuỗi số nguyên dương.");
+        }
+
+        var movie = await db.Movies
+            .AsNoTracking()
+            .Where(m => m.Id == id && PublicDetailStatuses.Contains(m.Status))
+            .Select(movie => new MovieDto(
+                movie.Id.ToString(),
+                movie.Title,
+                movie.Description,
+                movie.DurationMinutes,
+                movie.ReleaseDate,
+                movie.PosterUrl,
+                movie.TrailerUrl,
+                movie.Language,
+                movie.AgeRating,
+                movie.Status,
+                movie.MovieGenres
+                    .OrderBy(movieGenre => movieGenre.Genre.Name)
+                    .Select(movieGenre => new GenreDto(
+                        movieGenre.Genre.Id.ToString(),
+                        movieGenre.Genre.Name,
+                        movieGenre.Genre.Description,
+                        movieGenre.Genre.IsActive,
+                        movieGenre.Genre.Version.ToString()))
+                    .ToList(),
+                movie.Version.ToString()))
+            .SingleOrDefaultAsync(cancellationToken);
+
+        if (movie is null)
+        {
+            throw new MovieNotFoundException();
+        }
+
+        return movie;
+    }
 }
 
 public sealed class MovieQueryException(string code, string message) : Exception(message)
 {
     public string Code { get; } = code;
 }
+
+public sealed class MovieNotFoundException : Exception;

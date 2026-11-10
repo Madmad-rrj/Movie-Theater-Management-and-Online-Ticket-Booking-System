@@ -20,18 +20,3 @@ public sealed record GenreDto(
     string? Description,
     bool IsActive,
     string Version);
-
-public sealed record PaginationDto(
-    int Page,
-    int PageSize,
-    int TotalItems,
-    int TotalPages);
-
-public sealed record ApiResponse<T>(
-    T Data,
-    PaginationDto? Pagination = null);
-
-public sealed record ApiError(
-    string Code,
-    string Message,
-    object? Details = null);
