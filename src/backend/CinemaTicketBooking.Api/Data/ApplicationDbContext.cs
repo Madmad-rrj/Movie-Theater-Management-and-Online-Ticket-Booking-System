@@ -14,6 +14,9 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<Showtime> Showtimes => Set<Showtime>();
     public DbSet<TicketCategory> TicketCategories => Set<TicketCategory>();
     public DbSet<CinemaTicketPrice> CinemaTicketPrices => Set<CinemaTicketPrice>();
+    public DbSet<SeatType> SeatTypes => Set<SeatType>();
+    public DbSet<Seat> Seats => Set<Seat>();
+    public DbSet<BookingSeat> BookingSeats => Set<BookingSeat>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -143,6 +146,62 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
             entity.HasOne(p => p.Category)
                 .WithMany(c => c.CinemaTicketPrices)
                 .HasForeignKey(p => p.CategoryCode);
+        });
+
+        modelBuilder.Entity<SeatType>(entity =>
+        {
+            entity.ToTable("seat_type");
+            entity.HasKey(s => s.Id);
+            entity.Property(s => s.Id).HasColumnName("id");
+            entity.Property(s => s.Code).HasColumnName("code").HasMaxLength(30).IsRequired();
+            entity.Property(s => s.Name).HasColumnName("name").HasMaxLength(100).IsRequired();
+            entity.Property(s => s.SurchargeAmount).HasColumnName("surcharge_amount").HasColumnType("numeric").IsRequired();
+            entity.Property(s => s.IsActive).HasColumnName("is_active").IsRequired();
+            entity.Property(s => s.Version).HasColumnName("version").IsRequired();
+        });
+
+        modelBuilder.Entity<Seat>(entity =>
+        {
+            entity.ToTable("seat");
+            entity.HasKey(s => s.Id);
+            entity.Property(s => s.Id).HasColumnName("id");
+            entity.Property(s => s.CinemaRoomId).HasColumnName("cinema_room_id").IsRequired();
+            entity.Property(s => s.SeatTypeId).HasColumnName("seat_type_id").IsRequired();
+            entity.Property(s => s.RowLabel).HasColumnName("row_label").HasMaxLength(10).IsRequired();
+            entity.Property(s => s.SeatNumber).HasColumnName("seat_number").IsRequired();
+            entity.Property(s => s.XPosition).HasColumnName("x_position").IsRequired();
+            entity.Property(s => s.YPosition).HasColumnName("y_position").IsRequired();
+            entity.Property(s => s.OperationalState).HasColumnName("operational_state").HasMaxLength(20).IsRequired();
+            entity.Property(s => s.RetiredAt).HasColumnName("retired_at");
+            entity.Property(s => s.Version).HasColumnName("version").IsRequired();
+            entity.HasOne(s => s.CinemaRoom)
+                .WithMany(r => r.Seats)
+                .HasForeignKey(s => s.CinemaRoomId);
+            entity.HasOne(s => s.SeatType)
+                .WithMany(t => t.Seats)
+                .HasForeignKey(s => s.SeatTypeId);
+        });
+
+        modelBuilder.Entity<BookingSeat>(entity =>
+        {
+            entity.ToTable("booking_seat");
+            entity.HasKey(b => b.Id);
+            entity.Property(b => b.Id).HasColumnName("id");
+            entity.Property(b => b.BookingId).HasColumnName("booking_id").IsRequired();
+            entity.Property(b => b.ShowtimeId).HasColumnName("showtime_id").IsRequired();
+            entity.Property(b => b.CinemaRoomId).HasColumnName("cinema_room_id").IsRequired();
+            entity.Property(b => b.SeatId).HasColumnName("seat_id").IsRequired();
+            entity.Property(b => b.SeatLabelSnapshot).HasColumnName("seat_label_snapshot").HasMaxLength(30).IsRequired();
+            entity.Property(b => b.SeatTypeNameSnapshot).HasColumnName("seat_type_name_snapshot").HasMaxLength(100).IsRequired();
+            entity.Property(b => b.SurchargeSnapshot).HasColumnName("surcharge_snapshot").HasColumnType("numeric").IsRequired();
+            entity.Property(b => b.AllocationStatus).HasColumnName("allocation_status").HasMaxLength(16).IsRequired();
+            entity.Property(b => b.ReleasedAt).HasColumnName("released_at");
+            entity.HasOne(b => b.Showtime)
+                .WithMany(s => s.BookingSeats)
+                .HasForeignKey(b => b.ShowtimeId);
+            entity.HasOne(b => b.Seat)
+                .WithMany(s => s.BookingSeats)
+                .HasForeignKey(b => b.SeatId);
         });
     }
 }

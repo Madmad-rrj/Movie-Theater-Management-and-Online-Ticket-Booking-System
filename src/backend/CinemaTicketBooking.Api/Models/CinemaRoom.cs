@@ -10,4 +10,5 @@ public sealed class CinemaRoom
     public long Version { get; set; }
     public Cinema Cinema { get; set; } = null!;
     public ICollection<Showtime> Showtimes { get; set; } = [];
+    public ICollection<Seat> Seats { get; set; } = [];
 }

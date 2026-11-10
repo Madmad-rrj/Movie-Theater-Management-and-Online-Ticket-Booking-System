@@ -17,6 +17,7 @@ builder.Services.AddScoped<IMovieService, MovieService>();
 builder.Services.AddScoped<ICinemaService, CinemaService>();
 builder.Services.AddScoped<IShowtimeService, ShowtimeService>();
 builder.Services.AddScoped<IPricingService, PricingService>();
+builder.Services.AddScoped<ISeatMapService, SeatMapService>();
 builder.Services.AddControllers();
 
 builder.Services.AddProblemDetails();

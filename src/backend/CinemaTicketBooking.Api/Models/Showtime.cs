@@ -17,4 +17,5 @@ public sealed class Showtime
     public long Version { get; set; }
     public Movie Movie { get; set; } = null!;
     public CinemaRoom CinemaRoom { get; set; } = null!;
+    public ICollection<BookingSeat> BookingSeats { get; set; } = [];
 }
