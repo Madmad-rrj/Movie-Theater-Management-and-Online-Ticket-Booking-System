@@ -1,3 +1,4 @@
+using System.Globalization;
 using CinemaTicketBooking.Api.Data;
 using CinemaTicketBooking.Api.DTOs;
 using CinemaTicketBooking.Api.DTOs.Showtimes;
@@ -46,7 +47,12 @@ public sealed class ShowtimeService(ApplicationDbContext db) : IShowtimeService
             throw ApiValidation.Error("date", "required", "date là bắt buộc.");
         }
 
-        if (!DateOnly.TryParse(query.Date, out var filterDate))
+        if (!DateOnly.TryParseExact(
+                query.Date.Trim(),
+                "yyyy-MM-dd",
+                CultureInfo.InvariantCulture,
+                DateTimeStyles.None,
+                out var filterDate))
         {
             throw ApiValidation.Error("date", "invalid_format", "date phải có định dạng YYYY-MM-DD.");
         }
@@ -206,6 +212,6 @@ public sealed class ShowtimeService(ApplicationDbContext db) : IShowtimeService
 
     private static bool TryParsePositiveLong(string value, out long result)
     {
-        return long.TryParse(value, out result) && result > 0;
+        return long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out result) && result > 0;
     }
 }

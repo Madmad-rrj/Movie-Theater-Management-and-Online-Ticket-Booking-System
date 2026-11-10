@@ -1,3 +1,4 @@
+using System.Globalization;
 using CinemaTicketBooking.Api.Data;
 using CinemaTicketBooking.Api.DTOs;
 using CinemaTicketBooking.Api.DTOs.Pricing;
@@ -25,7 +26,7 @@ public sealed class PricingService(ApplicationDbContext db) : IPricingService
 
     public async Task<ApiResponse<CinemaPricingDto>> GetCinemaPricingAsync(string cinemaId, CancellationToken cancellationToken)
     {
-        if (!long.TryParse(cinemaId, out var id) || id <= 0)
+        if (!long.TryParse(cinemaId, NumberStyles.None, CultureInfo.InvariantCulture, out var id) || id <= 0)
         {
             throw ApiValidation.Error("cinemaId", "invalid_format", "cinemaId phải là chuỗi số nguyên dương.");
         }

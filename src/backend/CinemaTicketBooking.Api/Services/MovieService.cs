@@ -1,3 +1,4 @@
+using System.Globalization;
 using CinemaTicketBooking.Api.Data;
 using CinemaTicketBooking.Api.DTOs;
 using CinemaTicketBooking.Api.DTOs.Movies;
@@ -47,7 +48,7 @@ public sealed class MovieService(ApplicationDbContext db) : IMovieService
 
         if (!string.IsNullOrWhiteSpace(query.GenreId))
         {
-            if (!long.TryParse(query.GenreId, out var genreId) || genreId <= 0)
+            if (!long.TryParse(query.GenreId, NumberStyles.None, CultureInfo.InvariantCulture, out var genreId) || genreId <= 0)
             {
                 throw ApiValidation.Error("genreId", "invalid_format", "genreId phải là chuỗi số nguyên dương.");
             }
@@ -96,7 +97,7 @@ public sealed class MovieService(ApplicationDbContext db) : IMovieService
 
     public async Task<MovieDto> GetPublicDetailAsync(string movieId, CancellationToken cancellationToken)
     {
-        if (!long.TryParse(movieId, out var id) || id <= 0)
+        if (!long.TryParse(movieId, NumberStyles.None, CultureInfo.InvariantCulture, out var id) || id <= 0)
         {
             throw ApiValidation.Error("movieId", "invalid_format", "movieId phải là chuỗi số nguyên dương.");
         }

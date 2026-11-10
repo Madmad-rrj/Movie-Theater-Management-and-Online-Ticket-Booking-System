@@ -1,3 +1,4 @@
+using System.Globalization;
 using CinemaTicketBooking.Api.Data;
 using CinemaTicketBooking.Api.DTOs;
 using CinemaTicketBooking.Api.DTOs.Seats;
@@ -7,12 +8,12 @@ namespace CinemaTicketBooking.Api.Services;
 
 public sealed class SeatMapService(ApplicationDbContext db) : ISeatMapService
 {
-    private static readonly string[] PublicShowtimeStatuses = ["scheduled", "in_progress", "completed"];
+    private static readonly string[] PublicShowtimeStatuses = ["scheduled"];
     private static readonly string[] PublicMovieStatuses = ["coming_soon", "now_showing", "ended"];
 
     public async Task<SeatMapDto> GetSeatMapAsync(string showtimeId, CancellationToken cancellationToken)
     {
-        if (!long.TryParse(showtimeId, out var id) || id <= 0)
+        if (!long.TryParse(showtimeId, NumberStyles.None, CultureInfo.InvariantCulture, out var id) || id <= 0)
         {
             throw ApiValidation.Error("showtimeId", "invalid_format", "showtimeId phải là chuỗi số nguyên dương.");
         }
