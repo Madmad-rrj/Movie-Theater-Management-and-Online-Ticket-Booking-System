@@ -58,7 +58,9 @@ Lỗi:
 
 Guest dùng opaque server-issued HttpOnly Secure cookie `cinema_guest`; JSON chỉ chứa contextId không phải secret. `POST /api/guest-context` bootstrap/reuse Guest context; không reset selection. Browser gọi Guest API với credentials. Khi Vercel/Render khác site, cấu hình SameSite=None; exact CORS allowlist, Allow-Credentials và chống CSRF là bắt buộc. Đề xuất bootstrap trả `X-CSRF-Token`, Guest mutation gửi lại header này; backend kiểm tra token gắn context và Origin. Bearer credentials lấy precedence; request có Bearer không hợp lệ phải bị từ chối, không fallback Guest. Việc chuyển booking từ Guest sang account không được tự suy từ email trùng.
 
-Guest lifetime và recovery sau mất cookie chưa có baseline kỹ thuật đủ rõ: cần chốt trước production. Không bổ sung public lookup theo email/phone/bookingCode; khi chưa có cơ chế recovery đã duyệt, trả hướng dẫn hỗ trợ, không nới quyền. QR admission không thay thế Guest proof.
+Guest demo lifetime đã thống nhất là **24 giờ tuyệt đối**, cấu hình qua `GuestCheckout:LifetimeHours`; bootstrap/reuse không gia hạn. Branch `feat/be-guest-context` triển khai cookie, hash-only storage, database-time validation, Origin và CSRF theo [Guest checkout](../development/guest-checkout.md). Bootstrap không nhận body, yêu cầu `Idempotency-Key` UUID và trusted Origin, trả CSRF header mà không đòi token có sẵn. Mutation Guest khác phải gửi cookie + CSRF token gắn context. HTTP cookie chỉ được phép trong Development, với opt-in rõ ràng, host và peer đều loopback; online bắt buộc HTTPS/Secure.
+
+Replay bootstrap vẫn cần cookie tương ứng; idempotency key không cấp quyền khôi phục credential. Cookie sai/hết hạn/bị thu hồi trả 401 và bị xóa, không tự tạo danh tính thay thế. Authorization không được hỗ trợ trong branch Guest-only trả 401 và không fallback Guest. Recovery sau mất cookie cho checkout có dữ liệu và lifecycle production vẫn cần review. Không bổ sung public lookup theo email/phone/bookingCode; khi chưa có cơ chế recovery đã duyệt, trả hướng dẫn hỗ trợ, không nới quyền. QR admission không thay thế Guest proof.
 
 | Policy | Quyền cụ thể |
 |---|---|
@@ -154,7 +156,7 @@ Credentials CORS chỉ exact trusted origins, không wildcard. Cookie requests c
 
 ## Những điểm cần xác nhận trước implementation
 
-- Guest cookie lifecycle và recovery sau mất browser state; CSRF deployment/CORS cho Vercel–Render.
+- Guest lifetime demo đã chốt 24 giờ; production lifecycle/recovery sau mất browser state và CSRF/CORS cho Vercel–Render vẫn cần review. Local Guest configuration tại [Guest checkout](../development/guest-checkout.md).
 - Quote storage/versioning, idempotency ledger retention, limits cho input và pagination ở từng màn hình.
 - MoMo raw payload, signature, ACK, provider reference/status mapping, idempotent initiation và query capabilities; không bịa từ DTO nội bộ. Đọc tài liệu chính thức tại lúc tích hợp.
 - API enum mapping với schema mới; không coi schema cũ đã migrate. Trạng thái implementation và contract tests phải kiểm chứng trong repository.

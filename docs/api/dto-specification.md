@@ -187,7 +187,7 @@ Public resend trả shape/message tương đương dù email không tồn tại.
 
 ## GuestContext
 
-Credential chỉ trong cookie HttpOnly; không nằm trong JSON. Lifetime chưa chốt: implementation phải bảo đảm truy cập booking hợp lệ và có recovery policy được review.
+Credential chỉ trong cookie HttpOnly; không nằm trong JSON. Demo lifetime đã thống nhất 24 giờ từ database creation time, không gia hạn khi bootstrap/reuse. `POST /api/guest-context` trả `X-CSRF-Token` qua header. Branch Guest-only triển khai context này; production recovery sau mất cookie vẫn cần review. Xem [Guest checkout](../development/guest-checkout.md).
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|

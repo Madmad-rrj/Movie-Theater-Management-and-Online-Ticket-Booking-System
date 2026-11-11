@@ -9,10 +9,13 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<Movie> Movies => Set<Movie>();
     public DbSet<Genre> Genres => Set<Genre>();
     public DbSet<MovieGenre> MovieGenres => Set<MovieGenre>();
+    public DbSet<CheckoutIdentity> CheckoutIdentities => Set<CheckoutIdentity>();
+    public DbSet<OperationReceipt> OperationReceipts => Set<OperationReceipt>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("cinema");
+        modelBuilder.ConfigureGuestCheckout();
 
         modelBuilder.Entity<Movie>(entity =>
         {

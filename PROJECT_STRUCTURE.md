@@ -12,6 +12,7 @@ Movie Theater Management and Online Ticket Booking System/
 ├── .env.example                               # Mẫu biến môi trường ở root, không chứa secret
 ├── .gitignore                                 # Danh sách file/thư mục bị Git bỏ qua
 ├── docker-compose.yml                         # PostgreSQL local, named volume và init scripts
+├── docker-compose.be2.yml                     # Arch/Linux: DB trên Linux home và API trong SDK container
 │
 ├── .vscode/
 │   └── settings.json                          # Cấu hình VS Code dùng chung
@@ -40,7 +41,8 @@ Movie Theater Management and Online Ticket Booking System/
 │   │   └── dto-specification.md               # Đặc tả request/response DTO
 │   │
 │   ├── development/
-│   │   └── local-development-setup.md         # Hướng dẫn cài đặt và chạy local
+│   │   ├── local-development-setup.md         # Hướng dẫn cài đặt và chạy local
+│   │   └── guest-checkout.md                 # Guest bootstrap, cookie/CSRF và kiểm thử BE2
 │   │
 │   ├── management/
 │   │   ├── git-workflow.md                    # Quy trình branch, commit và pull request
@@ -66,7 +68,14 @@ Movie Theater Management and Online Ticket Booking System/
 │       └── customer-web-layout.md             # Bố cục website
 │
 ├── scripts/
-│   └── demo-local-db.ps1                      # Khởi động PostgreSQL và chạy truy vấn demo
+│   ├── demo-local-db.ps1                      # Khởi động PostgreSQL và chạy truy vấn demo
+│   └── test-guest-context.py                 # .NET/PostgreSQL tests trong Docker biệt lập
+│
+├── tests/
+│   └── CinemaTicketBooking.Api.Tests/
+│       ├── CinemaTicketBooking.Api.Tests.csproj
+│       ├── GuestApiFixture.cs                # Fresh local PostgreSQL và HTTP test host
+│       └── GuestContextTests.cs              # Lifecycle, idempotency, CSRF và cookie tests
 │
 ├── pa/
 │   ├── PA0/
@@ -96,19 +105,36 @@ Movie Theater Management and Online Ticket Booking System/
     │       ├── Program.cs                    # Entry point, DI và middleware
     │       ├── appsettings.Development.json  # Cấu hình môi trường development
     │       ├── Controllers/
-    │       │   └── MoviesController.cs        # GET /api/movies
+    │       │   ├── MoviesController.cs        # GET /api/movies
+    │       │   ├── GuestContextController.cs  # POST /api/guest-context
+    │       │   ├── GuestCheckoutAttribute.cs  # Guest identity và CSRF filter
+    │       │   └── CheckoutExceptionFilter.cs # Checkout error envelope
     │       ├── Data/
-    │       │   └── ApplicationDbContext.cs   # Mapping cinema.movie/genre
-    │       ├── DTOs/Movies/
-    │       │   ├── MovieDtos.cs               # Movie, Genre, pagination và error DTO
-    │       │   └── MovieQuery.cs              # Query/filter/pagination input
+    │       │   ├── ApplicationDbContext.cs    # Movie/genre và Guest checkout mappings
+    │       │   └── GuestCheckoutMapping.cs    # checkout_identity và operation_receipt
+    │       ├── DTOs/
+    │       │   ├── Movies/
+    │       │   │   ├── MovieDtos.cs           # Movie, Genre, pagination và error DTO
+    │       │   │   └── MovieQuery.cs          # Query/filter/pagination input
+    │       │   ├── Checkout/
+    │       │   │   └── GuestContextDto.cs     # Public context ID và expiry
+    │       │   └── Common/
+    │       │       └── ApiErrorResponse.cs    # code/message/details/traceId
     │       ├── Models/
     │       │   ├── Movie.cs                   # Entity cinema.movie
     │       │   ├── Genre.cs                   # Entity cinema.genre
-    │       │   └── MovieGenre.cs              # Entity cinema.movie_genre
+    │       │   ├── MovieGenre.cs              # Entity cinema.movie_genre
+    │       │   ├── CheckoutIdentity.cs        # Guest/User checkout identity
+    │       │   └── OperationReceipt.cs        # Durable idempotency metadata
     │       └── Services/
     │           ├── IMovieService.cs           # Service contract
-    │           └── MovieService.cs            # Read-only movie query
+    │           ├── MovieService.cs            # Read-only movie query
+    │           ├── IGuestContextService.cs    # Bootstrap và current Guest contract
+    │           ├── GuestContextService.cs     # DB time, reuse và bootstrap idempotency
+    │           ├── GuestCredential.cs         # Random credential, hash và CSRF binding
+    │           ├── GuestRequestSecurity.cs    # Origin, CSRF và cookie transport
+    │           ├── GuestCheckoutOptions.cs    # Demo lifetime và security configuration
+    │           └── CheckoutException.cs       # Checkout application errors
     │
     └── frontend/
         └── cinema-ticket-booking-ui/
@@ -139,8 +165,8 @@ Movie Theater Management and Online Ticket Booking System/
 
 Các thành phần sau chưa tồn tại trong repository hiện tại và chỉ nên được bổ sung khi có yêu cầu triển khai:
 
-- Backend: `Controllers/`, `DTOs/`, `Entities/`, `Middleware/`, `Migrations/`, `Services/`, `Validators/` và các thư mục liên quan.
-- Frontend: `assets/`, `components/`, `contexts/`, `hooks/`, `layouts/`, `pages/`, `routes/`, `services/`, `types/`, `utils/` và `public/`.
+- Backend: `Entities/`, `Middleware/`, `Migrations/`, `Validators/` và các thư mục liên quan chưa có trong cây trên.
+- Frontend: `assets/`, `contexts/`, `hooks/`, `layouts/`, `routes/`, `utils/` và `public/`.
 - Tài liệu: `docs/test/` và `docs/management/weekly-reports/`.
 
 Không ghi các file chứa secret thật vào repository. Sử dụng `.env.example` làm mẫu và cấu hình giá trị thật trong môi trường local.

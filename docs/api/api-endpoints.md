@@ -20,11 +20,11 @@ Common errors: mọi operation có thể 400 VALIDATION_ERROR, 429 RATE_LIMITED,
 | `logout` | POST | `/api/auth/logout` | UC-08D | AUTH | `—` | `—` | 204 |
 | `requestEmailChange` | POST | `/api/users/me/email-change` | UC-08B | AUTH | `EmailChangeRequest` | `EmailRequest` | 202 |
 | `cancelEmailChange` | DELETE | `/api/users/me/email-change` | UC-08B | AUTH | `—` | `—` | 204 |
-| `createGuestContext` | POST | `/api/guest-context` | UC-01, UC-09 | PUBLIC | `—` | `GuestContext` | 201/200 |
+| `createGuestContext` | POST | `/api/guest-context` | UC-01, UC-09 | PUBLIC | `—` | `GuestContext` | 201/200 — **Implemented on `feat/be-guest-context`** |
 
 401 INVALID_CREDENTIALS; 409 EMAIL_UNAVAILABLE khi được phép; verify token sai/hết hạn dùng 422 BUSINESS_RULE_VIOLATION; public resend không enumerate account.
 
-- **createGuestContext:** Set/reuse secure guest cookie; không reset selection.
+- **createGuestContext:** Set/reuse HttpOnly Guest cookie, lifetime demo 24 giờ không gia hạn; trả `X-CSRF-Token`, không reset selection. Cần UUID `Idempotency-Key` và trusted Origin; bootstrap không yêu cầu CSRF token đã có. Replay cần matching cookie, không dùng key để khôi phục credential. Chi tiết local/online và kiểm thử tại [Guest checkout](../development/guest-checkout.md).
 
 ## Discovery
 
