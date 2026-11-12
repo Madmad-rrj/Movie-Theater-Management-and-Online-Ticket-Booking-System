@@ -50,7 +50,7 @@ Common errors: mọi operation có thể 400 VALIDATION_ERROR, 429 RATE_LIMITED,
 | `createSelection` | POST | `/api/selections` | UC-01 | CHECKOUT | `CreateSelectionRequest` | `Selection` | 201/200  **Implemented on `feat/be-selection-quote`** |
 | `readSelection` | GET | `/api/selections/{selectionId}` | UC-01, UC-09 | OWNER | `—` | `Selection` | 200  **Implemented on `feat/be-selection-quote`** |
 | `updateSelection` | PUT | `/api/selections/{selectionId}` | UC-01 | OWNER | `UpdateSelectionRequest` | `Selection` | 200  **Implemented on `feat/be-selection-quote`** |
-| `reserveSeats` | POST | `/api/bookings` | UC-01, UC-09 | CHECKOUT | `ReserveRequest` | `Booking` | 201 |
+| `reserveSeats` | POST | `/api/bookings` | UC-01, UC-09 | CHECKOUT | `ReserveRequest` | `Booking` | 201 / 200 replay — **Implemented on `feat/be-booking-reservation`** |
 | `readBooking` | GET | `/api/bookings/{bookingId}` | UC-10 | OWNER | `—` | `Booking` | 200 |
 | `recoverCheckout` | GET | `/api/bookings/{bookingId}/checkout` | UC-09 | OWNER | `—` | `CheckoutRecovery` | 200 |
 | `myBookings` | GET | `/api/users/me/bookings` | UC-10 | CUSTOMER | `PageQuery (query)` | `Booking[]` | 200 |
@@ -271,3 +271,5 @@ Coverage dưới đây là mapping trách nhiệm và operations đề xuất, k
 Các mục này là tiêu chí dẫn xuất để viết contract/integration tests, chưa phải kết quả đã chạy.
 
 BE2 task 2: `createSelection`, `readSelection`, `updateSelection` are implemented on `feat/be-selection-quote`. See [selection/quote behavior](../development/selection-quote.md); showtime and seat IDs are decimal strings matching SQL. Other checkout operations remain proposed.
+
+BE2 task 3: [reservation outcomes, idempotency and testing](../development/booking-reservation.md). Only POST booking is implemented; booking reads/recovery and cancellation/expiry remain tasks 4–5.

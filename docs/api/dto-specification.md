@@ -269,12 +269,12 @@ Public detail cho phép ended; archived trả 404. Management có thể đọc a
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `showtimeId` | `UUID` | R | Identity |
-| `movieId` | `UUID` | R | Phim |
+| `showtimeId` | `decimal string` | R | Identity |
+| `movieId` | `decimal string` | R | Phim |
 | `movieTitle` | `string` | R | Tên |
-| `cinemaId` | `UUID` | R | Cinema |
+| `cinemaId` | `decimal string` | R | Cinema |
 | `cinemaName` | `string` | R | Tên cinema |
-| `roomId` | `UUID` | R | Room |
+| `roomId` | `decimal string` | R | Room |
 | `roomName` | `string` | R | Tên room |
 | `officialStartsAt` | `Instant` | R | Giờ bắt đầu hiện hành |
 | `officialEndsAt` | `Instant` | R | Server tính từ duration snapshot |
@@ -446,7 +446,7 @@ Backend so khớp showtimeId, seatIds và quantities với selectionVersion; mis
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `bookingId` | `UUID` | R | Identity |
+| `bookingId` | `decimal string` | R | Identity |
 | `bookingCode` | `string` | R | Public reference; không đủ authority |
 | `status` | `enum:pending,confirmed,expired,cancelled` | R | API state projection |
 | `showtime` | `Showtime` | R | Current official information |
@@ -459,7 +459,7 @@ Backend so khớp showtimeId, seatIds và quantities với selectionVersion; mis
 | `contact` | `Contact` | R | Protected booking contact |
 | `selectionDeadline` | `Instant` | R | Original deadline |
 | `paymentDeadline` | `Instant` | N | Khi initiated, supersedes selection deadline |
-| `activePaymentId` | `UUID` | N | Attempt hiện hành |
+| `activePaymentId` | `decimal string` | N | Attempt hiện hành |
 | `cancellation` | `CancellationSummary` | N | Request hiện hành nếu có |
 | `createdAt` | `Instant` | R | Server |
 | `confirmedAt` | `Instant` | N | Server |
@@ -1077,3 +1077,5 @@ POST /api/management/refunds/{refundId}/completion, Manager assigned cinema ho�
 Transport Guest/CSRF, limits/lifetime, quote/idempotency storage, provider payload mapping và enum-to-domain mapping là các quyết định kỹ thuật Proposed. Data validation chi tiết theo DOCX phải được mang vào implementation/tests; các bảng này không thay thế toàn bộ alternative flows của 28 UC. Không có kiểm thử runtime của backend trong lần soạn tài liệu này.
 
 Selection task 2 implementation/configuration and decimal-string ID clarification: [selection-quote.md](../development/selection-quote.md).
+
+BE2 task 3 implements ReserveRequest/Booking as documented in [booking-reservation.md](../development/booking-reservation.md). PriceAcceptance requires explicit amount and currency; booking/showtime nested bigint IDs are decimal strings, and financial snapshots are persisted separately from current showtime information.

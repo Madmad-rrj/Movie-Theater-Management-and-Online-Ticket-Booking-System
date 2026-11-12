@@ -213,3 +213,15 @@ Requirements
 `BE1.md` and `BE2.md` are local ignored briefs, removed from the Git index on this branch.
 
 Postman: `docs/api/postman/Cinema-BE2.postman_collection.json`, `Cinema-BE2-Local.postman_environment.json` and `README.md` provide the importable Guest/Selection flow and blank local environment.
+
+## BE2 task 3 additions — feat/be-booking-reservation
+
+- `src/backend/CinemaTicketBooking.Api/Models/Booking.cs`: Booking, BookingCategory and the shared BookingSeat entity (reuse for BE1 allocation reads).
+- `src/backend/CinemaTicketBooking.Api/Data/BookingMapping.cs`: existing SQL tables, composite allocation FK and active-seat unique-index mapping.
+- `src/backend/CinemaTicketBooking.Api/DTOs/Checkout/BookingDtos.cs`: reservation request, explicit accepted money and booking snapshot/current-showtime responses.
+- `src/backend/CinemaTicketBooking.Api/Controllers/BookingsController.cs`: protected POST `/api/bookings` only.
+- `src/backend/CinemaTicketBooking.Api/Services/BookingReservationService.cs`: transaction, snapshots, audit, durable outcomes and rollback safety.
+- `tests/CinemaTicketBooking.Api.Tests/BookingReservationTests.cs`: PostgreSQL transaction, idempotency, price, expiry and race cases.
+- `docs/development/booking-reservation.md`: task-3 behavior, integration boundary and Postman flow.
+
+The existing Postman collection/environment includes tasks 1–3 (14 requests). SQL schema/seed files remain unchanged.

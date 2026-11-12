@@ -129,3 +129,5 @@ no ports and cleans up its own containers/network.
 The test report remains `tests/CinemaTicketBooking.Api.Tests/TestResults/guest-context.trx`
 (Git-ignored). Task 3 reservation, seat races, and payment were not implemented or
 verified by this change.
+
+Task 3 reservation is now implemented on `feat/be-booking-reservation`: [booking-reservation.md](booking-reservation.md). The branch reuses the parameterized read adapter and shared ancestor/selection locking, while keeping BE1 mappings and endpoints unchanged. Quote fingerprints now also bind showtime identity/version and movie/room metadata for reservation reacceptance.

@@ -171,3 +171,5 @@ Credentials CORS chỉ exact trusted origins, không wildcard. Cookie requests c
 - SAD: C02/C03 API/identity, C08–C11 booking/payment/refund/admission, C12 temporary chat, C13 transactions, C14–C16 workers/notification/audit.
 
 BE2 task 2 uses decimal-string bigint showtime/seat IDs, UUID selection/quote IDs, and a configurable maximum (default 8) snapshotted on selection creation. See [selection/quotation implementation](../development/selection-quote.md). Selection quotation is implemented without changing the SQL schema or adding BE1 entity mappings.
+
+BE2 task 3: POST `/api/bookings` atomically commits pending booking, category/seat snapshots, held allocations, selection consumption, audit and receipt. Rejected 409/422 outcomes are also durable and replay-marked. Original selection deadline is retained; no payment window begins. [Reservation implementation](../development/booking-reservation.md).
