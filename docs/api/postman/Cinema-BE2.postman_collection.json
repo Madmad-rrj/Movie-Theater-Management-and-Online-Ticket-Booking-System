@@ -1,10 +1,10 @@
 {
   "info": {
-    "name": "Cinema BE2 — Task 3 — Guest, Selection and Reservation",
+    "name": "Cinema BE2 — Task 4 — Guest, Reservation and Recovery",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Implemented tasks 1–3. Import the local environment, configure real available local seat IDs, and run 01–14 in order within the original five-minute selection deadline. Creates a pending booking and real local seat holds. No payment, ticket or email is created. Reruns need available seats; task 5 expiry processing is not implemented yet. Import revision 1.3.1: replace the older collection in Postman. Includes booking seat/snapshot checks and replay consistency assertions.",
+    "description": "Implemented BE2 tasks 1–4. Run 01–19 in order with the Cinema BE2 Local environment and real available local seat IDs. Requests 15–19 exercise booking reads, checkout recovery, reload, missing Guest proof and missing booking. Complete reservation within the original five-minute deadline. GET never extends a deadline or creates a booking/payment. Creates real local holds; use other available seats on reruns until task 5 adds safe expiry. MoMo is a frontend method choice only; no gateway, ticket or email calls. Revision 1.4.0; replace older imports.",
     "_postman_id": "9af7aa63-f175-4c22-b27c-fed2536e57fd",
-    "version": "1.3.1"
+    "version": "1.4.0"
   },
   "auth": {
     "type": "noauth"
@@ -42,6 +42,7 @@
           "script": {
             "type": "text/javascript",
             "exec": [
+              "['selectionId', 'selectionVersion', 'selectionDeadline', 'staleSelectionVersion', 'quoteId', 'quoteVersion', 'acceptedTotal', 'bookingId', 'bookingRequestKey', 'bookingVersion'].forEach(key => pm.environment.unset(key));",
               "pm.environment.set('guestBootstrapKey', pm.variables.replaceIn('{{$guid}}'));"
             ]
           }
@@ -524,7 +525,8 @@
           "script": {
             "type": "text/javascript",
             "exec": [
-              "['quoteId', 'quoteVersion', 'acceptedTotal'].forEach(key => pm.environment.unset(key));"
+              "['quoteId', 'quoteVersion', 'acceptedTotal'].forEach(key => pm.environment.unset(key));",
+              "if (!pm.environment.get('selectionId')) throw new Error('Run request 04 successfully with this Guest cookie and selected environment first.');"
             ]
           }
         },
@@ -597,6 +599,7 @@
           "script": {
             "type": "text/javascript",
             "exec": [
+              "const email = pm.variables.replaceIn('{{contactEmail}}'); if (!/^[^\\s@]+@[^\\s@]+$/.test(email)) throw new Error('Set contactEmail to a valid email, for example guest@example.invalid, in Cinema BE2 Local.');",
               "const seats = JSON.parse(pm.environment.get('seatIds') || '[]');",
               "const total = Number(pm.environment.get('adult')) + Number(pm.environment.get('discounted'));",
               "if (seats.length !== total || !pm.environment.get('quoteId')) throw new Error('Run request 10 first with exactly as many seatIds as tickets.');",
@@ -614,6 +617,7 @@
               "if (pm.response.code === 201) {",
               " const booking = pm.response.json().data;",
               " pm.environment.set('bookingId', booking.bookingId);",
+              " pm.environment.set('bookingVersion', booking.version);",
               " pm.test('Booking remains pending', () => pm.expect(booking.status).to.eql('pending'));",
               " pm.test('Original deadline retained', () => pm.expect(booking.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
               " pm.test('Accepted amount committed', () => pm.expect(booking.financialSnapshot.total).to.deep.eql(JSON.parse(pm.environment.get('acceptedTotal'))));",
@@ -805,6 +809,242 @@
             "exec": [
               "pm.test('Consumed selection rejected', () => pm.response.to.have.status(409));",
               "pm.test('State conflict', () => pm.expect(pm.response.json().error.code).to.eql('STATE_CONFLICT'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "15 Read existing booking",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/bookings/{{bookingId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "bookings",
+            "{{bookingId}}"
+          ]
+        },
+        "description": "Uses the Guest cookie; no CSRF or idempotency header is needed for GET."
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first; bookingId must be captured in the selected environment.');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Booking read succeeds', () => pm.response.to.have.status(200));",
+              "if (pm.response.code === 200) {",
+              " const booking = pm.response.json().data;",
+              " pm.test('Same booking', () => pm.expect(booking.bookingId).to.eql(pm.environment.get('bookingId')));",
+              " pm.test('Deadline unchanged', () => pm.expect(booking.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
+              " pm.test('Version unchanged by read', () => pm.expect(booking.version).to.eql(pm.environment.get('bookingVersion')));",
+              " pm.test('Committed total unchanged', () => pm.expect(booking.financialSnapshot.total).to.deep.eql(JSON.parse(pm.environment.get('acceptedTotal'))));",
+              " pm.test('Protected contact retained', () => pm.expect(booking.contact.email).to.eql(pm.variables.replaceIn('{{contactEmail}}').trim()));",
+              "}",
+              "pm.test('Protected response is no-store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "16 Recover checkout without creating a booking",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/checkout",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "bookings",
+            "{{bookingId}}",
+            "checkout"
+          ]
+        },
+        "description": "pay is a navigation hint for an eligible positive-total pending demo booking. It does not initiate MoMo or mark payment successful. After the deadline expect selectAgain."
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first; bookingId must be captured in the selected environment.');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Checkout recovery succeeds', () => pm.response.to.have.status(200));",
+              "if (pm.response.code === 200) {",
+              " const data = pm.response.json().data; const booking = data.booking;",
+              " pm.test('Same booking recovered', () => pm.expect(booking.bookingId).to.eql(pm.environment.get('bookingId')));",
+              " pm.test('Original deadline retained', () => pm.expect(booking.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
+              " pm.test('Version unchanged by recovery', () => pm.expect(booking.version).to.eql(pm.environment.get('bookingVersion')));",
+              " pm.test('Price snapshot retained', () => pm.expect(booking.financialSnapshot.total).to.deep.eql(JSON.parse(pm.environment.get('acceptedTotal'))));",
+              " pm.test('No payment created on reload', () => { pm.expect(data.payment).to.eql(null); pm.expect(booking.activePaymentId).to.eql(null); pm.expect(booking.paymentDeadline).to.eql(null); });",
+              " pm.test('Recovery hint respects server deadline', () => pm.expect(data.nextAction).to.eql(Date.parse(booking.selectionDeadline) > Date.parse(data.serverTime) && booking.showtime.bookingAvailable ? 'pay' : 'selectAgain'));",
+              " pm.test('Shared authoritative server time', () => pm.expect(data.serverTime).to.eql(booking.showtime.serverTime));",
+              "}",
+              "pm.test('Recovery is no-store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "17 Reload checkout and retain original deadline",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/checkout",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "bookings",
+            "{{bookingId}}",
+            "checkout"
+          ]
+        },
+        "description": "Repeat this GET to simulate reloading Checkout Step 2. It never renews a deadline."
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first; bookingId must be captured in the selected environment.');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Checkout recovery succeeds', () => pm.response.to.have.status(200));",
+              "if (pm.response.code === 200) {",
+              " const data = pm.response.json().data; const booking = data.booking;",
+              " pm.test('Same booking recovered', () => pm.expect(booking.bookingId).to.eql(pm.environment.get('bookingId')));",
+              " pm.test('Original deadline retained', () => pm.expect(booking.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
+              " pm.test('Version unchanged by recovery', () => pm.expect(booking.version).to.eql(pm.environment.get('bookingVersion')));",
+              " pm.test('Price snapshot retained', () => pm.expect(booking.financialSnapshot.total).to.deep.eql(JSON.parse(pm.environment.get('acceptedTotal'))));",
+              " pm.test('No payment created on reload', () => { pm.expect(data.payment).to.eql(null); pm.expect(booking.activePaymentId).to.eql(null); pm.expect(booking.paymentDeadline).to.eql(null); });",
+              " pm.test('Recovery hint respects server deadline', () => pm.expect(data.nextAction).to.eql(Date.parse(booking.selectionDeadline) > Date.parse(data.serverTime) && booking.showtime.bookingAvailable ? 'pay' : 'selectAgain'));",
+              " pm.test('Shared authoritative server time', () => pm.expect(data.serverTime).to.eql(booking.showtime.serverTime));",
+              "}",
+              "pm.test('Recovery is no-store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "18 Reject checkout without Guest cookie",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/checkout",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "bookings",
+            "{{bookingId}}",
+            "checkout"
+          ]
+        },
+        "description": "Cookie jar is disabled only for this request; your saved Guest cookie is retained for other requests."
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first; bookingId must be captured in the selected environment.');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Missing Guest proof rejected', () => pm.response.to.have.status(401));",
+              "pm.test('Authentication error', () => pm.expect(pm.response.json().error.code).to.eql('UNAUTHENTICATED'));",
+              "pm.test('No private booking returned', () => pm.expect(pm.response.json()).not.to.have.property('data'));"
+            ]
+          }
+        }
+      ],
+      "protocolProfileBehavior": {
+        "disableCookies": true
+      }
+    },
+    {
+      "name": "19 Reject missing booking without exposing private data",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/bookings/9223372036854775807",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "bookings",
+            "9223372036854775807"
+          ]
+        },
+        "description": "Uses an intentionally nonexistent bigint test value, not a seeded resource ID. Foreign ownership is covered with two separate Guest credentials in the C# integration suite."
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first; bookingId must be captured in the selected environment.');"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Missing booking rejected', () => pm.response.to.have.status(404));",
+              "pm.test('Not-found error', () => pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND'));",
+              "pm.test('No private booking returned', () => pm.expect(pm.response.json()).not.to.have.property('data'));"
             ]
           }
         }

@@ -8,7 +8,7 @@ using Xunit;
 namespace CinemaTicketBooking.Api.Tests;
 
 [Collection("Guest PostgreSQL")]
-public sealed class BookingReservationTests(GuestApiFixture fixture) : IAsyncLifetime
+public sealed partial class BookingReservationTests(GuestApiFixture fixture) : IAsyncLifetime
 {
     private readonly List<Guid> owners = [];
     private long showtime, standard, vip, otherRoom, cinema;
@@ -41,6 +41,7 @@ public sealed class BookingReservationTests(GuestApiFixture fixture) : IAsyncLif
     }
     public async Task DisposeAsync()
     {
+        await Sql("DELETE FROM cinema.refund WHERE booking_id IN (SELECT id FROM cinema.booking WHERE checkout_identity_id=ANY(@owners)); DELETE FROM cinema.cancellation_request WHERE booking_id IN (SELECT id FROM cinema.booking WHERE checkout_identity_id=ANY(@owners)); DELETE FROM cinema.ticket WHERE booking_id IN (SELECT id FROM cinema.booking WHERE checkout_identity_id=ANY(@owners)); DELETE FROM cinema.payment WHERE booking_id IN (SELECT id FROM cinema.booking WHERE checkout_identity_id=ANY(@owners))", ("owners", owners.ToArray()));
         await Sql("DELETE FROM cinema.booking_seat WHERE booking_id IN (SELECT id FROM cinema.booking WHERE checkout_identity_id=ANY(@owners))", ("owners", owners.ToArray()));
         await Sql("DELETE FROM cinema.booking_category WHERE booking_id IN (SELECT id FROM cinema.booking WHERE checkout_identity_id=ANY(@owners))", ("owners", owners.ToArray()));
         await Sql("DELETE FROM cinema.booking WHERE checkout_identity_id=ANY(@owners)", ("owners", owners.ToArray()));
@@ -68,7 +69,8 @@ public sealed class BookingReservationTests(GuestApiFixture fixture) : IAsyncLif
     private object Payload(long[]? seats = null, int adult = 1, int discounted = 0) => new { showtimeId = showtime.ToString(), quantities = new { adult, discounted }, seatIds = (seats ?? [standard]).Select(s => s.ToString()).ToArray() };
     private async Task<HttpResponseMessage> Send(Guest guest, HttpMethod method, string path, object? body = null, Guid? key = null, bool csrf = true)
     {
-        using var request = new HttpRequestMessage(method, path); request.Headers.Add("Cookie", guest.Cookie);
+        using var request = new HttpRequestMessage(method, path);
+        if (!string.IsNullOrEmpty(guest.Cookie)) request.Headers.Add("Cookie", guest.Cookie);
         request.Headers.Add("Origin", "http://127.0.0.1:5173"); if (csrf) request.Headers.Add("X-CSRF-Token", guest.Csrf);
         if (key is not null) request.Headers.Add("Idempotency-Key", key.ToString());
         if (body is not null) request.Content = JsonContent.Create(body);
