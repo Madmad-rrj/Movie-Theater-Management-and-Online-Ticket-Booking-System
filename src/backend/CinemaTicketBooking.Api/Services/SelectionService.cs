@@ -183,7 +183,22 @@ public sealed class SelectionService(DbContextOptions<ApplicationDbContext> opti
             var context = await Context(db, s.ShowtimeId, ct); CheckBookable(context, now);
             if (context.RoomId != s.CinemaRoomId) throw StateConflict();
             var seats = await SeatData(db, s.CinemaRoomId, ids, ct);
-
+            var prices = await Prices(db, context.CinemaId, ct);
+            var total = prices.Adult * s.AdultQuantity + prices.Discounted * s.DiscountedQuantity + seats.Sum(x => x.Surcharge.Amount);
+            var fingerprint = Hash(JsonSerializer.Serialize(new
+            {
+                s.Id,
+                s.AdultQuantity,
+                s.DiscountedQuantity,
+                context.Start,
+                prices,
+                seats
+            }));
+            if (s.AcceptedQuoteFingerprint is not null && s.AcceptedQuoteFingerprint != fingerprint) s.Version++;
+            s.AcceptedQuoteFingerprint = fingerprint; s.QuotedAdultPrice = prices.Adult;
+            s.QuotedDiscountedPrice = prices.Discounted; s.QuotedTotal = total; s.QuotedShowtimeStart = context.Start;
+            quote = new SelectionQuote(new Guid(Convert.FromHexString(fingerprint)[..16]), fingerprint,
+                new(s.AdultQuantity, s.DiscountedQuantity), new(prices.Adult), new(prices.Discounted), seats, new(total), now);
         }
         now = await Now(db, ct);
         if (s.State == "active" && s.ExpiresAt <= now) { s.State = "expired"; s.Version++; quote = null; }
@@ -239,6 +254,18 @@ public sealed class SelectionService(DbContextOptions<ApplicationDbContext> opti
         }
         if (result.Count != ids.Length) throw CheckoutException.Validation("seatIds", "wrong_room", "Ghế không thuộc phòng của suất.");
         return result;
+    }
+    private sealed record CinemaPrices(decimal Adult, decimal Discounted, long AdultVersion, long DiscountedVersion);
+    private static async Task<CinemaPrices> Prices(ApplicationDbContext db, long cinema, CancellationToken ct)
+    {
+        await using var command = Command(db, "SELECT category_code,amount,version FROM cinema.cinema_ticket_price WHERE cinema_id=@id ORDER BY category_code FOR SHARE");
+        command.Parameters.AddWithValue("id", cinema);
+        await using var reader = await command.ExecuteReaderAsync(ct);
+        var prices = new Dictionary<string, (decimal Amount, long Version)>();
+        while (await reader.ReadAsync(ct)) prices.Add(reader.GetString(0), (reader.GetDecimal(1), reader.GetInt64(2)));
+        if (!prices.ContainsKey("Adult") || !prices.ContainsKey("Discounted"))
+            throw new CheckoutException(422, "BUSINESS_RULE_VIOLATION", "Thiếu cấu hình giá.", new { violations = new[] { new { field = "pricing", reason = "missing", message = "Thiếu cấu hình giá." } } });
+        return new(prices["Adult"].Amount, prices["Discounted"].Amount, prices["Adult"].Version, prices["Discounted"].Version);
     }
     private static string Hash(string value) => Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(value)));
 }
