@@ -467,6 +467,14 @@ Backend so khớp showtimeId, seatIds và quantities với selectionVersion; mis
 
 ## CancelPendingRequest
 
+Implemented on `feat/be-booking-cancel-expiry`: explicit `true` is required after
+the seat-release warning; missing/null/false or unknown write fields return 400.
+No arbitrary cancellation reason, user identity or booking state is accepted.
+The protected POST also requires UUID Idempotency-Key, trusted Origin and CSRF.
+The response is the existing Booking DTO with status cancelled; timestamps/reason
+are persisted internally. Original deadlines and snapshots are preserved. See
+[cancellation and expiry](../development/booking-cancel-expiry.md).
+
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
 | `confirmed` | `boolean` | R | true sau warning; không tự dùng tab close làm trigger |

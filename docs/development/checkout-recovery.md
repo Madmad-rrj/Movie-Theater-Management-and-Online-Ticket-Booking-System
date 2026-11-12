@@ -20,9 +20,9 @@ For first startup see [Guest checkout](guest-checkout.md). API base URL remains
 `http://127.0.0.1:5080`.
 
 Re-import [Cinema-BE2.postman_collection.json](../api/postman/Cinema-BE2.postman_collection.json),
-revision **1.4.0**, replacing the older collection. Select **Cinema BE2 Local**;
+revision **1.5.0**, replacing the older collection. Select **Cinema BE2 Local**;
 keep your configured environment or import the blank template for a fresh setup.
-Use real available seats and run **01–19** in order. Create/reserve within the
+Use real available seats and run folder **01–26** in order. Create/reserve/cancel within the
 original five-minute deadline. Requests **15–17** read and reload; **18** expects
 401 with its cookie jar disabled, and **19** expects 404 for a missing booking.
 No new manual variables are required: request 11 captures `bookingId` and
@@ -121,7 +121,7 @@ cover both routes, ownership, credentials, IDs, immutable reloads, current versu
 purchased time, terminal/elapsed states, unresolved payments, review, ticket and
 cancellation projections, zero totals and concurrent committed state changes.
 Payment/ticket/reviewer rows are test-only fixtures; this task implements no such
-write workflow. Task 5 cancellation/expiry, gateway calls, email, ticket issuance,
+write workflow. Cancellation/expiry is now implemented by [task 5](booking-cancel-expiry.md). Gateway calls, email, ticket issuance,
 online deployment and network/uncertain-commit fault injection remain outside scope.
 
 Verified on 2026-11-12: **95/95 integration cases passed, 0 skipped**, including

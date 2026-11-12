@@ -2,7 +2,7 @@
 
 Import these two files through Postman **Import → Files**:
 
-- `Cinema-BE2.postman_collection.json`: 19 requests for the implemented Guest, selection, reservation and recovery APIs.
+- `Cinema-BE2.postman_collection.json`: 30 requests for Guest, selection, reservation, recovery, cancellation and expiry.
 - `Cinema-BE2-Local.postman_environment.json`: local configuration template.
 
 Select **Cinema BE2 Local** in the environment selector. Keep the default
@@ -11,8 +11,8 @@ Arch Docker profile. Restart the API after source changes using the instructions
 in [selection-quote.md](../../development/selection-quote.md).
 
 If you imported an earlier version, import the collection again and replace the
-old copy when prompted. The current collection is named **Cinema BE2 — Task 4 —
-Guest, Reservation and Recovery**, revision **1.4.0**, with 19 requests. Postman
+old copy when prompted. The current collection is named **Cinema BE2 — Task 5 —
+Checkout, Cancellation and Expiry**, revision **1.5.0**, with two folders. Postman
 does not automatically reload repository changes. Keep your existing local
 environment to preserve your configured IDs, or import the environment template
 for a fresh setup. Run from request 01 after replacing the collection.
@@ -62,9 +62,11 @@ seed is dated November 14–21, 2026. An empty result requires a reviewed local
 fixture with future showtimes; do not bypass production time checks or reset a
 shared database to make a test work.
 
-Run requests **01 through 19 in order**, individually or with Collection Runner.
-Complete reservation before the original five-minute deadline; the recovery
-requests remain readable afterwards and reflect the elapsed deadline:
+Run folder **01–26 Main flow** with Collection Runner for the fast path. Individual
+Send also works, but complete reservation/cancellation before the original
+five-minute deadline so the worker does not expire the booking first. Recovery
+remains readable afterwards and reflects the current state. Running the whole
+collection also runs the optional expiry folder, which waits about five minutes.
 
 1. Bootstrap Guest and capture the CSRF token; a cookie is retained automatically.
 2. Replay the same Guest operation.
@@ -85,8 +87,15 @@ requests remain readable afterwards and reflect the elapsed deadline:
 17. Reload checkout; verify the same booking, snapshots, version and deadline again.
 18. Expect **401 UNAUTHENTICATED** with cookies disabled for this request only. The saved Guest cookie is retained.
 19. Expect **404 NOT_FOUND** for an intentionally missing booking ID; no private data is returned.
+20. Expect **400 VALIDATION_ERROR** without explicit cancellation confirmation.
+21. Expect **403 CSRF_REJECTED** for cancellation without CSRF.
+22. Cancel the pending booking; verify the same ID, immutable snapshots/deadline and one version increment.
+23. Replay that cancellation key; expect 200, a replay marker and unchanged cancelled version.
+24. Recover the cancelled booking; expect `selectAgain`.
+25. Expect **422 CANCELLATION_NOT_ELIGIBLE** for a new cancellation intent after cancellation.
+26. Replay that rejected intent; expect the same 422 with a replay marker.
 
-Requests 08, 09, 13, 14, 18 and 19 are deliberate negative tests; those error responses mean the
+Requests 08, 09, 13, 14, 18–21, 25 and 26 are deliberate negative tests; those error responses mean the
 checks passed. Create requests generate new UUID keys, while replay requests reuse
 the preceding key. If the selection expires mid-run, rerun from request 01; a new
 create closes the expired active selection and starts a new valid session.
@@ -95,9 +104,21 @@ For deeper tests of ownership, price changes, unavailable seats and expiration,
 run `python3 scripts/test-guest-context.py`. Database time/price mutation fixtures
 are confined to that disposable test suite, not Postman requests against shared
 or production data. Requests 11–14 exercise real local booking/hold behavior. This
-collection creates no payments, MoMo calls, tickets or emails. Until task 5 adds safe
-expiry/cancellation, existing held allocations remain conflicts even after their
-deadline. Choose other available seats when repeating; do not reset shared data.
+collection creates no payments, MoMo calls, tickets or emails. The main folder
+ends with a cancelled booking and released seats. With the local task-5 worker
+enabled, eligible overdue unpaid pending holds are also released automatically;
+unresolved payments remain protected. Do not reset shared data for a test.
+
+Folder **27–30 Optional natural expiry** runs after the main folder with the same
+environment/cookie. It creates another selection on the released seats, reserves
+again, waits/polls for backend-persisted `expired`, then reads the expired history.
+In Collection Runner/Newman request 29 repeats once per second, bounded by
+`expiryWaitSeconds` (default **420**). With Send, revisit request 29 after the
+original deadline plus a worker sweep. This does not shorten timers or invoke a
+worker endpoint. Keep the API running and enable its expiry worker; default local
+polling is 15 seconds. For longer configured intervals/backlogs, increase the wait
+limit. Optional flow replaces the current booking variables while retaining the
+first ID in `cancelledBookingId`.
 
 The environment also supplies `contactFullName`, `contactPhone` and `contactEmail`
 with synthetic demo values. `quoteId`, `quoteVersion`, `acceptedTotal`,
@@ -110,3 +131,5 @@ cookie/environment; an invalid `Contact.Email` on request 11 requires correcting
 `contactEmail` in that environment. Detailed behavior:
 [booking-reservation.md](../../development/booking-reservation.md) and
 [checkout-recovery.md](../../development/checkout-recovery.md).
+Cancellation keys/versions are captured automatically. Worker setup, payment
+guards and cancellation outcomes: [booking-cancel-expiry.md](../../development/booking-cancel-expiry.md).

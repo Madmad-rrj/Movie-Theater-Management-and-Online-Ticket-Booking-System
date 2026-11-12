@@ -54,14 +54,14 @@ Common errors: mọi operation có thể 400 VALIDATION_ERROR, 429 RATE_LIMITED,
 | `readBooking` | GET | `/api/bookings/{bookingId}` | UC-10 | OWNER | `—` | `Booking` | 200 — **Implemented on `feat/be-checkout-recovery`** |
 | `recoverCheckout` | GET | `/api/bookings/{bookingId}/checkout` | UC-09 | OWNER | `—` | `CheckoutRecovery` | 200 — **Implemented on `feat/be-checkout-recovery`** |
 | `myBookings` | GET | `/api/users/me/bookings` | UC-10 | CUSTOMER | `PageQuery (query)` | `Booking[]` | 200 |
-| `cancelPending` | POST | `/api/bookings/{bookingId}/cancel` | UC-10 | OWNER | `CancelPendingRequest` | `Booking` | 200 |
+| `cancelPending` | POST | `/api/bookings/{bookingId}/cancel` | UC-10 | OWNER | `CancelPendingRequest` | `Booking` | 200 — **Implemented on `feat/be-booking-cancel-expiry`** |
 
 409 SEAT_CONFLICT/VERSION_CONFLICT; 422 SELECTION_EXPIRED/PRICE_CHANGED/SHOWTIME_NOT_BOOKABLE; cancelPending có CANCELLATION_NOT_ELIGIBLE.
 
 - **createSelection:** Idempotent; reuse active context không reset deadline.
 - **reserveSeats:** Idempotency-Key bắt buộc; Step 1 → Step 2, atomic hold.
 - **readBooking / recoverCheckout:** Valid owning Guest cookie, positive decimal-string booking ID, no-store. No CSRF/idempotency header for GET. Missing/foreign booking both return 404; invalid Guest proof 401; malformed ID 400. Reads preserve snapshots, versions and deadlines, create no resources and release no seats. See [recovery states](../development/checkout-recovery.md).
-- **cancelPending:** Chỉ trước payment initiation commit; warning confirmed.
+- **cancelPending:** Valid owning Guest cookie, trusted Origin, CSRF, UUID Idempotency-Key and `confirmed=true`. Pending only, before any payment-initiation commit; one transaction cancels/releases/audits/records outcome. Same-key success/rejection replay is marked; new intent on cancelled booking returns 422. [Cancellation/expiry behavior](../development/booking-cancel-expiry.md).
 
 ## Payment
 
@@ -273,4 +273,4 @@ Các mục này là tiêu chí dẫn xuất để viết contract/integration te
 
 BE2 task 2: `createSelection`, `readSelection`, `updateSelection` are implemented on `feat/be-selection-quote`. See [selection/quote behavior](../development/selection-quote.md); showtime and seat IDs are decimal strings matching SQL. Other checkout operations remain proposed.
 
-BE2 task 3: [reservation outcomes, idempotency and testing](../development/booking-reservation.md). POST booking is implemented; task 4 now adds [booking reads/recovery](../development/checkout-recovery.md). Cancellation/expiry remains task 5.
+BE2 task 3: [reservation outcomes, idempotency and testing](../development/booking-reservation.md). POST booking is implemented; task 4 adds [booking reads/recovery](../development/checkout-recovery.md). Task 5 implements [pending cancellation and safe background expiry](../development/booking-cancel-expiry.md). No public worker-run endpoint is exposed.

@@ -224,7 +224,7 @@ Postman: `docs/api/postman/Cinema-BE2.postman_collection.json`, `Cinema-BE2-Loca
 - `tests/CinemaTicketBooking.Api.Tests/BookingReservationTests.cs`: PostgreSQL transaction, idempotency, price, expiry and race cases.
 - `docs/development/booking-reservation.md`: task-3 behavior, integration boundary and Postman flow.
 
-The current Postman collection/environment includes tasks 1–4 (19 requests). SQL schema/seed files remain unchanged.
+The current Postman collection/environment includes tasks 1–5 (30 requests: 01–26 main flow and 27–30 optional natural expiry). SQL schema/seed files remain unchanged.
 
 ## BE2 task 4 additions — feat/be-checkout-recovery
 
@@ -233,3 +233,13 @@ The current Postman collection/environment includes tasks 1–4 (19 requests). S
 - `src/backend/CinemaTicketBooking.Api/Controllers/BookingsController.cs`: additionally implements GET booking and GET booking/checkout.
 - `tests/CinemaTicketBooking.Api.Tests/BookingRecoveryTests.cs`: partial reservation test class sharing its real PostgreSQL fixture/cleanup; ownership, reload, recovery-state and concurrent-read cases.
 - `docs/development/checkout-recovery.md`: endpoint behavior, recovery-state mapping, integration limits and Arch/Postman instructions.
+
+## BE2 task 5 additions — feat/be-booking-cancel-expiry
+
+- `src/backend/CinemaTicketBooking.Api/Services/BookingCancellationService.cs`: protected cancellation, durable outcomes and shared atomic release/audit helpers.
+- `src/backend/CinemaTicketBooking.Api/Services/BookingExpiryService.cs`: bounded cursor scans, nonblocking transaction claims, all-attempt payment safety and per-booking rollback/retry.
+- `src/backend/CinemaTicketBooking.Api/Services/BookingExpiryWorker.cs`: internal hosted polling and shutdown cancellation; no public worker endpoint.
+- `src/backend/CinemaTicketBooking.Api/Services/BookingExpiryOptions.cs`: enabled flag, poll interval and batch size.
+- Existing BookingsController/BookingDtos/Program/Development config: POST cancel, required confirmation, DI and local worker setup.
+- `tests/CinemaTicketBooking.Api.Tests/BookingExpiryTests.cs`: partial shared PostgreSQL harness for cancellation, expiry, payment guards, failure injection, hosted polling and races.
+- `docs/development/booking-cancel-expiry.md`: API/worker behavior, setup, FE2 handoff and Postman instructions. `.env.example`/`docker-compose.be2.yml` expose optional local worker overrides.
