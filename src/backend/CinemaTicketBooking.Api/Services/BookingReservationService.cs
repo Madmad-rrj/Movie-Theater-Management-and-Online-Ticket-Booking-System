@@ -1,4 +1,7 @@
 using System.Globalization;
+using System.Security.Cryptography;
+using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 using CinemaTicketBooking.Api.Data;
 using CinemaTicketBooking.Api.DTOs.Checkout;
@@ -24,6 +27,18 @@ public sealed class BookingReservationService(DbContextOptions<ApplicationDbCont
         if (request.SelectionId is null || request.SelectionId == Guid.Empty || request.PriceAcceptance.QuoteId is null || request.PriceAcceptance.QuoteId == Guid.Empty)
             throw CheckoutException.Validation("selectionId/priceAcceptance.quoteId", "invalid_format", "ID phải là UUID hợp lệ.");
         var contact = new BookingContact(request.Contact.FullName.Trim(), request.Contact.Phone.Trim(), request.Contact.Email.Trim());
+        var fingerprint = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(JsonSerializer.Serialize(new
+        {
+            selectionId = request.SelectionId,
+            request.SelectionVersion,
+            showtimeId,
+            seats,
+            request.Quantities,
+            contact,
+            request.Declarations,
+            request.PriceAcceptance
+        }))));
+        var scope = owner.ToString("D");
         var operationId = Guid.NewGuid();
         var bookingCode = Guid.NewGuid();
         await using var strategy = new ApplicationDbContext(options);
@@ -33,6 +48,30 @@ public sealed class BookingReservationService(DbContextOptions<ApplicationDbCont
             await using var tx = await db.Database.BeginTransactionAsync(ct);
             await Lock(db, owner, ct);
             await Authority(db, owner, ct);
+            var prior = await db.OperationReceipts.SingleOrDefaultAsync(x => x.ActorScope == scope &&
+                x.OperationName == "reserveSeats" && x.TargetScope == "bookings" && x.RequestKey == requestKey, ct);
+            if (prior is not null)
+            {
+                if (prior.RequestFingerprint != fingerprint) throw CheckoutException.KeyConflict();
+                var replayContext = await Context(db, showtimeId, ct, reserve: true);
+                if (prior.ProcessingState == "rejected")
+                {
+                    await Owned(db, owner, request.SelectionId.Value, ct);
+                    var error = JsonSerializer.Deserialize<RecordedFailure>(prior.ResultReference!, ReceiptJson)!;
+                    throw new CheckoutException(error.Status, error.Code, error.Message, error.Details) { Replayed = true };
+                }
+                if (prior.ProcessingState != "committed") throw CheckoutException.InProgress();
+                var id = long.Parse(prior.ResultReference!, CultureInfo.InvariantCulture);
+                await using (var locked = Command(db, "SELECT id FROM cinema.booking WHERE id=@id AND checkout_identity_id=@owner FOR UPDATE"))
+                {
+                    locked.Parameters.AddWithValue("id", id); locked.Parameters.AddWithValue("owner", owner);
+                    if (await locked.ExecuteScalarAsync(ct) is null) throw new CheckoutException(404, "NOT_FOUND", "Không tìm thấy booking.");
+                }
+                var replay = await ReadResult(db, owner, id, replayContext, ct);
+                await Authority(db, owner, ct);
+                await tx.CommitAsync(ct);
+                return new ReservationOutcome(replay, Replayed: true);
+            }
             // Context locks ancestors, then showtime; selection and booking follow.
             var context = await Context(db, showtimeId, ct, reserve: true);
             var selection = await Owned(db, owner, request.SelectionId.Value, ct);
@@ -77,25 +116,44 @@ public sealed class BookingReservationService(DbContextOptions<ApplicationDbCont
                 if (selection.ExpiresAt <= now) throw Expired(selection);
                 var booking = new Booking
                 {
-                    BookingCode = bookingCode, CheckoutIdentityId = owner, SelectionSessionId = selection.Id,
-                    ShowtimeId = showtimeId, CinemaRoomId = selection.CinemaRoomId, ContactFullName = contact.FullName,
-                    ContactPhone = contact.Phone, ContactEmail = contact.Email, TermsAcceptedAt = now, AgeAcknowledgedAt = now,
-                    PurchasedStartAt = context.Start, MovieTitleSnapshot = context.MovieTitle, RoomNameSnapshot = context.RoomName,
-                    ReservationExpiresAt = selection.ExpiresAt, MaximumTicketsSnapshot = selection.MaximumTicketsSnapshot,
-                    TotalAmount = quote.Total.Amount, CreatedAt = now,
+                    BookingCode = bookingCode,
+                    CheckoutIdentityId = owner,
+                    SelectionSessionId = selection.Id,
+                    ShowtimeId = showtimeId,
+                    CinemaRoomId = selection.CinemaRoomId,
+                    ContactFullName = contact.FullName,
+                    ContactPhone = contact.Phone,
+                    ContactEmail = contact.Email,
+                    TermsAcceptedAt = now,
+                    AgeAcknowledgedAt = now,
+                    PurchasedStartAt = context.Start,
+                    MovieTitleSnapshot = context.MovieTitle,
+                    RoomNameSnapshot = context.RoomName,
+                    ReservationExpiresAt = selection.ExpiresAt,
+                    MaximumTicketsSnapshot = selection.MaximumTicketsSnapshot,
+                    TotalAmount = quote.Total.Amount,
+                    CreatedAt = now,
                     Categories = [
                         new BookingCategory { CategoryCode = "Adult", Quantity = selection.AdultQuantity, BasePriceSnapshot = quote.AdultBasePrice.Amount, CategoryNameSnapshot = names["Adult"] },
                         new BookingCategory { CategoryCode = "Discounted", Quantity = selection.DiscountedQuantity, BasePriceSnapshot = quote.DiscountedBasePrice.Amount, CategoryNameSnapshot = names["Discounted"] }
                     ],
-                    Seats = quote.Seats.Select(x => new BookingSeat { ShowtimeId = showtimeId, CinemaRoomId = selection.CinemaRoomId,
-                        SeatId = Number(x.SeatId, "seatIds"), SeatLabelSnapshot = x.Label, SeatTypeNameSnapshot = x.SeatTypeName,
-                        SurchargeSnapshot = x.Surcharge.Amount }).ToList()
+                    Seats = quote.Seats.Select(x => new BookingSeat
+                    {
+                        ShowtimeId = showtimeId,
+                        CinemaRoomId = selection.CinemaRoomId,
+                        SeatId = Number(x.SeatId, "seatIds"),
+                        SeatLabelSnapshot = x.Label,
+                        SeatTypeNameSnapshot = x.SeatTypeName,
+                        SurchargeSnapshot = x.Surcharge.Amount
+                    }).ToList()
                 };
                 selection.State = "consumed"; selection.Version++;
                 db.Add(booking);
                 try { await db.SaveChangesAsync(ct); }
                 catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: "23505", ConstraintName: "ux_active_seat" })
                 { throw SeatConflict(seats); }
+                catch (DbUpdateException ex) when (ex.InnerException is PostgresException { SqlState: "23505", ConstraintName: "booking_selection_session_id_key" })
+                { throw Conflict("selection_already_reserved"); }
                 await db.Database.ExecuteSqlInterpolatedAsync($"""
                     INSERT INTO cinema.audit_event(operation_identity,event_type,actor_kind,actor_scope,resource_type,resource_id,occurred_at,correlation_id)
                     VALUES ({operationId},'booking_reserved','guest',{owner.ToString("D")},'booking',{booking.Id.ToString(CultureInfo.InvariantCulture)},{now},{traceId})
@@ -105,6 +163,20 @@ public sealed class BookingReservationService(DbContextOptions<ApplicationDbCont
                 now = await Now(db, ct);
                 if (selection.ExpiresAt <= now) throw Expired(selection);
                 CheckBookable(context, now);
+                db.OperationReceipts.Add(new OperationReceipt
+                {
+                    Id = operationId,
+                    ActorScope = scope,
+                    OperationName = "reserveSeats",
+                    TargetScope = "bookings",
+                    RequestKey = requestKey,
+                    RequestFingerprint = fingerprint,
+                    ProcessingState = "committed",
+                    ResultReference = booking.Id.ToString(CultureInfo.InvariantCulture),
+                    CreatedAt = now,
+                    CommittedAt = now
+                });
+                await db.SaveChangesAsync(ct);
                 await tx.CommitAsync(ct);
                 return new ReservationOutcome(result);
             }
@@ -120,12 +192,30 @@ public sealed class BookingReservationService(DbContextOptions<ApplicationDbCont
                         if (selection.State == "active") { selection.State = "expired"; selection.Version++; }
                     }
                 }
+                var rejectedAt = await Now(db, ct);
+                db.OperationReceipts.Add(new OperationReceipt
+                {
+                    Id = operationId,
+                    ActorScope = scope,
+                    OperationName = "reserveSeats",
+                    TargetScope = "bookings",
+                    RequestKey = requestKey,
+                    RequestFingerprint = fingerprint,
+                    ProcessingState = "rejected",
+                    ResultReference = JsonSerializer.Serialize(new RecordedFailure(ex.StatusCode, ex.Code, ex.Message,
+                        JsonSerializer.SerializeToElement(ex.Details, ReceiptJson)), ReceiptJson),
+                    CreatedAt = rejectedAt
+                });
+                await Authority(db, owner, ct);
                 await db.SaveChangesAsync(ct);
                 await tx.CommitAsync(ct);
                 throw;
             }
         });
     }
+
+    private static readonly JsonSerializerOptions ReceiptJson = new(JsonSerializerDefaults.Web);
+    private sealed record RecordedFailure(int Status, string Code, string Message, JsonElement Details);
 
     private static void ValidateContact(ReserveRequest request)
     {

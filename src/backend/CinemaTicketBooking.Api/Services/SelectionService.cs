@@ -206,6 +206,13 @@ public sealed class SelectionService(DbContextOptions<ApplicationDbContext> opti
                 s.AdultQuantity,
                 s.DiscountedQuantity,
                 context.Start,
+                context.ShowtimeId,
+                context.MovieId,
+                context.CinemaId,
+                context.RoomId,
+                context.Version,
+                context.MovieTitle,
+                context.RoomName,
                 prices,
                 seats
             }));

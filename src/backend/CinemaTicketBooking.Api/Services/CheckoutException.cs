@@ -4,6 +4,7 @@ public sealed class CheckoutException(int statusCode, string code, string messag
 {
     public int StatusCode { get; } = statusCode;
     public string Code { get; } = code;
+    public bool Replayed { get; init; }
     public object Details { get; } = details ?? new { };
 
     public static CheckoutException Unauthenticated() => new(401, "UNAUTHENTICATED", "Phiên Guest không hợp lệ hoặc đã hết hạn.");
