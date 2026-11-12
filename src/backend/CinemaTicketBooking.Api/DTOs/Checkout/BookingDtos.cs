@@ -25,3 +25,4 @@ public sealed record BookingDto(string BookingId, string BookingCode, string Sta
     DateTime? PaymentDeadline, string? ActivePaymentId, object? Cancellation, DateTime CreatedAt, DateTime? ConfirmedAt,
     string Version);
 public sealed record ReservationOutcome(BookingDto Booking, bool Replayed = false);
+public sealed record CancelPendingRequest([Required] bool? Confirmed);
