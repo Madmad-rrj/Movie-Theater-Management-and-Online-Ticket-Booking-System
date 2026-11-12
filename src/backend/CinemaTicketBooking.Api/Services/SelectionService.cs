@@ -18,13 +18,13 @@ public sealed class SelectionService(DbContextOptions<ApplicationDbContext> opti
     private int MaximumTickets => selectionOptions.Value.MaximumTickets;
     private static CheckoutException NotFound() => new(404, "NOT_FOUND", "Không tìm thấy lựa chọn.");
     private static CheckoutException StateConflict() => new(409, "STATE_CONFLICT", "Lựa chọn không còn chỉnh sửa được.", new { reason = "selection_not_active" });
-    private static long Number(string value, string field)
+    internal static long Number(string value, string field)
     {
         if (!long.TryParse(value, NumberStyles.None, CultureInfo.InvariantCulture, out var id) || id <= 0)
             throw CheckoutException.Validation(field, "invalid_format", "ID phải là chuỗi số nguyên dương.");
         return id;
     }
-    private static long[] Validate(Quantities quantities, string[] seats, bool create, int maximum = int.MaxValue)
+    internal static long[] Validate(Quantities quantities, string[] seats, bool create, int maximum = int.MaxValue)
     {
         if (quantities.Adult is null || quantities.Discounted is null || quantities.Adult < 0 || quantities.Discounted < 0 ||
             (long)quantities.Adult + quantities.Discounted < 1 || (long)quantities.Adult + quantities.Discounted > maximum)
@@ -53,9 +53,11 @@ public sealed class SelectionService(DbContextOptions<ApplicationDbContext> opti
             {
                 if (receipt.RequestFingerprint != fingerprint) throw CheckoutException.KeyConflict();
                 if (receipt.ProcessingState != "committed") throw CheckoutException.InProgress();
+                await LockSelectionContext(db, owner, Guid.Parse(receipt.ResultReference!), ct);
                 var existing = await Owned(db, owner, Guid.Parse(receipt.ResultReference!), ct);
                 return new SelectionOutcome(await Project(db, existing, ct), Replayed: true);
             }
+            await Context(db, showtime, ct);
             var now = await Now(db, ct);
             var active = await db.Set<SelectionSession>().SingleOrDefaultAsync(s =>
                 s.CheckoutIdentityId == owner && s.ShowtimeId == showtime && s.State == "active", ct);
@@ -107,6 +109,7 @@ public sealed class SelectionService(DbContextOptions<ApplicationDbContext> opti
     public Task<SelectionDto> ReadAsync(Guid owner, Guid id, CancellationToken ct) => Transaction(async db =>
     {
         await Lock(db, owner, ct); await Authority(db, owner, ct);
+        await LockSelectionContext(db, owner, id, ct);
         return await Project(db, await Owned(db, owner, id, ct), ct);
     }, ct);
 
@@ -116,6 +119,7 @@ public sealed class SelectionService(DbContextOptions<ApplicationDbContext> opti
         return Transaction(async db =>
         {
             await Lock(db, owner, ct); await Authority(db, owner, ct);
+            await LockSelectionContext(db, owner, id, ct);
             var session = await Owned(db, owner, id, ct);
             if (session.State is not ("active" or "expired")) throw StateConflict();
             if (session.State == "expired" || session.ExpiresAt <= await Now(db, ct))
@@ -137,16 +141,24 @@ public sealed class SelectionService(DbContextOptions<ApplicationDbContext> opti
             return await Project(db, session, ct);
         }, ct);
     }
-    private static async Task<SelectionSession> Owned(ApplicationDbContext db, Guid owner, Guid id, CancellationToken ct)
-        => await db.Set<SelectionSession>().SingleOrDefaultAsync(s => s.Id == id && s.CheckoutIdentityId == owner, ct) ?? throw NotFound();
-    private static Task<DateTime> Now(ApplicationDbContext db, CancellationToken ct)
+    internal static async Task<SelectionSession> Owned(ApplicationDbContext db, Guid owner, Guid id, CancellationToken ct)
+        => (await db.Set<SelectionSession>().FromSqlInterpolated(
+            $"SELECT * FROM cinema.selection_session WHERE id={id} AND checkout_identity_id={owner} FOR UPDATE")
+            .ToListAsync(ct)).SingleOrDefault() ?? throw NotFound();
+    private static async Task LockSelectionContext(ApplicationDbContext db, Guid owner, Guid id, CancellationToken ct)
+    {
+        var showtime = await db.Set<SelectionSession>().Where(s => s.Id == id && s.CheckoutIdentityId == owner)
+            .Select(s => (long?)s.ShowtimeId).SingleOrDefaultAsync(ct) ?? throw NotFound();
+        await Context(db, showtime, ct);
+    }
+    internal static Task<DateTime> Now(ApplicationDbContext db, CancellationToken ct)
         => db.Database.SqlQuery<DateTime>($"SELECT clock_timestamp() AS \"Value\"").SingleAsync(ct);
-    private static async Task Lock(ApplicationDbContext db, Guid owner, CancellationToken ct)
+    internal static async Task Lock(ApplicationDbContext db, Guid owner, CancellationToken ct)
     {
         var key = BinaryPrimitives.ReadInt64BigEndian(SHA256.HashData(Encoding.UTF8.GetBytes("selection:" + owner)));
         await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({key})", ct);
     }
-    private static async Task Authority(ApplicationDbContext db, Guid owner, CancellationToken ct)
+    internal static async Task Authority(ApplicationDbContext db, Guid owner, CancellationToken ct)
     {
         var rows = await db.CheckoutIdentities.FromSqlInterpolated($"SELECT * FROM cinema.checkout_identity WHERE id={owner} FOR SHARE").AsNoTracking().ToListAsync(ct);
         var guest = rows.SingleOrDefault();
@@ -171,7 +183,7 @@ public sealed class SelectionService(DbContextOptions<ApplicationDbContext> opti
             }
         });
     }
-    private static async Task<SelectionDto> Project(ApplicationDbContext db, SelectionSession s, CancellationToken ct)
+    internal static async Task<SelectionDto> Project(ApplicationDbContext db, SelectionSession s, CancellationToken ct)
     {
         var now = await Now(db, ct);
         if (s.State == "abandoned") throw StateConflict();
@@ -185,6 +197,9 @@ public sealed class SelectionService(DbContextOptions<ApplicationDbContext> opti
             var seats = await SeatData(db, s.CinemaRoomId, ids, ct);
             var prices = await Prices(db, context.CinemaId, ct);
             var total = prices.Adult * s.AdultQuantity + prices.Discounted * s.DiscountedQuantity + seats.Sum(x => x.Surcharge.Amount);
+            if (total > 99999999999999m)
+                throw new CheckoutException(422, "BUSINESS_RULE_VIOLATION", "Tổng tiền vượt giới hạn lưu trữ.",
+                    new { violations = new[] { new { field = "pricing", reason = "out_of_range", message = "Tổng tiền vượt giới hạn lưu trữ." } } });
             var fingerprint = Hash(JsonSerializer.Serialize(new
             {
                 s.Id,
@@ -214,29 +229,64 @@ public sealed class SelectionService(DbContextOptions<ApplicationDbContext> opti
             s.State == "consumed" ? "reserved" : s.State, bookingId, s.Version.ToString(CultureInfo.InvariantCulture));
     }
     // Read-only projections avoid introducing duplicate BE1 entity mappings.
-    private sealed record ShowtimeContext(long RoomId, long CinemaId, DateTime Start, bool Eligible);
-    private static NpgsqlCommand Command(ApplicationDbContext db, string sql) => new(sql,
-        (NpgsqlConnection)db.Database.GetDbConnection(), (NpgsqlTransaction)db.Database.CurrentTransaction!.GetDbTransaction());
-    private static async Task<ShowtimeContext> Context(ApplicationDbContext db, long id, CancellationToken ct)
+    internal sealed record ShowtimeContext(long RoomId, long CinemaId, DateTime Start, bool Eligible,
+        long ShowtimeId, long MovieId, string MovieTitle, string CinemaName, string RoomName, string Timezone,
+        DateTime End, string Status, long Version)
     {
+        public BookingShowtime ToDto(DateTime now) => new(ShowtimeId.ToString(CultureInfo.InvariantCulture),
+            MovieId.ToString(CultureInfo.InvariantCulture), MovieTitle, CinemaId.ToString(CultureInfo.InvariantCulture),
+            CinemaName, RoomId.ToString(CultureInfo.InvariantCulture), RoomName, Start, End, Timezone, Status,
+            Eligible && Start > now, now, Version.ToString(CultureInfo.InvariantCulture));
+    }
+    internal static NpgsqlCommand Command(ApplicationDbContext db, string sql) => new(sql,
+        (NpgsqlConnection)db.Database.GetDbConnection(), (NpgsqlTransaction)db.Database.CurrentTransaction!.GetDbTransaction());
+    internal static async Task<ShowtimeContext> Context(ApplicationDbContext db, long id, CancellationToken ct, bool reserve = false)
+    {
+        // Ancestors are locked before showtime. All selection/reservation paths use
+        // the same actor lock first, then Guest -> Cinema -> Room -> Showtime.
+        long cinema, room;
+        await using (var peek = Command(db, "SELECT r.cinema_id,s.cinema_room_id FROM cinema.showtime s JOIN cinema.cinema_room r ON r.id=s.cinema_room_id WHERE s.id=@id"))
+        {
+            peek.Parameters.AddWithValue("id", id);
+            await using var reader = await peek.ExecuteReaderAsync(ct);
+            if (!await reader.ReadAsync(ct)) throw new CheckoutException(422, "SHOWTIME_NOT_BOOKABLE", "Suất không khả dụng.", new { reason = "not_found" });
+            cinema = reader.GetInt64(0); room = reader.GetInt64(1);
+        }
+        await using (var ancestor = Command(db, "SELECT id FROM cinema.cinema WHERE id=@id FOR SHARE"))
+        {
+            ancestor.Parameters.AddWithValue("id", cinema); await ancestor.ExecuteScalarAsync(ct);
+        }
+        await using (var ancestor = Command(db, "SELECT cinema_id FROM cinema.cinema_room WHERE id=@id FOR SHARE"))
+        {
+            ancestor.Parameters.AddWithValue("id", room);
+            if (!Equals(await ancestor.ExecuteScalarAsync(ct), cinema)) throw StateConflict();
+        }
+        await using (var showtime = Command(db, "SELECT cinema_room_id FROM cinema.showtime WHERE id=@id FOR " + (reserve ? "UPDATE" : "SHARE")))
+        {
+            showtime.Parameters.AddWithValue("id", id);
+            if (!Equals(await showtime.ExecuteScalarAsync(ct), room)) throw StateConflict();
+        }
         await using var command = Command(db, """
             SELECT s.cinema_room_id,c.id,s.starts_at,
-                s.status='scheduled' AND c.status='active' AND r.status='active' AND m.status IN ('coming_soon','now_showing')
+                s.status='scheduled' AND c.status='active' AND r.status='active' AND m.status IN ('coming_soon','now_showing'),
+                s.id,m.id,m.title,c.name,r.name,c.timezone,s.ends_at,s.status,s.version
             FROM cinema.showtime s JOIN cinema.cinema_room r ON r.id=s.cinema_room_id
             JOIN cinema.cinema c ON c.id=r.cinema_id JOIN cinema.movie m ON m.id=s.movie_id
-            WHERE s.id=@id FOR SHARE OF c,r,s,m
+            WHERE s.id=@id FOR SHARE OF m
             """);
         command.Parameters.AddWithValue("id", id);
-        await using var reader = await command.ExecuteReaderAsync(ct);
-        if (!await reader.ReadAsync(ct)) throw new CheckoutException(422, "SHOWTIME_NOT_BOOKABLE", "Suất không khả dụng.", new { reason = "not_found" });
-        return new(reader.GetInt64(0), reader.GetInt64(1), reader.GetDateTime(2), reader.GetBoolean(3));
+        await using var data = await command.ExecuteReaderAsync(ct);
+        if (!await data.ReadAsync(ct)) throw StateConflict();
+        return new(data.GetInt64(0), data.GetInt64(1), data.GetDateTime(2), data.GetBoolean(3),
+            data.GetInt64(4), data.GetInt64(5), data.GetString(6), data.GetString(7), data.GetString(8),
+            data.GetString(9), data.GetDateTime(10), data.GetString(11), data.GetInt64(12));
     }
-    private static void CheckBookable(ShowtimeContext context, DateTime now)
+    internal static void CheckBookable(ShowtimeContext context, DateTime now)
     {
         if (!context.Eligible || context.Start <= now)
             throw new CheckoutException(422, "SHOWTIME_NOT_BOOKABLE", "Suất không còn cho phép đặt.", new { reason = "not_bookable" });
     }
-    private static async Task<List<SelectionSeatSnapshot>> SeatData(ApplicationDbContext db, long room, long[] ids, CancellationToken ct)
+    internal static async Task<List<SelectionSeatSnapshot>> SeatData(ApplicationDbContext db, long room, long[] ids, CancellationToken ct)
     {
         await using var command = Command(db, """
             SELECT se.id,se.row_label,se.seat_number,st.name,st.surcharge_amount,

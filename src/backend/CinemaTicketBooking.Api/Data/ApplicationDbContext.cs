@@ -17,6 +17,7 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
         modelBuilder.HasDefaultSchema("cinema");
         modelBuilder.ConfigureGuestCheckout();
         modelBuilder.ConfigureSelections();
+        modelBuilder.ConfigureBookings();
 
         modelBuilder.Entity<Movie>(entity =>
         {

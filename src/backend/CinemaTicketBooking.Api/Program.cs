@@ -19,10 +19,11 @@ if (string.IsNullOrWhiteSpace(connectionString))
 }
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(connectionString, npgsql => npgsql.EnableRetryOnFailure(3)));
+    options.UseNpgsql(connectionString, npgsql => npgsql.EnableRetryOnFailure(3, TimeSpan.FromSeconds(1), new[] { "40P01", "40001" })));
 builder.Services.AddScoped<IMovieService, MovieService>();
 builder.Services.AddScoped<IGuestContextService, GuestContextService>();
 builder.Services.AddScoped<SelectionService>();
+builder.Services.AddScoped<BookingReservationService>();
 builder.Services.AddOptions<SelectionOptions>().BindConfiguration("Selection")
     .Validate(options => options.MaximumTickets > 0, "Selection:MaximumTickets must be positive.").ValidateOnStart();
 builder.Services.AddSingleton<GuestRequestSecurity>();
