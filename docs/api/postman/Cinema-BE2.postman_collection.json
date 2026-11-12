@@ -1,0 +1,481 @@
+{
+  "info": {
+    "name": "Cinema BE2 — Guest and Selection",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
+    "description": "Implemented Guest and task-2 APIs only. Import the companion local environment, set real local showtimeId/seatIds, and run requests in order within five minutes. No credentials are embedded; Postman manages the cookie jar. See README.md for obtaining IDs without BE1 endpoints."
+  },
+  "auth": {
+    "type": "noauth"
+  },
+  "item": [
+    {
+      "name": "01 Bootstrap Guest",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Origin",
+            "value": "{{origin}}"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{guestBootstrapKey}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/guest-context",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "guest-context"
+          ]
+        },
+        "description": "Postman retains cinema_guest in its cookie jar. Do not disable cookies. CSRF is captured into the selected local environment; never share an environment exported with live values."
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.environment.set('guestBootstrapKey', pm.variables.replaceIn('{{$guid}}'));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Guest created or reused', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+              "if (pm.response.code === 200 || pm.response.code === 201) {",
+              "  pm.environment.set('contextId', pm.response.json().data.contextId);",
+              "  pm.environment.set('csrfToken', pm.response.headers.get('X-CSRF-Token'));",
+              "}",
+              "pm.test('CSRF header supplied', () => pm.expect(pm.response.headers.has('X-CSRF-Token')).to.eql(true));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "02 Replay Guest bootstrap",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Origin",
+            "value": "{{origin}}"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{guestBootstrapKey}}"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/guest-context",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "guest-context"
+          ]
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Replay returns 200', () => pm.response.to.have.status(200));",
+              "pm.test('Replay recognized', () => pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.eql('true'));",
+              "if (pm.response.code === 200) pm.environment.set('csrfToken', pm.response.headers.get('X-CSRF-Token'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "03 Browse movies (regression)",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/movies",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "movies"
+          ]
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Movies available', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "04 Create selection",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Origin",
+            "value": "{{origin}}"
+          },
+          {
+            "key": "X-CSRF-Token",
+            "value": "{{csrfToken}}"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{selectionCreateKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/selections",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "selections"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"showtimeId\": \"{{showtimeId}}\",\n  \"quantities\": { \"adult\": {{adult}}, \"discounted\": {{discounted}} },\n  \"seatIds\": {{seatIds}}\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const showtime = pm.environment.get('showtimeId');",
+              "const seats = JSON.parse(pm.environment.get('seatIds') || '[]');",
+              "if (!/^[1-9][0-9]*$/.test(showtime || '') || seats.length === 0 || seats.some(id => !/^[1-9][0-9]*$/.test(id))) {",
+              "  throw new Error('Set showtimeId and seatIds (a JSON array of decimal strings) from your LOCAL database first.');",
+              "}",
+              "pm.environment.set('selectionCreateKey', pm.variables.replaceIn('{{$guid}}'));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Selection created or active selection reused', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+              "if (pm.response.code === 200 || pm.response.code === 201) {",
+              "  const data = pm.response.json().data;",
+              "  pm.environment.set('selectionId', data.selectionId);",
+              "  pm.environment.set('selectionVersion', data.version);",
+              "  pm.environment.set('selectionDeadline', data.selectionDeadline);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "05 Replay selection create",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Origin",
+            "value": "{{origin}}"
+          },
+          {
+            "key": "X-CSRF-Token",
+            "value": "{{csrfToken}}"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{selectionCreateKey}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/selections",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "selections"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"showtimeId\": \"{{showtimeId}}\",\n  \"quantities\": { \"adult\": {{adult}}, \"discounted\": {{discounted}} },\n  \"seatIds\": {{seatIds}}\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Replay returns 200', () => pm.response.to.have.status(200));",
+              "pm.test('Replay recognized', () => pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.eql('true'));",
+              "pm.test('Same selection', () => pm.expect(pm.response.json().data.selectionId).to.eql(pm.environment.get('selectionId')));",
+              "if (pm.response.code === 200 || pm.response.code === 201) {",
+              "  const data = pm.response.json().data;",
+              "  pm.environment.set('selectionId', data.selectionId);",
+              "  pm.environment.set('selectionVersion', data.version);",
+              "  pm.environment.set('selectionDeadline', data.selectionDeadline);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "06 Read selection and quote",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/selections/{{selectionId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "selections",
+            "{{selectionId}}"
+          ]
+        },
+        "description": ""
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Selection readable', () => pm.response.to.have.status(200));",
+              "pm.test('Deadline unchanged', () => pm.expect(pm.response.json().data.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
+              "if (pm.response.code === 200 || pm.response.code === 201) {",
+              "  const data = pm.response.json().data;",
+              "  pm.environment.set('selectionId', data.selectionId);",
+              "  pm.environment.set('selectionVersion', data.version);",
+              "  pm.environment.set('selectionDeadline', data.selectionDeadline);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "07 Update selection",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Origin",
+            "value": "{{origin}}"
+          },
+          {
+            "key": "X-CSRF-Token",
+            "value": "{{csrfToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/selections/{{selectionId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "selections",
+            "{{selectionId}}"
+          ]
+        },
+        "description": "updateSeatIds defaults to [] to exercise deselection. Set it to a JSON array of physical-seat decimal strings to select seats instead.",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"version\": \"{{selectionVersion}}\",\n  \"quantities\": { \"adult\": {{adult}}, \"discounted\": {{discounted}} },\n  \"seatIds\": {{updateSeatIds}}\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.environment.set('staleSelectionVersion', pm.environment.get('selectionVersion'));"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Update succeeds', () => pm.response.to.have.status(200));",
+              "pm.test('Deadline unchanged', () => pm.expect(pm.response.json().data.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
+              "if (pm.response.code === 200 || pm.response.code === 201) {",
+              "  const data = pm.response.json().data;",
+              "  pm.environment.set('selectionId', data.selectionId);",
+              "  pm.environment.set('selectionVersion', data.version);",
+              "  pm.environment.set('selectionDeadline', data.selectionDeadline);",
+              "}"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "08 Reject stale version",
+      "request": {
+        "method": "PUT",
+        "header": [
+          {
+            "key": "Origin",
+            "value": "{{origin}}"
+          },
+          {
+            "key": "X-CSRF-Token",
+            "value": "{{csrfToken}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/selections/{{selectionId}}",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "selections",
+            "{{selectionId}}"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"version\": \"{{staleSelectionVersion}}\",\n  \"quantities\": { \"adult\": {{adult}}, \"discounted\": {{discounted}} },\n  \"seatIds\": {{updateSeatIds}}\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Stale version rejected', () => pm.response.to.have.status(409));",
+              "pm.test('Version conflict code', () => pm.expect(pm.response.json().error.code).to.eql('VERSION_CONFLICT'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "09 Reject missing CSRF",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Origin",
+            "value": "{{origin}}"
+          },
+          {
+            "key": "Idempotency-Key",
+            "value": "{{$guid}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/selections",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "selections"
+          ]
+        },
+        "description": "",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"showtimeId\": \"{{showtimeId}}\",\n  \"quantities\": { \"adult\": {{adult}}, \"discounted\": {{discounted}} },\n  \"seatIds\": {{seatIds}}\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('Missing CSRF rejected', () => pm.response.to.have.status(403));",
+              "pm.test('CSRF rejection code', () => pm.expect(pm.response.json().error.code).to.eql('CSRF_REJECTED'));"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
