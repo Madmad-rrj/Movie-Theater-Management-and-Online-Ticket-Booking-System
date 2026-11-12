@@ -24,6 +24,7 @@ builder.Services.AddScoped<IMovieService, MovieService>();
 builder.Services.AddScoped<IGuestContextService, GuestContextService>();
 builder.Services.AddScoped<SelectionService>();
 builder.Services.AddScoped<BookingReservationService>();
+builder.Services.AddScoped<BookingReadService>();
 builder.Services.AddOptions<SelectionOptions>().BindConfiguration("Selection")
     .Validate(options => options.MaximumTickets > 0, "Selection:MaximumTickets must be positive.").ValidateOnStart();
 builder.Services.AddSingleton<GuestRequestSecurity>();

@@ -251,29 +251,5 @@ public sealed class BookingReservationService(DbContextOptions<ApplicationDbCont
         return result.ToArray();
     }
     internal static async Task<BookingDto> ReadResult(ApplicationDbContext db, Guid owner, long id, ShowtimeContext context, CancellationToken ct)
-    {
-        var booking = await db.Set<Booking>().Include(x => x.Categories).Include(x => x.Seats).AsSplitQuery()
-            .SingleOrDefaultAsync(x => x.Id == id && x.CheckoutIdentityId == owner, ct)
-            ?? throw new CheckoutException(404, "NOT_FOUND", "Không tìm thấy booking.");
-        var selection = await db.Set<SelectionSession>().SingleAsync(x => x.Id == booking.SelectionSessionId && x.CheckoutIdentityId == owner, ct);
-        var adult = booking.Categories.Single(x => x.CategoryCode == "Adult");
-        var discounted = booking.Categories.Single(x => x.CategoryCode == "Discounted");
-        var seats = booking.Seats.OrderBy(x => x.SeatId).Select(x => new SelectionSeatSnapshot(x.SeatId.ToString(CultureInfo.InvariantCulture),
-            x.SeatLabelSnapshot, x.SeatTypeNameSnapshot, new(x.SurchargeSnapshot))).ToArray();
-        var quote = new SelectionQuote(new Guid(Convert.FromHexString(selection.AcceptedQuoteFingerprint!)[..16]), selection.AcceptedQuoteFingerprint!,
-            new(adult.Quantity, discounted.Quantity), new(adult.BasePriceSnapshot), new(discounted.BasePriceSnapshot), seats, new(booking.TotalAmount), booking.CreatedAt);
-        DateTime? paymentDeadline = null; string? paymentId = null;
-        await using (var command = Command(db, "SELECT id,payment_deadline FROM cinema.payment WHERE booking_id=@id AND (status IN ('created','pending','unknown') OR applied_at IS NOT NULL) ORDER BY id"))
-        {
-            command.Parameters.AddWithValue("id", id);
-            await using var reader = await command.ExecuteReaderAsync(ct);
-            while (await reader.ReadAsync(ct)) { paymentId = reader.GetInt64(0).ToString(CultureInfo.InvariantCulture); paymentDeadline = reader.IsDBNull(1) ? null : reader.GetDateTime(1); }
-        }
-        return new(booking.Id.ToString(CultureInfo.InvariantCulture), booking.BookingCode.ToString("D"), booking.Status,
-            context.ToDto(await Now(db, ct)), booking.PurchasedStartAt, seats, new(adult.Quantity, discounted.Quantity),
-            new(adult.AdmittedQuantity, discounted.AdmittedQuantity),
-            new(adult.Quantity - adult.AdmittedQuantity, discounted.Quantity - discounted.AdmittedQuantity), quote,
-            new(booking.ContactFullName, booking.ContactPhone, booking.ContactEmail), booking.ReservationExpiresAt,
-            paymentDeadline, paymentId, null, booking.CreatedAt, booking.ConfirmedAt, booking.Version.ToString(CultureInfo.InvariantCulture));
-    }
+        => (await BookingReadService.Project(db, owner, id, context, ct)).Booking;
 }

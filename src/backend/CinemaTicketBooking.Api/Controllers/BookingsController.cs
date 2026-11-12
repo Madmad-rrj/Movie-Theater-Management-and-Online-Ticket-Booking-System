@@ -3,8 +3,23 @@ using CinemaTicketBooking.Api.Services;
 using Microsoft.AspNetCore.Mvc;
 namespace CinemaTicketBooking.Api.Controllers;
 [ApiController, Route("api/bookings"), GuestCheckout]
-public sealed class BookingsController(BookingReservationService reservations) : ControllerBase
+public sealed class BookingsController(BookingReservationService reservations, BookingReadService reads) : ControllerBase
 {
+    [HttpGet("{bookingId}")]
+    public async Task<IActionResult> Read(string bookingId, CancellationToken ct)
+    {
+        var guest = HttpContext.Features.Get<GuestContextDto>()!;
+        var result = await reads.ReadAsync(guest.ContextId, bookingId, ct);
+        return Ok(new { data = result.Booking });
+    }
+
+    [HttpGet("{bookingId}/checkout")]
+    public async Task<IActionResult> Recover(string bookingId, CancellationToken ct)
+    {
+        var guest = HttpContext.Features.Get<GuestContextDto>()!;
+        return Ok(new { data = await reads.ReadAsync(guest.ContextId, bookingId, ct) });
+    }
+
     [HttpPost]
     public async Task<IActionResult> Reserve(ReserveRequest request, CancellationToken ct)
     {
