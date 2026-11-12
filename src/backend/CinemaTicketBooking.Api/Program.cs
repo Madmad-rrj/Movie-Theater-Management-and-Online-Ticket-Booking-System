@@ -22,6 +22,9 @@ builder.Services.AddDbContext<ApplicationDbContext>(options =>
     options.UseNpgsql(connectionString, npgsql => npgsql.EnableRetryOnFailure(3)));
 builder.Services.AddScoped<IMovieService, MovieService>();
 builder.Services.AddScoped<IGuestContextService, GuestContextService>();
+builder.Services.AddScoped<SelectionService>();
+builder.Services.AddOptions<SelectionOptions>().BindConfiguration("Selection")
+    .Validate(options => options.MaximumTickets > 0, "Selection:MaximumTickets must be positive.").ValidateOnStart();
 builder.Services.AddSingleton<GuestRequestSecurity>();
 builder.Services.AddOptions<GuestCheckoutOptions>()
     .Bind(builder.Configuration.GetSection(GuestCheckoutOptions.SectionName))
