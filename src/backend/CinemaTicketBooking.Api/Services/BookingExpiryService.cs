@@ -51,15 +51,15 @@ public sealed class BookingExpiryService(DbContextOptions<ApplicationDbContext> 
 
     public async Task<string> TryExpireAsync(long id, CancellationToken ct)
     {
-        try
+        await using var strategy = new ApplicationDbContext(options);
+        return await strategy.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
-            await using var strategy = new ApplicationDbContext(options);
-            return await strategy.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
+            try
             {
                 await using var db = new ApplicationDbContext(options);
                 await using var tx = await db.Database.BeginTransactionAsync(ct);
                 var candidate = await db.Set<Booking>().AsNoTracking().Where(x => x.Id == id && x.Status == "pending")
-                    .Select(x => new { x.CheckoutIdentityId, x.ShowtimeId }).SingleOrDefaultAsync(ct);
+                        .Select(x => new { x.CheckoutIdentityId, x.ShowtimeId }).SingleOrDefaultAsync(ct);
                 if (candidate is null) return "skipped";
                 if (!await TryLock(db, candidate.CheckoutIdentityId, ct)) return "busy";
                 // Cleanup is independent of Guest lifetime/revocation, but retains
@@ -80,7 +80,7 @@ public sealed class BookingExpiryService(DbContextOptions<ApplicationDbContext> 
                 var now = await Now(db, ct);
                 if (booking.ReservationExpiresAt > now) return "skipped";
                 if (!BookingRelease.AllHeld(booking) || await BookingRelease.HasOtherObligation(db, id, ct) ||
-                    await PaymentProtected(db, id, now, ct)) return "deferred";
+                        await PaymentProtected(db, id, now, ct)) return "deferred";
                 // All decisions and writes are under the same showtime/booking/
                 // payment locks. Every allocation and the audit commit together.
                 now = await Now(db, ct);
@@ -90,9 +90,11 @@ public sealed class BookingExpiryService(DbContextOptions<ApplicationDbContext> 
                 await BookingRelease.Audit(db, operation, "booking_expired", "system", "booking-expiry", id, now, null, ct);
                 await tx.CommitAsync(ct);
                 return "expired";
-            });
-        }
-        catch (PostgresException ex) when (ex.SqlState == "55P03") { return "busy"; }
+            }
+            // Npgsql treats lock-not-available as transient. Handle it inside
+            // the strategy so a busy candidate is skipped without retries.
+            catch (PostgresException ex) when (ex.SqlState == "55P03") { return "busy"; }
+        });
     }
 
     private static async Task<bool> PaymentProtected(ApplicationDbContext db, long id, DateTime now, CancellationToken ct)
