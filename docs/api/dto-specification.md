@@ -362,7 +362,7 @@ Không có capacityUnits, Couple hoặc ticket category từng ghế.
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `seatId` | `UUID` | R | Physical identity |
+| `seatId` | `decimal string` | R | Physical identity |
 | `label` | `string` | R | Purchase snapshot |
 | `seatTypeName` | `string` | R | Snapshot |
 | `surcharge` | `Money` | R | Snapshot |
@@ -398,9 +398,9 @@ Tạo tại lần chọn physical seat đầu tiên; chưa cần contact hoặc 
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `showtimeId` | `UUID` | R | Suất eligible |
+| `showtimeId` | `decimal string` | R | Suất eligible |
 | `quantities` | `Quantities` | R | 1..configuredMaximum |
-| `seatIds` | `UUID[]` | R | Ít nhất một ghế distinct, không vượt tổng quantity |
+| `seatIds` | `decimal string[]` | R | Ít nhất một ghế distinct, không vượt tổng quantity |
 
 ## UpdateSelectionRequest
 
@@ -410,21 +410,21 @@ Full selection edit; seat count không vượt quantity. Không đổi showtime/
 |---|---|---|---|
 | `version` | `string` | R | Selection version |
 | `quantities` | `Quantities` | R | 1..configuredMaximum |
-| `seatIds` | `UUID[]` | R | Distinct; cho phép tạm thời ít hơn tổng quantity khi đang chọn |
+| `seatIds` | `decimal string[]` | R | Distinct; cho phép tạm thời ít hơn tổng quantity khi đang chọn |
 
 ## Selection
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
 | `selectionId` | `UUID` | R | Identity |
-| `showtimeId` | `UUID` | R | Suất |
+| `showtimeId` | `decimal string` | R | Suất |
 | `quantities` | `Quantities` | R | Đang chọn |
-| `seatIds` | `UUID[]` | R | Đang chọn |
+| `seatIds` | `decimal string[]` | R | Đang chọn |
 | `quote` | `Quote` | N | null khi chưa đủ thông tin tính giá |
 | `selectionDeadline` | `Instant` | R | 5 phút từ lần bắt đầu; không reset |
 | `serverTime` | `Instant` | R | Server time |
 | `state` | `enum:active,expired,reserved` | R | API projection |
-| `bookingId` | `UUID` | N | Nếu đã reserve |
+| `bookingId` | `decimal string` | N | Nếu đã reserve |
 | `version` | `string` | R | Concurrency token |
 
 ## ReserveRequest
@@ -435,8 +435,8 @@ Backend so khớp showtimeId, seatIds và quantities với selectionVersion; mis
 |---|---|---|---|
 | `selectionId` | `UUID` | R | Selection của caller |
 | `selectionVersion` | `string` | R | Phải hiện hành |
-| `showtimeId` | `UUID` | R | Phải khớp selection |
-| `seatIds` | `UUID[]` | R | Distinct, đủ tổng quantity, khớp selection version |
+| `showtimeId` | `decimal string` | R | Phải khớp selection |
+| `seatIds` | `decimal string[]` | R | Distinct, đủ tổng quantity, khớp selection version |
 | `quantities` | `Quantities` | R | Khớp selection version |
 | `contact` | `Contact` | R | Checkout Step 1 |
 | `declarations` | `CheckoutDeclarations` | R | Các xác nhận |
@@ -1075,3 +1075,5 @@ POST /api/management/refunds/{refundId}/completion, Manager assigned cinema ho�
 ## Cần chốt trước khi triển khai
 
 Transport Guest/CSRF, limits/lifetime, quote/idempotency storage, provider payload mapping và enum-to-domain mapping là các quyết định kỹ thuật Proposed. Data validation chi tiết theo DOCX phải được mang vào implementation/tests; các bảng này không thay thế toàn bộ alternative flows của 28 UC. Không có kiểm thử runtime của backend trong lần soạn tài liệu này.
+
+Selection task 2 implementation/configuration and decimal-string ID clarification: [selection-quote.md](../development/selection-quote.md).

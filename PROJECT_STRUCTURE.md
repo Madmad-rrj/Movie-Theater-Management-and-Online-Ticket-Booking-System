@@ -198,3 +198,18 @@ Requirements
 ```
 
 Đây là quan hệ tham chiếu giữa các nhóm tài liệu, không phải thứ tự bắt buộc tuyệt đối. Khi một quyết định nghiệp vụ hoặc kỹ thuật chưa được thống nhất, tài liệu liên quan cần ghi rõ trạng thái `Open` hoặc `Proposed`.
+
+## BE2 task 2 additions — feat/be-selection-quote
+
+- `src/backend/CinemaTicketBooking.Api/Models/SelectionSession.cs`: selection session and seat entities.
+- `src/backend/CinemaTicketBooking.Api/Data/SelectionMapping.cs`: existing SQL tables/composite relationship.
+- `src/backend/CinemaTicketBooking.Api/DTOs/Checkout/SelectionDtos.cs`: selection requests, quotes and responses.
+- `src/backend/CinemaTicketBooking.Api/Controllers/SelectionsController.cs`: POST/GET/PUT selections.
+- `src/backend/CinemaTicketBooking.Api/Services/SelectionService.cs`: ownership, transactions, deadline, idempotency and database quotation reads.
+- `src/backend/CinemaTicketBooking.Api/Services/SelectionOptions.cs`: configured maximum ticket quantity.
+- `tests/CinemaTicketBooking.Api.Tests/SelectionTests.cs`: PostgreSQL selection integration tests.
+- `docs/development/selection-quote.md`: contract correction, integration boundary and Postman instructions.
+
+`BE1.md` and `BE2.md` are local ignored briefs, removed from the Git index on this branch.
+
+Postman: `docs/api/postman/Cinema-BE2.postman_collection.json`, `Cinema-BE2-Local.postman_environment.json` and `README.md` provide the importable Guest/Selection flow and blank local environment.

@@ -203,3 +203,5 @@ The browser harness was temporary and did not modify frontend source.
 
 Technical references: [Microsoft CSRF guidance](https://learn.microsoft.com/en-us/aspnet/core/security/anti-request-forgery?view=aspnetcore-8.0)
 and [EF Core retry/transaction guidance](https://learn.microsoft.com/en-us/ef/core/miscellaneous/connection-resiliency).
+
+Task 2 selection endpoints and Postman instructions are now documented in [selection-quote.md](selection-quote.md). This supersedes the earlier task-1-only implementation limitation above.

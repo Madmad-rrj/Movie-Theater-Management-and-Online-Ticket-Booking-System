@@ -169,3 +169,5 @@ Credentials CORS chỉ exact trusted origins, không wildcard. Cookie requests c
 - [DTO Specification](dto-specification.md): field types, nullability, validation và examples.
 - UC DOCX: UC-01/09 reservation; UC-02/03/04 payment safety; UC-04A/10/19 cancellation/refund; UC-05 admission; UC-08A–D/18 identity; UC-12–17 catalogue/configuration.
 - SAD: C02/C03 API/identity, C08–C11 booking/payment/refund/admission, C12 temporary chat, C13 transactions, C14–C16 workers/notification/audit.
+
+BE2 task 2 uses decimal-string bigint showtime/seat IDs, UUID selection/quote IDs, and a configurable maximum (default 8) snapshotted on selection creation. See [selection/quotation implementation](../development/selection-quote.md). Selection quotation is implemented without changing the SQL schema or adding BE1 entity mappings.
