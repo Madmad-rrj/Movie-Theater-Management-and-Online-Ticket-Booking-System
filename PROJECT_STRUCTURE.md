@@ -224,4 +224,12 @@ Postman: `docs/api/postman/Cinema-BE2.postman_collection.json`, `Cinema-BE2-Loca
 - `tests/CinemaTicketBooking.Api.Tests/BookingReservationTests.cs`: PostgreSQL transaction, idempotency, price, expiry and race cases.
 - `docs/development/booking-reservation.md`: task-3 behavior, integration boundary and Postman flow.
 
-The existing Postman collection/environment includes tasks 1–3 (14 requests). SQL schema/seed files remain unchanged.
+The current Postman collection/environment includes tasks 1–4 (19 requests). SQL schema/seed files remain unchanged.
+
+## BE2 task 4 additions — feat/be-checkout-recovery
+
+- `src/backend/CinemaTicketBooking.Api/Services/BookingReadService.cs`: coherent owner-protected booking reads and recovery decisions; shared snapshot projection for reservation responses/replay.
+- `src/backend/CinemaTicketBooking.Api/DTOs/Checkout/CheckoutRecoveryDto.cs`: recovery, protected payment and cancellation summaries.
+- `src/backend/CinemaTicketBooking.Api/Controllers/BookingsController.cs`: additionally implements GET booking and GET booking/checkout.
+- `tests/CinemaTicketBooking.Api.Tests/BookingRecoveryTests.cs`: partial reservation test class sharing its real PostgreSQL fixture/cleanup; ownership, reload, recovery-state and concurrent-read cases.
+- `docs/development/checkout-recovery.md`: endpoint behavior, recovery-state mapping, integration limits and Arch/Postman instructions.

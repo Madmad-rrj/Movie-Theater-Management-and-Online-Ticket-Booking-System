@@ -459,7 +459,7 @@ Backend so khớp showtimeId, seatIds và quantities với selectionVersion; mis
 | `contact` | `Contact` | R | Protected booking contact |
 | `selectionDeadline` | `Instant` | R | Original deadline |
 | `paymentDeadline` | `Instant` | N | Khi initiated, supersedes selection deadline |
-| `activePaymentId` | `decimal string` | N | Attempt hiện hành |
+| `activePaymentId` | `decimal string` | N | Relevant current attempt; may be terminal. Review/unapplied-success/open attempts take priority over an ordinary terminal failure. |
 | `cancellation` | `CancellationSummary` | N | Request hiện hành nếu có |
 | `createdAt` | `Instant` | R | Server |
 | `confirmedAt` | `Instant` | N | Server |
@@ -473,6 +473,12 @@ Backend so khớp showtimeId, seatIds và quantities với selectionVersion; mis
 
 ## CheckoutRecovery
 
+Implemented by BE2 task 4 for the owning Guest. Both read endpoints share the
+stored Booking snapshot projection. `booking.status` remains the persisted state;
+`nextAction=selectAgain` prevents offering payment after an unpaid deadline even
+if task 5 has not yet changed a pending row to expired. Reads never change that
+state, extend time or release allocations. See [the ordered recovery rules](../development/checkout-recovery.md).
+
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
 | `booking` | `Booking` | R | Authoritative |
@@ -484,8 +490,8 @@ Backend so khớp showtimeId, seatIds và quantities với selectionVersion; mis
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `paymentId` | `UUID` | R | Identity |
-| `bookingId` | `UUID` | R | Protected booking |
+| `paymentId` | `decimal string` | R | Payment bigint identity; implemented read projection in task 4 |
+| `bookingId` | `decimal string` | R | Protected booking bigint identity |
 | `provider` | `literal:MoMo` | R | Intended gateway |
 | `status` | `enum:created,pending,unknown,succeeded,failed,cancelled` | R | Financial state |
 | `appliedAt` | `Instant` | N | null không đồng nghĩa failed |
@@ -599,9 +605,9 @@ Replay trả cùng outcome; không đổi result sang một trạng thái khác.
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `requestId` | `UUID` | R | Identity |
+| `requestId` | `decimal string` | R | Existing cancellation-request bigint identity |
 | `status` | `enum:pending,approved,rejected` | R | Request state; refund lifecycle riêng |
-| `refundId` | `UUID` | N | Financial obligation |
+| `refundId` | `decimal string` | N | Existing refund bigint identity |
 | `blocksAdmission` | `boolean` | R | Derived |
 
 ## CancellationRequest

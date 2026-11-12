@@ -2,7 +2,7 @@
 
 Import these two files through Postman **Import → Files**:
 
-- `Cinema-BE2.postman_collection.json`: 14 requests for the implemented Guest, selection and reservation APIs.
+- `Cinema-BE2.postman_collection.json`: 19 requests for the implemented Guest, selection, reservation and recovery APIs.
 - `Cinema-BE2-Local.postman_environment.json`: local configuration template.
 
 Select **Cinema BE2 Local** in the environment selector. Keep the default
@@ -11,8 +11,8 @@ Arch Docker profile. Restart the API after source changes using the instructions
 in [selection-quote.md](../../development/selection-quote.md).
 
 If you imported an earlier version, import the collection again and replace the
-old copy when prompted. The current collection is named **Cinema BE2 — Task 3 —
-Guest, Selection and Reservation**, revision **1.3.1**, with 14 requests. Postman
+old copy when prompted. The current collection is named **Cinema BE2 — Task 4 —
+Guest, Reservation and Recovery**, revision **1.4.0**, with 19 requests. Postman
 does not automatically reload repository changes. Keep your existing local
 environment to preserve your configured IDs, or import the environment template
 for a fresh setup. Run from request 01 after replacing the collection.
@@ -25,6 +25,7 @@ Set these environment values before running:
 | `seatIds` | JSON array of decimal strings for seats in that showtime's room, for example `["456"]`. Example IDs are placeholders, not seeded IDs to copy. |
 | `adult` / `discounted` | Nonnegative integer quantities with total 1–8 by default; total must cover the selected seat count. |
 | `updateSeatIds` | Defaults to `[]` to test deselection; optionally set to another valid JSON seat array. |
+| `contactEmail` | Valid plain email text, e.g. `guest@example.invalid`; no surrounding quotes/spaces or unresolved variable reference. |
 
 The other variables are populated by response scripts. Templates contain no live
 cookie, CSRF token, credentials, or database connection strings. Postman retains
@@ -61,8 +62,9 @@ seed is dated November 14–21, 2026. An empty result requires a reviewed local
 fixture with future showtimes; do not bypass production time checks or reset a
 shared database to make a test work.
 
-Run requests **01 through 14 in order within five minutes**, individually or with
-Collection Runner:
+Run requests **01 through 19 in order**, individually or with Collection Runner.
+Complete reservation before the original five-minute deadline; the recovery
+requests remain readable afterwards and reflect the elapsed deadline:
 
 1. Bootstrap Guest and capture the CSRF token; a cookie is retained automatically.
 2. Replay the same Guest operation.
@@ -78,8 +80,13 @@ Collection Runner:
 12. Replay the reservation key/payload and expect the same booking, seats, total and deadline, with no duplicate holds.
 13. Expect **409 IDEMPOTENCY_KEY_CONFLICT** for an altered accepted amount with that same key.
 14. Expect **409 STATE_CONFLICT** when trying to reserve the consumed selection with a new key.
+15. Read the existing booking; verify its ID, contact, committed total, version and deadline.
+16. Recover checkout with that same Guest cookie; expect `pay` while eligible or `selectAgain` after the unpaid deadline, and no payment row.
+17. Reload checkout; verify the same booking, snapshots, version and deadline again.
+18. Expect **401 UNAUTHENTICATED** with cookies disabled for this request only. The saved Guest cookie is retained.
+19. Expect **404 NOT_FOUND** for an intentionally missing booking ID; no private data is returned.
 
-Requests 08, 09, 13 and 14 are deliberate negative tests; those error responses mean the
+Requests 08, 09, 13, 14, 18 and 19 are deliberate negative tests; those error responses mean the
 checks passed. Create requests generate new UUID keys, while replay requests reuse
 the preceding key. If the selection expires mid-run, rerun from request 01; a new
 create closes the expired active selection and starts a new valid session.
@@ -96,4 +103,10 @@ The environment also supplies `contactFullName`, `contactPhone` and `contactEmai
 with synthetic demo values. `quoteId`, `quoteVersion`, `acceptedTotal`,
 `bookingRequestKey` and `bookingId` are populated by requests 10–11. The selected
 seat count must equal adult + discounted before reservation; request 11 refuses an
-incomplete setup. Detailed behavior: [booking-reservation.md](../../development/booking-reservation.md).
+incomplete setup. `bookingVersion` is also captured by request 11. Request 01 clears
+old captured selection/quote/booking values so a failed create cannot reuse stale
+state. A 404 on request 10 requires a successful request 04 with the same Guest
+cookie/environment; an invalid `Contact.Email` on request 11 requires correcting
+`contactEmail` in that environment. Detailed behavior:
+[booking-reservation.md](../../development/booking-reservation.md) and
+[checkout-recovery.md](../../development/checkout-recovery.md).

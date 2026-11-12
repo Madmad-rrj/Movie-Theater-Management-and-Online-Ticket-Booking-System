@@ -6,7 +6,7 @@ The new endpoint is **POST `/api/bookings`**. A successful request creates one
 selection consumption, an audit event, and the idempotency receipt in one database
 transaction. It never creates payments, tickets or email notifications.
 
-GET booking/checkout endpoints belong to task 4 and are not shipped here. Pending
+GET booking/checkout endpoints are now implemented by [task 4](checkout-recovery.md). Pending
 cancellation and background expiry belong to task 5. Until that processing exists,
 elapsed timestamps do not release persisted holds; a conflicting held/sold seat
 continues to return `SEAT_CONFLICT`. Do not reset shared data to bypass this.
@@ -157,9 +157,12 @@ late unique-constraint failure, and Guest/selection expiry during database write
 Injected delay/conflict triggers exist only inside that isolated test database and
 are dropped afterwards; production schema/scripts are unchanged.
 
-Read APIs/recovery (task 4), safe cancellation/expiry worker (task 5), MoMo, ticketing,
+Read APIs/recovery are covered by [task 4](checkout-recovery.md). Safe cancellation/expiry worker (task 5), MoMo, ticketing,
 email, online deployment and network/uncertain-commit fault injection are not
 implemented or claimed tested here. Postman tests create real **local demo** holds;
 use another available seat when repeating the flow until task 5 is implemented.
 
 Verification on 2026-11-12: 60/60 integration cases passed, 0 skipped; final-source Kestrel/Newman run passed 14 requests and 30 assertions. Its disposable database contained exactly one pending booking/held seat and no payment, ticket or notification rows.
+
+The current collection extends the original 01–14 flow with task-4 requests 15–19;
+re-import it to test booking reads and recovery as well.
