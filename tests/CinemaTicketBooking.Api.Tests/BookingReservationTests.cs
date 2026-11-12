@@ -41,6 +41,7 @@ public sealed partial class BookingReservationTests(GuestApiFixture fixture) : I
     }
     public async Task DisposeAsync()
     {
+        await Sql("DELETE FROM cinema.payment_event WHERE payment_id IN (SELECT p.id FROM cinema.payment p JOIN cinema.booking b ON b.id=p.booking_id WHERE b.checkout_identity_id=ANY(@owners))", ("owners", owners.ToArray()));
         await Sql("DELETE FROM cinema.refund WHERE booking_id IN (SELECT id FROM cinema.booking WHERE checkout_identity_id=ANY(@owners)); DELETE FROM cinema.cancellation_request WHERE booking_id IN (SELECT id FROM cinema.booking WHERE checkout_identity_id=ANY(@owners)); DELETE FROM cinema.ticket WHERE booking_id IN (SELECT id FROM cinema.booking WHERE checkout_identity_id=ANY(@owners)); DELETE FROM cinema.payment WHERE booking_id IN (SELECT id FROM cinema.booking WHERE checkout_identity_id=ANY(@owners))", ("owners", owners.ToArray()));
         await Sql("DELETE FROM cinema.booking_seat WHERE booking_id IN (SELECT id FROM cinema.booking WHERE checkout_identity_id=ANY(@owners))", ("owners", owners.ToArray()));
         await Sql("DELETE FROM cinema.booking_category WHERE booking_id IN (SELECT id FROM cinema.booking WHERE checkout_identity_id=ANY(@owners))", ("owners", owners.ToArray()));

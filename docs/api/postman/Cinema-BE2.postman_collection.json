@@ -1,1054 +1,1785 @@
 {
   "info": {
-    "name": "Cinema BE2 — Task 4 — Guest, Reservation and Recovery",
+    "name": "Cinema BE2 — Task 5 — Checkout, Cancellation and Expiry",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json",
-    "description": "Implemented BE2 tasks 1–4. Run 01–19 in order with the Cinema BE2 Local environment and real available local seat IDs. Requests 15–19 exercise booking reads, checkout recovery, reload, missing Guest proof and missing booking. Complete reservation within the original five-minute deadline. GET never extends a deadline or creates a booking/payment. Creates real local holds; use other available seats on reruns until task 5 adds safe expiry. MoMo is a frontend method choice only; no gateway, ticket or email calls. Revision 1.4.0; replace older imports.",
+    "description": "Implemented BE2 tasks 1–5. Run 01–26 in order for Guest, selection, reservation, recovery and explicit cancellation. Complete reservation before the original five-minute deadline. The optional 27–30 folder creates another booking and waits for natural expiry (about five minutes plus the configured worker interval); run it separately if desired. Uses real local demo data. The API background worker releases only eligible overdue pending holds; it never infers an unresolved payment failed. No gateway, payment, ticket, email or refund is created. Replace older imports with revision 1.5.0.",
     "_postman_id": "9af7aa63-f175-4c22-b27c-fed2536e57fd",
-    "version": "1.4.0"
+    "version": "1.5.0"
   },
   "auth": {
     "type": "noauth"
   },
   "item": [
     {
-      "name": "01 Bootstrap Guest",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Origin",
-            "value": "{{origin}}"
-          },
-          {
-            "key": "Idempotency-Key",
-            "value": "{{guestBootstrapKey}}"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/guest-context",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "guest-context"
-          ]
-        },
-        "description": "Postman retains cinema_guest in its cookie jar. Do not disable cookies. CSRF is captured into the selected local environment; never share an environment exported with live values."
-      },
-      "event": [
+      "name": "01–26 Main flow — reserve, recover and cancel",
+      "item": [
         {
-          "listen": "prerequest",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "['selectionId', 'selectionVersion', 'selectionDeadline', 'staleSelectionVersion', 'quoteId', 'quoteVersion', 'acceptedTotal', 'bookingId', 'bookingRequestKey', 'bookingVersion'].forEach(key => pm.environment.unset(key));",
-              "pm.environment.set('guestBootstrapKey', pm.variables.replaceIn('{{$guid}}'));"
-            ]
-          }
-        },
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Guest created or reused', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
-              "if (pm.response.code === 200 || pm.response.code === 201) {",
-              "  pm.environment.set('contextId', pm.response.json().data.contextId);",
-              "  pm.environment.set('csrfToken', pm.response.headers.get('X-CSRF-Token'));",
-              "}",
-              "pm.test('CSRF header supplied', () => pm.expect(pm.response.headers.has('X-CSRF-Token')).to.eql(true));"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "02 Replay Guest bootstrap",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Origin",
-            "value": "{{origin}}"
+          "name": "01 Bootstrap Guest",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{guestBootstrapKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/guest-context",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "guest-context"
+              ]
+            },
+            "description": "Postman retains cinema_guest in its cookie jar. Do not disable cookies. CSRF is captured into the selected local environment; never share an environment exported with live values."
           },
-          {
-            "key": "Idempotency-Key",
-            "value": "{{guestBootstrapKey}}"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/guest-context",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "guest-context"
-          ]
-        },
-        "description": ""
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Replay returns 200', () => pm.response.to.have.status(200));",
-              "pm.test('Replay recognized', () => pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.eql('true'));",
-              "if (pm.response.code === 200) pm.environment.set('csrfToken', pm.response.headers.get('X-CSRF-Token'));"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "03 Browse movies (regression)",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/api/movies",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "movies"
-          ]
-        },
-        "description": ""
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Movies available', () => pm.response.to.have.status(200));"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "04 Create selection",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Origin",
-            "value": "{{origin}}"
-          },
-          {
-            "key": "X-CSRF-Token",
-            "value": "{{csrfToken}}"
-          },
-          {
-            "key": "Idempotency-Key",
-            "value": "{{selectionCreateKey}}"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/selections",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "selections"
-          ]
-        },
-        "description": "",
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"showtimeId\": \"{{showtimeId}}\",\n  \"quantities\": { \"adult\": {{adult}}, \"discounted\": {{discounted}} },\n  \"seatIds\": {{seatIds}}\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['cancellationKey', 'cancelledBookingId', 'cancelledBookingVersion', 'rejectedCancellationKey', 'expiryPollStartedAt'].forEach(key => pm.environment.unset(key));",
+                  "['selectionId', 'selectionVersion', 'selectionDeadline', 'staleSelectionVersion', 'quoteId', 'quoteVersion', 'acceptedTotal', 'bookingId', 'bookingRequestKey', 'bookingVersion'].forEach(key => pm.environment.unset(key));",
+                  "pm.environment.set('guestBootstrapKey', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Guest created or reused', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "  pm.environment.set('contextId', pm.response.json().data.contextId);",
+                  "  pm.environment.set('csrfToken', pm.response.headers.get('X-CSRF-Token'));",
+                  "}",
+                  "pm.test('CSRF header supplied', () => pm.expect(pm.response.headers.has('X-CSRF-Token')).to.eql(true));"
+                ]
+              }
             }
-          }
-        }
-      },
-      "event": [
-        {
-          "listen": "prerequest",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "const showtime = pm.environment.get('showtimeId');",
-              "const seats = JSON.parse(pm.environment.get('seatIds') || '[]');",
-              "if (!/^[1-9][0-9]*$/.test(showtime || '') || seats.length === 0 || seats.some(id => !/^[1-9][0-9]*$/.test(id))) {",
-              "  throw new Error('Set showtimeId and seatIds (a JSON array of decimal strings) from your LOCAL database first.');",
-              "}",
-              "pm.environment.set('selectionCreateKey', pm.variables.replaceIn('{{$guid}}'));"
-            ]
-          }
-        },
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Selection created or active selection reused', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
-              "if (pm.response.code === 200 || pm.response.code === 201) {",
-              "  const data = pm.response.json().data;",
-              "  pm.environment.set('selectionId', data.selectionId);",
-              "  pm.environment.set('selectionVersion', data.version);",
-              "  pm.environment.set('selectionDeadline', data.selectionDeadline);",
-              "}"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "05 Replay selection create",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Origin",
-            "value": "{{origin}}"
-          },
-          {
-            "key": "X-CSRF-Token",
-            "value": "{{csrfToken}}"
-          },
-          {
-            "key": "Idempotency-Key",
-            "value": "{{selectionCreateKey}}"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/selections",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "selections"
           ]
         },
-        "description": "",
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"showtimeId\": \"{{showtimeId}}\",\n  \"quantities\": { \"adult\": {{adult}}, \"discounted\": {{discounted}} },\n  \"seatIds\": {{seatIds}}\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+        {
+          "name": "02 Replay Guest bootstrap",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{guestBootstrapKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/guest-context",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "guest-context"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Replay returns 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Replay recognized', () => pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.eql('true'));",
+                  "if (pm.response.code === 200) pm.environment.set('csrfToken', pm.response.headers.get('X-CSRF-Token'));"
+                ]
+              }
             }
-          }
-        }
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Replay returns 200', () => pm.response.to.have.status(200));",
-              "pm.test('Replay recognized', () => pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.eql('true'));",
-              "pm.test('Same selection', () => pm.expect(pm.response.json().data.selectionId).to.eql(pm.environment.get('selectionId')));",
-              "if (pm.response.code === 200 || pm.response.code === 201) {",
-              "  const data = pm.response.json().data;",
-              "  pm.environment.set('selectionId', data.selectionId);",
-              "  pm.environment.set('selectionVersion', data.version);",
-              "  pm.environment.set('selectionDeadline', data.selectionDeadline);",
-              "}"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "06 Read selection and quote",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/api/selections/{{selectionId}}",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "selections",
-            "{{selectionId}}"
           ]
         },
-        "description": ""
-      },
-      "event": [
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Selection readable', () => pm.response.to.have.status(200));",
-              "pm.test('Deadline unchanged', () => pm.expect(pm.response.json().data.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
-              "if (pm.response.code === 200 || pm.response.code === 201) {",
-              "  const data = pm.response.json().data;",
-              "  pm.environment.set('selectionId', data.selectionId);",
-              "  pm.environment.set('selectionVersion', data.version);",
-              "  pm.environment.set('selectionDeadline', data.selectionDeadline);",
-              "}"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "07 Update selection",
-      "request": {
-        "method": "PUT",
-        "header": [
-          {
-            "key": "Origin",
-            "value": "{{origin}}"
+          "name": "03 Browse movies (regression)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/movies",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "movies"
+              ]
+            },
+            "description": ""
           },
-          {
-            "key": "X-CSRF-Token",
-            "value": "{{csrfToken}}"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/selections/{{selectionId}}",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "selections",
-            "{{selectionId}}"
-          ]
-        },
-        "description": "updateSeatIds defaults to [] to exercise deselection. Set it to a JSON array of physical-seat decimal strings to select seats instead.",
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"version\": \"{{selectionVersion}}\",\n  \"quantities\": { \"adult\": {{adult}}, \"discounted\": {{discounted}} },\n  \"seatIds\": {{updateSeatIds}}\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Movies available', () => pm.response.to.have.status(200));"
+                ]
+              }
             }
-          }
-        }
-      },
-      "event": [
-        {
-          "listen": "prerequest",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.environment.set('staleSelectionVersion', pm.environment.get('selectionVersion'));"
-            ]
-          }
-        },
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Update succeeds', () => pm.response.to.have.status(200));",
-              "pm.test('Deadline unchanged', () => pm.expect(pm.response.json().data.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
-              "if (pm.response.code === 200 || pm.response.code === 201) {",
-              "  const data = pm.response.json().data;",
-              "  pm.environment.set('selectionId', data.selectionId);",
-              "  pm.environment.set('selectionVersion', data.version);",
-              "  pm.environment.set('selectionDeadline', data.selectionDeadline);",
-              "}"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "08 Reject stale version",
-      "request": {
-        "method": "PUT",
-        "header": [
-          {
-            "key": "Origin",
-            "value": "{{origin}}"
-          },
-          {
-            "key": "X-CSRF-Token",
-            "value": "{{csrfToken}}"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/selections/{{selectionId}}",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "selections",
-            "{{selectionId}}"
           ]
         },
-        "description": "",
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"version\": \"{{staleSelectionVersion}}\",\n  \"quantities\": { \"adult\": {{adult}}, \"discounted\": {{discounted}} },\n  \"seatIds\": {{updateSeatIds}}\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+        {
+          "name": "04 Create selection",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{selectionCreateKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/selections",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "selections"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"showtimeId\": \"{{showtimeId}}\",\n  \"quantities\": { \"adult\": {{adult}}, \"discounted\": {{discounted}} },\n  \"seatIds\": {{seatIds}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
-          }
-        }
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Stale version rejected', () => pm.response.to.have.status(409));",
-              "pm.test('Version conflict code', () => pm.expect(pm.response.json().error.code).to.eql('VERSION_CONFLICT'));"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "09 Reject missing CSRF",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Origin",
-            "value": "{{origin}}"
           },
-          {
-            "key": "Idempotency-Key",
-            "value": "{{$guid}}"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/selections",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "selections"
-          ]
-        },
-        "description": "",
-        "body": {
-          "mode": "raw",
-          "raw": "{\n  \"showtimeId\": \"{{showtimeId}}\",\n  \"quantities\": { \"adult\": {{adult}}, \"discounted\": {{discounted}} },\n  \"seatIds\": {{seatIds}}\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const showtime = pm.environment.get('showtimeId');",
+                  "const seats = JSON.parse(pm.environment.get('seatIds') || '[]');",
+                  "if (!/^[1-9][0-9]*$/.test(showtime || '') || seats.length === 0 || seats.some(id => !/^[1-9][0-9]*$/.test(id))) {",
+                  "  throw new Error('Set showtimeId and seatIds (a JSON array of decimal strings) from your LOCAL database first.');",
+                  "}",
+                  "pm.environment.set('selectionCreateKey', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Selection created or active selection reused', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "  const data = pm.response.json().data;",
+                  "  pm.environment.set('selectionId', data.selectionId);",
+                  "  pm.environment.set('selectionVersion', data.version);",
+                  "  pm.environment.set('selectionDeadline', data.selectionDeadline);",
+                  "}"
+                ]
+              }
             }
-          }
-        }
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Missing CSRF rejected', () => pm.response.to.have.status(403));",
-              "pm.test('CSRF rejection code', () => pm.expect(pm.response.json().error.code).to.eql('CSRF_REJECTED'));"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "10 Restore complete selection and capture quote",
-      "request": {
-        "method": "PUT",
-        "header": [
-          {
-            "key": "Origin",
-            "value": "{{origin}}"
-          },
-          {
-            "key": "X-CSRF-Token",
-            "value": "{{csrfToken}}"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/selections/{{selectionId}}",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "selections",
-            "{{selectionId}}"
           ]
         },
-        "body": {
-          "mode": "raw",
-          "raw": "{\n \"version\": \"{{selectionVersion}}\",\n \"quantities\": {\"adult\": {{adult}}, \"discounted\": {{discounted}}},\n \"seatIds\": {{seatIds}}\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+        {
+          "name": "05 Replay selection create",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{selectionCreateKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/selections",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "selections"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"showtimeId\": \"{{showtimeId}}\",\n  \"quantities\": { \"adult\": {{adult}}, \"discounted\": {{discounted}} },\n  \"seatIds\": {{seatIds}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
-          }
-        }
-      },
-      "event": [
-        {
-          "listen": "prerequest",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "['quoteId', 'quoteVersion', 'acceptedTotal'].forEach(key => pm.environment.unset(key));",
-              "if (!pm.environment.get('selectionId')) throw new Error('Run request 04 successfully with this Guest cookie and selected environment first.');"
-            ]
-          }
-        },
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Complete selection restored', () => pm.response.to.have.status(200));",
-              "if (pm.response.code === 200) {",
-              " const data = pm.response.json().data;",
-              " pm.environment.set('selectionVersion', data.version);",
-              " pm.environment.set('selectionDeadline', data.selectionDeadline);",
-              " if (data.quote) {",
-              "  pm.environment.set('quoteId', data.quote.quoteId);",
-              "  pm.environment.set('quoteVersion', data.quote.version);",
-              "  pm.environment.set('acceptedTotal', JSON.stringify(data.quote.total));",
-              " }",
-              "}"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "11 Reserve booking and hold seats",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Origin",
-            "value": "{{origin}}"
           },
-          {
-            "key": "X-CSRF-Token",
-            "value": "{{csrfToken}}"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          },
-          {
-            "key": "Idempotency-Key",
-            "value": "{{bookingRequestKey}}"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/bookings",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "bookings"
-          ]
-        },
-        "body": {
-          "mode": "raw",
-          "raw": "{\n \"selectionId\": \"{{selectionId}}\",\n \"selectionVersion\": \"{{selectionVersion}}\",\n \"showtimeId\": \"{{showtimeId}}\",\n \"seatIds\": {{seatIds}},\n \"quantities\": {\"adult\": {{adult}}, \"discounted\": {{discounted}}},\n \"contact\": {\"fullName\": \"{{contactFullName}}\", \"phone\": \"{{contactPhone}}\", \"email\": \"{{contactEmail}}\"},\n \"declarations\": {\"termsAccepted\": true, \"ageRequirementsAcknowledged\": true},\n \"priceAcceptance\": {\"quoteId\": \"{{quoteId}}\", \"version\": \"{{quoteVersion}}\", \"acceptedTotal\": {{acceptedTotal}}}\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Replay returns 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Replay recognized', () => pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.eql('true'));",
+                  "pm.test('Same selection', () => pm.expect(pm.response.json().data.selectionId).to.eql(pm.environment.get('selectionId')));",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "  const data = pm.response.json().data;",
+                  "  pm.environment.set('selectionId', data.selectionId);",
+                  "  pm.environment.set('selectionVersion', data.version);",
+                  "  pm.environment.set('selectionDeadline', data.selectionDeadline);",
+                  "}"
+                ]
+              }
             }
-          }
-        }
-      },
-      "event": [
-        {
-          "listen": "prerequest",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "const email = pm.variables.replaceIn('{{contactEmail}}'); if (!/^[^\\s@]+@[^\\s@]+$/.test(email)) throw new Error('Set contactEmail to a valid email, for example guest@example.invalid, in Cinema BE2 Local.');",
-              "const seats = JSON.parse(pm.environment.get('seatIds') || '[]');",
-              "const total = Number(pm.environment.get('adult')) + Number(pm.environment.get('discounted'));",
-              "if (seats.length !== total || !pm.environment.get('quoteId')) throw new Error('Run request 10 first with exactly as many seatIds as tickets.');",
-              "if (!pm.environment.get('quoteVersion') || !pm.environment.get('acceptedTotal')) throw new Error('Run request 10 successfully to capture the accepted quote.');",
-              "pm.environment.set('bookingRequestKey', pm.variables.replaceIn('{{$guid}}'));"
-            ]
-          }
-        },
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Pending booking created', () => pm.response.to.have.status(201));",
-              "if (pm.response.code === 201) {",
-              " const booking = pm.response.json().data;",
-              " pm.environment.set('bookingId', booking.bookingId);",
-              " pm.environment.set('bookingVersion', booking.version);",
-              " pm.test('Booking remains pending', () => pm.expect(booking.status).to.eql('pending'));",
-              " pm.test('Original deadline retained', () => pm.expect(booking.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
-              " pm.test('Accepted amount committed', () => pm.expect(booking.financialSnapshot.total).to.deep.eql(JSON.parse(pm.environment.get('acceptedTotal'))));",
-              " pm.test('No payment started', () => pm.expect(booking.activePaymentId).to.eql(null));",
-              " pm.test('Selected physical seats committed', () => pm.expect(booking.seats.map(seat => seat.seatId).sort()).to.deep.eql(JSON.parse(pm.environment.get('seatIds')).sort()));",
-              " pm.test('Ticket quantities committed', () => pm.expect(booking.quantities).to.deep.eql({adult: Number(pm.environment.get('adult')), discounted: Number(pm.environment.get('discounted'))}));",
-              " pm.test('No payment deadline started', () => pm.expect(booking.paymentDeadline).to.eql(null));",
-              "}"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "12 Replay reservation without duplicate booking",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Origin",
-            "value": "{{origin}}"
-          },
-          {
-            "key": "X-CSRF-Token",
-            "value": "{{csrfToken}}"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          },
-          {
-            "key": "Idempotency-Key",
-            "value": "{{bookingRequestKey}}"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/bookings",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "bookings"
           ]
         },
-        "body": {
-          "mode": "raw",
-          "raw": "{\n \"selectionId\": \"{{selectionId}}\",\n \"selectionVersion\": \"{{selectionVersion}}\",\n \"showtimeId\": \"{{showtimeId}}\",\n \"seatIds\": {{seatIds}},\n \"quantities\": {\"adult\": {{adult}}, \"discounted\": {{discounted}}},\n \"contact\": {\"fullName\": \"{{contactFullName}}\", \"phone\": \"{{contactPhone}}\", \"email\": \"{{contactEmail}}\"},\n \"declarations\": {\"termsAccepted\": true, \"ageRequirementsAcknowledged\": true},\n \"priceAcceptance\": {\"quoteId\": \"{{quoteId}}\", \"version\": \"{{quoteVersion}}\", \"acceptedTotal\": {{acceptedTotal}}}\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+        {
+          "name": "06 Read selection and quote",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/selections/{{selectionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "selections",
+                "{{selectionId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Selection readable', () => pm.response.to.have.status(200));",
+                  "pm.test('Deadline unchanged', () => pm.expect(pm.response.json().data.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "  const data = pm.response.json().data;",
+                  "  pm.environment.set('selectionId', data.selectionId);",
+                  "  pm.environment.set('selectionVersion', data.version);",
+                  "  pm.environment.set('selectionDeadline', data.selectionDeadline);",
+                  "}"
+                ]
+              }
             }
-          }
-        }
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Reservation replay returns 200', () => pm.response.to.have.status(200));",
-              "pm.test('Same booking returned', () => pm.expect(pm.response.json().data.bookingId).to.eql(pm.environment.get('bookingId')));",
-              "pm.test('Replay marker present', () => pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.eql('true'));",
-              "if (pm.response.code === 200) {",
-              " const booking = pm.response.json().data;",
-              " pm.test('Replay retains original deadline', () => pm.expect(booking.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
-              " pm.test('Replay retains accepted total', () => pm.expect(booking.financialSnapshot.total).to.deep.eql(JSON.parse(pm.environment.get('acceptedTotal'))));",
-              " pm.test('Replay retains selected seats', () => pm.expect(booking.seats.map(seat => seat.seatId).sort()).to.deep.eql(JSON.parse(pm.environment.get('seatIds')).sort()));",
-              "}"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "13 Reject changed payload with same reservation key",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Origin",
-            "value": "{{origin}}"
-          },
-          {
-            "key": "X-CSRF-Token",
-            "value": "{{csrfToken}}"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          },
-          {
-            "key": "Idempotency-Key",
-            "value": "{{bookingRequestKey}}"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/bookings",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "bookings"
           ]
         },
-        "body": {
-          "mode": "raw",
-          "raw": "{\n \"selectionId\": \"{{selectionId}}\",\n \"selectionVersion\": \"{{selectionVersion}}\",\n \"showtimeId\": \"{{showtimeId}}\",\n \"seatIds\": {{seatIds}},\n \"quantities\": {\"adult\": {{adult}}, \"discounted\": {{discounted}}},\n \"contact\": {\"fullName\": \"{{contactFullName}}\", \"phone\": \"{{contactPhone}}\", \"email\": \"{{contactEmail}}\"},\n \"declarations\": {\"termsAccepted\": true, \"ageRequirementsAcknowledged\": true},\n \"priceAcceptance\": {\"quoteId\": \"{{quoteId}}\", \"version\": \"{{quoteVersion}}\", \"acceptedTotal\": {{conflictingTotal}}}\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+        {
+          "name": "07 Update selection",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/selections/{{selectionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "selections",
+                "{{selectionId}}"
+              ]
+            },
+            "description": "updateSeatIds defaults to [] to exercise deselection. Set it to a JSON array of physical-seat decimal strings to select seats instead.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": \"{{selectionVersion}}\",\n  \"quantities\": { \"adult\": {{adult}}, \"discounted\": {{discounted}} },\n  \"seatIds\": {{updateSeatIds}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
             }
-          }
-        }
-      },
-      "event": [
-        {
-          "listen": "prerequest",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "const total = JSON.parse(pm.environment.get('acceptedTotal'));",
-              "total.amount += 1;",
-              "pm.variables.set('conflictingTotal', JSON.stringify(total));"
-            ]
-          }
-        },
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Changed payload rejected', () => pm.response.to.have.status(409));",
-              "pm.test('Idempotency conflict', () => pm.expect(pm.response.json().error.code).to.eql('IDEMPOTENCY_KEY_CONFLICT'));"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "14 Reject consumed selection with a new key",
-      "request": {
-        "method": "POST",
-        "header": [
-          {
-            "key": "Origin",
-            "value": "{{origin}}"
           },
-          {
-            "key": "X-CSRF-Token",
-            "value": "{{csrfToken}}"
-          },
-          {
-            "key": "Content-Type",
-            "value": "application/json"
-          },
-          {
-            "key": "Idempotency-Key",
-            "value": "{{$guid}}"
-          }
-        ],
-        "url": {
-          "raw": "{{baseUrl}}/api/bookings",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "bookings"
-          ]
-        },
-        "body": {
-          "mode": "raw",
-          "raw": "{\n \"selectionId\": \"{{selectionId}}\",\n \"selectionVersion\": \"{{selectionVersion}}\",\n \"showtimeId\": \"{{showtimeId}}\",\n \"seatIds\": {{seatIds}},\n \"quantities\": {\"adult\": {{adult}}, \"discounted\": {{discounted}}},\n \"contact\": {\"fullName\": \"{{contactFullName}}\", \"phone\": \"{{contactPhone}}\", \"email\": \"{{contactEmail}}\"},\n \"declarations\": {\"termsAccepted\": true, \"ageRequirementsAcknowledged\": true},\n \"priceAcceptance\": {\"quoteId\": \"{{quoteId}}\", \"version\": \"{{quoteVersion}}\", \"acceptedTotal\": {{acceptedTotal}}}\n}",
-          "options": {
-            "raw": {
-              "language": "json"
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.environment.set('staleSelectionVersion', pm.environment.get('selectionVersion'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Update succeeds', () => pm.response.to.have.status(200));",
+                  "pm.test('Deadline unchanged', () => pm.expect(pm.response.json().data.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "  const data = pm.response.json().data;",
+                  "  pm.environment.set('selectionId', data.selectionId);",
+                  "  pm.environment.set('selectionVersion', data.version);",
+                  "  pm.environment.set('selectionDeadline', data.selectionDeadline);",
+                  "}"
+                ]
+              }
             }
-          }
-        }
-      },
-      "event": [
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Consumed selection rejected', () => pm.response.to.have.status(409));",
-              "pm.test('State conflict', () => pm.expect(pm.response.json().error.code).to.eql('STATE_CONFLICT'));"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "15 Read existing booking",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/api/bookings/{{bookingId}}",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "bookings",
-            "{{bookingId}}"
           ]
         },
-        "description": "Uses the Guest cookie; no CSRF or idempotency header is needed for GET."
-      },
-      "event": [
         {
-          "listen": "prerequest",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first; bookingId must be captured in the selected environment.');"
-            ]
-          }
-        },
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Booking read succeeds', () => pm.response.to.have.status(200));",
-              "if (pm.response.code === 200) {",
-              " const booking = pm.response.json().data;",
-              " pm.test('Same booking', () => pm.expect(booking.bookingId).to.eql(pm.environment.get('bookingId')));",
-              " pm.test('Deadline unchanged', () => pm.expect(booking.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
-              " pm.test('Version unchanged by read', () => pm.expect(booking.version).to.eql(pm.environment.get('bookingVersion')));",
-              " pm.test('Committed total unchanged', () => pm.expect(booking.financialSnapshot.total).to.deep.eql(JSON.parse(pm.environment.get('acceptedTotal'))));",
-              " pm.test('Protected contact retained', () => pm.expect(booking.contact.email).to.eql(pm.variables.replaceIn('{{contactEmail}}').trim()));",
-              "}",
-              "pm.test('Protected response is no-store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store'));"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "16 Recover checkout without creating a booking",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/checkout",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "bookings",
-            "{{bookingId}}",
-            "checkout"
+          "name": "08 Reject stale version",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/selections/{{selectionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "selections",
+                "{{selectionId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"version\": \"{{staleSelectionVersion}}\",\n  \"quantities\": { \"adult\": {{adult}}, \"discounted\": {{discounted}} },\n  \"seatIds\": {{updateSeatIds}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Stale version rejected', () => pm.response.to.have.status(409));",
+                  "pm.test('Version conflict code', () => pm.expect(pm.response.json().error.code).to.eql('VERSION_CONFLICT'));"
+                ]
+              }
+            }
           ]
         },
-        "description": "pay is a navigation hint for an eligible positive-total pending demo booking. It does not initiate MoMo or mark payment successful. After the deadline expect selectAgain."
-      },
-      "event": [
         {
-          "listen": "prerequest",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first; bookingId must be captured in the selected environment.');"
-            ]
-          }
-        },
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Checkout recovery succeeds', () => pm.response.to.have.status(200));",
-              "if (pm.response.code === 200) {",
-              " const data = pm.response.json().data; const booking = data.booking;",
-              " pm.test('Same booking recovered', () => pm.expect(booking.bookingId).to.eql(pm.environment.get('bookingId')));",
-              " pm.test('Original deadline retained', () => pm.expect(booking.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
-              " pm.test('Version unchanged by recovery', () => pm.expect(booking.version).to.eql(pm.environment.get('bookingVersion')));",
-              " pm.test('Price snapshot retained', () => pm.expect(booking.financialSnapshot.total).to.deep.eql(JSON.parse(pm.environment.get('acceptedTotal'))));",
-              " pm.test('No payment created on reload', () => { pm.expect(data.payment).to.eql(null); pm.expect(booking.activePaymentId).to.eql(null); pm.expect(booking.paymentDeadline).to.eql(null); });",
-              " pm.test('Recovery hint respects server deadline', () => pm.expect(data.nextAction).to.eql(Date.parse(booking.selectionDeadline) > Date.parse(data.serverTime) && booking.showtime.bookingAvailable ? 'pay' : 'selectAgain'));",
-              " pm.test('Shared authoritative server time', () => pm.expect(data.serverTime).to.eql(booking.showtime.serverTime));",
-              "}",
-              "pm.test('Recovery is no-store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store'));"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "17 Reload checkout and retain original deadline",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/checkout",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "bookings",
-            "{{bookingId}}",
-            "checkout"
+          "name": "09 Reject missing CSRF",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/selections",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "selections"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"showtimeId\": \"{{showtimeId}}\",\n  \"quantities\": { \"adult\": {{adult}}, \"discounted\": {{discounted}} },\n  \"seatIds\": {{seatIds}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Missing CSRF rejected', () => pm.response.to.have.status(403));",
+                  "pm.test('CSRF rejection code', () => pm.expect(pm.response.json().error.code).to.eql('CSRF_REJECTED'));"
+                ]
+              }
+            }
           ]
         },
-        "description": "Repeat this GET to simulate reloading Checkout Step 2. It never renews a deadline."
-      },
-      "event": [
         {
-          "listen": "prerequest",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first; bookingId must be captured in the selected environment.');"
-            ]
-          }
-        },
-        {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Checkout recovery succeeds', () => pm.response.to.have.status(200));",
-              "if (pm.response.code === 200) {",
-              " const data = pm.response.json().data; const booking = data.booking;",
-              " pm.test('Same booking recovered', () => pm.expect(booking.bookingId).to.eql(pm.environment.get('bookingId')));",
-              " pm.test('Original deadline retained', () => pm.expect(booking.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
-              " pm.test('Version unchanged by recovery', () => pm.expect(booking.version).to.eql(pm.environment.get('bookingVersion')));",
-              " pm.test('Price snapshot retained', () => pm.expect(booking.financialSnapshot.total).to.deep.eql(JSON.parse(pm.environment.get('acceptedTotal'))));",
-              " pm.test('No payment created on reload', () => { pm.expect(data.payment).to.eql(null); pm.expect(booking.activePaymentId).to.eql(null); pm.expect(booking.paymentDeadline).to.eql(null); });",
-              " pm.test('Recovery hint respects server deadline', () => pm.expect(data.nextAction).to.eql(Date.parse(booking.selectionDeadline) > Date.parse(data.serverTime) && booking.showtime.bookingAvailable ? 'pay' : 'selectAgain'));",
-              " pm.test('Shared authoritative server time', () => pm.expect(data.serverTime).to.eql(booking.showtime.serverTime));",
-              "}",
-              "pm.test('Recovery is no-store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store'));"
-            ]
-          }
-        }
-      ]
-    },
-    {
-      "name": "18 Reject checkout without Guest cookie",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/checkout",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "bookings",
-            "{{bookingId}}",
-            "checkout"
+          "name": "10 Restore complete selection and capture quote",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/selections/{{selectionId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "selections",
+                "{{selectionId}}"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n \"version\": \"{{selectionVersion}}\",\n \"quantities\": {\"adult\": {{adult}}, \"discounted\": {{discounted}}},\n \"seatIds\": {{seatIds}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "['quoteId', 'quoteVersion', 'acceptedTotal'].forEach(key => pm.environment.unset(key));",
+                  "if (!pm.environment.get('selectionId')) throw new Error('Run request 04 successfully with this Guest cookie and selected environment first.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Complete selection restored', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  " const data = pm.response.json().data;",
+                  " pm.environment.set('selectionVersion', data.version);",
+                  " pm.environment.set('selectionDeadline', data.selectionDeadline);",
+                  " if (data.quote) {",
+                  "  pm.environment.set('quoteId', data.quote.quoteId);",
+                  "  pm.environment.set('quoteVersion', data.quote.version);",
+                  "  pm.environment.set('acceptedTotal', JSON.stringify(data.quote.total));",
+                  " }",
+                  "}"
+                ]
+              }
+            }
           ]
         },
-        "description": "Cookie jar is disabled only for this request; your saved Guest cookie is retained for other requests."
-      },
-      "event": [
         {
-          "listen": "prerequest",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first; bookingId must be captured in the selected environment.');"
-            ]
+          "name": "11 Reserve booking and hold seats",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{bookingRequestKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n \"selectionId\": \"{{selectionId}}\",\n \"selectionVersion\": \"{{selectionVersion}}\",\n \"showtimeId\": \"{{showtimeId}}\",\n \"seatIds\": {{seatIds}},\n \"quantities\": {\"adult\": {{adult}}, \"discounted\": {{discounted}}},\n \"contact\": {\"fullName\": \"{{contactFullName}}\", \"phone\": \"{{contactPhone}}\", \"email\": \"{{contactEmail}}\"},\n \"declarations\": {\"termsAccepted\": true, \"ageRequirementsAcknowledged\": true},\n \"priceAcceptance\": {\"quoteId\": \"{{quoteId}}\", \"version\": \"{{quoteVersion}}\", \"acceptedTotal\": {{acceptedTotal}}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const email = pm.variables.replaceIn('{{contactEmail}}'); if (!/^[^\\s@]+@[^\\s@]+$/.test(email)) throw new Error('Set contactEmail to a valid email, for example guest@example.invalid, in Cinema BE2 Local.');",
+                  "const seats = JSON.parse(pm.environment.get('seatIds') || '[]');",
+                  "const total = Number(pm.environment.get('adult')) + Number(pm.environment.get('discounted'));",
+                  "if (seats.length !== total || !pm.environment.get('quoteId')) throw new Error('Run request 10 first with exactly as many seatIds as tickets.');",
+                  "if (!pm.environment.get('quoteVersion') || !pm.environment.get('acceptedTotal')) throw new Error('Run request 10 successfully to capture the accepted quote.');",
+                  "pm.environment.set('bookingRequestKey', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Pending booking created', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  " const booking = pm.response.json().data;",
+                  " pm.environment.set('bookingId', booking.bookingId);",
+                  " pm.environment.set('bookingVersion', booking.version);",
+                  " pm.test('Booking remains pending', () => pm.expect(booking.status).to.eql('pending'));",
+                  " pm.test('Original deadline retained', () => pm.expect(booking.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
+                  " pm.test('Accepted amount committed', () => pm.expect(booking.financialSnapshot.total).to.deep.eql(JSON.parse(pm.environment.get('acceptedTotal'))));",
+                  " pm.test('No payment started', () => pm.expect(booking.activePaymentId).to.eql(null));",
+                  " pm.test('Selected physical seats committed', () => pm.expect(booking.seats.map(seat => seat.seatId).sort()).to.deep.eql(JSON.parse(pm.environment.get('seatIds')).sort()));",
+                  " pm.test('Ticket quantities committed', () => pm.expect(booking.quantities).to.deep.eql({adult: Number(pm.environment.get('adult')), discounted: Number(pm.environment.get('discounted'))}));",
+                  " pm.test('No payment deadline started', () => pm.expect(booking.paymentDeadline).to.eql(null));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "12 Replay reservation without duplicate booking",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{bookingRequestKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n \"selectionId\": \"{{selectionId}}\",\n \"selectionVersion\": \"{{selectionVersion}}\",\n \"showtimeId\": \"{{showtimeId}}\",\n \"seatIds\": {{seatIds}},\n \"quantities\": {\"adult\": {{adult}}, \"discounted\": {{discounted}}},\n \"contact\": {\"fullName\": \"{{contactFullName}}\", \"phone\": \"{{contactPhone}}\", \"email\": \"{{contactEmail}}\"},\n \"declarations\": {\"termsAccepted\": true, \"ageRequirementsAcknowledged\": true},\n \"priceAcceptance\": {\"quoteId\": \"{{quoteId}}\", \"version\": \"{{quoteVersion}}\", \"acceptedTotal\": {{acceptedTotal}}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Reservation replay returns 200', () => pm.response.to.have.status(200));",
+                  "pm.test('Same booking returned', () => pm.expect(pm.response.json().data.bookingId).to.eql(pm.environment.get('bookingId')));",
+                  "pm.test('Replay marker present', () => pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.eql('true'));",
+                  "if (pm.response.code === 200) {",
+                  " const booking = pm.response.json().data;",
+                  " pm.test('Replay retains original deadline', () => pm.expect(booking.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
+                  " pm.test('Replay retains accepted total', () => pm.expect(booking.financialSnapshot.total).to.deep.eql(JSON.parse(pm.environment.get('acceptedTotal'))));",
+                  " pm.test('Replay retains selected seats', () => pm.expect(booking.seats.map(seat => seat.seatId).sort()).to.deep.eql(JSON.parse(pm.environment.get('seatIds')).sort()));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "13 Reject changed payload with same reservation key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{bookingRequestKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n \"selectionId\": \"{{selectionId}}\",\n \"selectionVersion\": \"{{selectionVersion}}\",\n \"showtimeId\": \"{{showtimeId}}\",\n \"seatIds\": {{seatIds}},\n \"quantities\": {\"adult\": {{adult}}, \"discounted\": {{discounted}}},\n \"contact\": {\"fullName\": \"{{contactFullName}}\", \"phone\": \"{{contactPhone}}\", \"email\": \"{{contactEmail}}\"},\n \"declarations\": {\"termsAccepted\": true, \"ageRequirementsAcknowledged\": true},\n \"priceAcceptance\": {\"quoteId\": \"{{quoteId}}\", \"version\": \"{{quoteVersion}}\", \"acceptedTotal\": {{conflictingTotal}}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const total = JSON.parse(pm.environment.get('acceptedTotal'));",
+                  "total.amount += 1;",
+                  "pm.variables.set('conflictingTotal', JSON.stringify(total));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Changed payload rejected', () => pm.response.to.have.status(409));",
+                  "pm.test('Idempotency conflict', () => pm.expect(pm.response.json().error.code).to.eql('IDEMPOTENCY_KEY_CONFLICT'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "14 Reject consumed selection with a new key",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n \"selectionId\": \"{{selectionId}}\",\n \"selectionVersion\": \"{{selectionVersion}}\",\n \"showtimeId\": \"{{showtimeId}}\",\n \"seatIds\": {{seatIds}},\n \"quantities\": {\"adult\": {{adult}}, \"discounted\": {{discounted}}},\n \"contact\": {\"fullName\": \"{{contactFullName}}\", \"phone\": \"{{contactPhone}}\", \"email\": \"{{contactEmail}}\"},\n \"declarations\": {\"termsAccepted\": true, \"ageRequirementsAcknowledged\": true},\n \"priceAcceptance\": {\"quoteId\": \"{{quoteId}}\", \"version\": \"{{quoteVersion}}\", \"acceptedTotal\": {{acceptedTotal}}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Consumed selection rejected', () => pm.response.to.have.status(409));",
+                  "pm.test('State conflict', () => pm.expect(pm.response.json().error.code).to.eql('STATE_CONFLICT'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "15 Read existing booking",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}"
+              ]
+            },
+            "description": "Uses the Guest cookie; no CSRF or idempotency header is needed for GET."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first; bookingId must be captured in the selected environment.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Booking read succeeds', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  " const booking = pm.response.json().data;",
+                  " pm.test('Same booking', () => pm.expect(booking.bookingId).to.eql(pm.environment.get('bookingId')));",
+                  " pm.test('Deadline unchanged', () => pm.expect(booking.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
+                  " pm.test('Version unchanged by read', () => pm.expect(booking.version).to.eql(pm.environment.get('bookingVersion')));",
+                  " pm.test('Committed total unchanged', () => pm.expect(booking.financialSnapshot.total).to.deep.eql(JSON.parse(pm.environment.get('acceptedTotal'))));",
+                  " pm.test('Protected contact retained', () => pm.expect(booking.contact.email).to.eql(pm.variables.replaceIn('{{contactEmail}}').trim()));",
+                  "}",
+                  "pm.test('Protected response is no-store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "16 Recover checkout without creating a booking",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "checkout"
+              ]
+            },
+            "description": "pay is a navigation hint for an eligible positive-total pending demo booking. It does not initiate MoMo or mark payment successful. After the deadline expect selectAgain."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first; bookingId must be captured in the selected environment.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Checkout recovery succeeds', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  " const data = pm.response.json().data; const booking = data.booking;",
+                  " pm.test('Same booking recovered', () => pm.expect(booking.bookingId).to.eql(pm.environment.get('bookingId')));",
+                  " pm.test('Original deadline retained', () => pm.expect(booking.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
+                  " pm.test('Version unchanged by recovery', () => pm.expect(booking.version).to.eql(pm.environment.get('bookingVersion')));",
+                  " pm.test('Price snapshot retained', () => pm.expect(booking.financialSnapshot.total).to.deep.eql(JSON.parse(pm.environment.get('acceptedTotal'))));",
+                  " pm.test('No payment created on reload', () => { pm.expect(data.payment).to.eql(null); pm.expect(booking.activePaymentId).to.eql(null); pm.expect(booking.paymentDeadline).to.eql(null); });",
+                  " pm.test('Recovery hint respects server deadline', () => pm.expect(data.nextAction).to.eql(Date.parse(booking.selectionDeadline) > Date.parse(data.serverTime) && booking.showtime.bookingAvailable ? 'pay' : 'selectAgain'));",
+                  " pm.test('Shared authoritative server time', () => pm.expect(data.serverTime).to.eql(booking.showtime.serverTime));",
+                  "}",
+                  "pm.test('Recovery is no-store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "17 Reload checkout and retain original deadline",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "checkout"
+              ]
+            },
+            "description": "Repeat this GET to simulate reloading Checkout Step 2. It never renews a deadline."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first; bookingId must be captured in the selected environment.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Checkout recovery succeeds', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  " const data = pm.response.json().data; const booking = data.booking;",
+                  " pm.test('Same booking recovered', () => pm.expect(booking.bookingId).to.eql(pm.environment.get('bookingId')));",
+                  " pm.test('Original deadline retained', () => pm.expect(booking.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
+                  " pm.test('Version unchanged by recovery', () => pm.expect(booking.version).to.eql(pm.environment.get('bookingVersion')));",
+                  " pm.test('Price snapshot retained', () => pm.expect(booking.financialSnapshot.total).to.deep.eql(JSON.parse(pm.environment.get('acceptedTotal'))));",
+                  " pm.test('No payment created on reload', () => { pm.expect(data.payment).to.eql(null); pm.expect(booking.activePaymentId).to.eql(null); pm.expect(booking.paymentDeadline).to.eql(null); });",
+                  " pm.test('Recovery hint respects server deadline', () => pm.expect(data.nextAction).to.eql(Date.parse(booking.selectionDeadline) > Date.parse(data.serverTime) && booking.showtime.bookingAvailable ? 'pay' : 'selectAgain'));",
+                  " pm.test('Shared authoritative server time', () => pm.expect(data.serverTime).to.eql(booking.showtime.serverTime));",
+                  "}",
+                  "pm.test('Recovery is no-store', () => pm.expect(pm.response.headers.get('Cache-Control')).to.include('no-store'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "18 Reject checkout without Guest cookie",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "checkout"
+              ]
+            },
+            "description": "Cookie jar is disabled only for this request; your saved Guest cookie is retained for other requests."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first; bookingId must be captured in the selected environment.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Missing Guest proof rejected', () => pm.response.to.have.status(401));",
+                  "pm.test('Authentication error', () => pm.expect(pm.response.json().error.code).to.eql('UNAUTHENTICATED'));",
+                  "pm.test('No private booking returned', () => pm.expect(pm.response.json()).not.to.have.property('data'));"
+                ]
+              }
+            }
+          ],
+          "protocolProfileBehavior": {
+            "disableCookies": true
           }
         },
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Missing Guest proof rejected', () => pm.response.to.have.status(401));",
-              "pm.test('Authentication error', () => pm.expect(pm.response.json().error.code).to.eql('UNAUTHENTICATED'));",
-              "pm.test('No private booking returned', () => pm.expect(pm.response.json()).not.to.have.property('data'));"
-            ]
-          }
+          "name": "19 Reject missing booking without exposing private data",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/9223372036854775807",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "9223372036854775807"
+              ]
+            },
+            "description": "Uses an intentionally nonexistent bigint test value, not a seeded resource ID. Foreign ownership is covered with two separate Guest credentials in the C# integration suite."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first; bookingId must be captured in the selected environment.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Missing booking rejected', () => pm.response.to.have.status(404));",
+                  "pm.test('Not-found error', () => pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND'));",
+                  "pm.test('No private booking returned', () => pm.expect(pm.response.json()).not.to.have.property('data'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "20 Reject cancellation without warning confirmation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"confirmed\": false}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first with this Guest cookie and selected environment.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Confirmation required', () => pm.response.to.have.status(400));",
+                  "pm.test('Validation error', () => pm.expect(pm.response.json().error.code).to.eql('VALIDATION_ERROR'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "21 Reject cancellation without CSRF",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{$guid}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"confirmed\": true}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first with this Guest cookie and selected environment.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Missing CSRF rejected', () => pm.response.to.have.status(403));",
+                  "pm.test('CSRF error', () => pm.expect(pm.response.json().error.code).to.eql('CSRF_REJECTED'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "22 Cancel pending booking and release seats",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{cancellationKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"confirmed\": true}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first with this Guest cookie and selected environment.');",
+                  "pm.environment.set('cancellationKey', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Cancellation succeeds', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  " const booking = pm.response.json().data;",
+                  " pm.environment.set('cancelledBookingId', booking.bookingId);",
+                  " pm.environment.set('cancelledBookingVersion', booking.version);",
+                  " pm.test('Same booking cancelled', () => { pm.expect(booking.bookingId).to.eql(pm.environment.get('bookingId')); pm.expect(booking.status).to.eql('cancelled'); });",
+                  " pm.test('Version advances once', () => pm.expect(BigInt(booking.version)).to.eql(BigInt(pm.environment.get('bookingVersion')) + 1n));",
+                  " pm.test('Deadline retained', () => pm.expect(booking.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
+                  " pm.test('Snapshot retained', () => pm.expect(booking.financialSnapshot.total).to.deep.eql(JSON.parse(pm.environment.get('acceptedTotal'))));",
+                  " pm.test('No payment initiated', () => pm.expect(booking.activePaymentId).to.eql(null));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "23 Replay cancellation without another release",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{cancellationKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"confirmed\": true}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first with this Guest cookie and selected environment.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Cancellation replay succeeds', () => pm.response.to.have.status(200));",
+                  "pm.test('Replay marker', () => pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.eql('true'));",
+                  "pm.test('Cancelled state retained', () => pm.expect(pm.response.json().data.status).to.eql('cancelled'));",
+                  "pm.test('Version unchanged by replay', () => pm.expect(pm.response.json().data.version).to.eql(pm.environment.get('cancelledBookingVersion')));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "24 Recover cancelled booking as selectAgain",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "checkout"
+              ]
+            },
+            "description": "pay is a navigation hint for an eligible positive-total pending demo booking. It does not initiate MoMo or mark payment successful. After the deadline expect selectAgain."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first with this Guest cookie and selected environment.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Recovery succeeds', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  " const data=pm.response.json().data;",
+                  " pm.test('Cancellation retained', () => { pm.expect(data.booking.bookingId).to.eql(pm.environment.get('cancelledBookingId')); pm.expect(data.booking.status).to.eql('cancelled'); });",
+                  " pm.test('Selection must restart', () => pm.expect(data.nextAction).to.eql('selectAgain'));",
+                  " pm.test('Deadline retained', () => pm.expect(data.booking.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
+                  "}"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "25 Reject new cancellation intent after cancellation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{rejectedCancellationKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"confirmed\": true}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first with this Guest cookie and selected environment.');",
+                  "pm.environment.set('rejectedCancellationKey', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('New cancellation intent is ineligible', () => pm.response.to.have.status(422));",
+                  "pm.test('Eligibility error', () => pm.expect(pm.response.json().error.code).to.eql('CANCELLATION_NOT_ELIGIBLE'));",
+                  "pm.test('Booking is no longer pending', () => pm.expect(pm.response.json().error.details.reason).to.eql('booking_not_pending'));"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "26 Replay rejected cancellation outcome",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{rejectedCancellationKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/cancel",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "cancel"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\"confirmed\": true}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first with this Guest cookie and selected environment.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('New cancellation intent is ineligible', () => pm.response.to.have.status(422));",
+                  "pm.test('Eligibility error', () => pm.expect(pm.response.json().error.code).to.eql('CANCELLATION_NOT_ELIGIBLE'));",
+                  "pm.test('Booking is no longer pending', () => pm.expect(pm.response.json().error.details.reason).to.eql('booking_not_pending'));",
+                  "pm.test('Rejection replay marker', () => pm.expect(pm.response.headers.get('Idempotency-Replayed')).to.eql('true'));"
+                ]
+              }
+            }
+          ]
         }
       ],
-      "protocolProfileBehavior": {
-        "disableCookies": true
-      }
+      "description": "Fast path; ends with one cancelled booking and released seats. Requests 08,09,13,14,18,19,20,21,25,26 deliberately return errors."
     },
     {
-      "name": "19 Reject missing booking without exposing private data",
-      "request": {
-        "method": "GET",
-        "header": [],
-        "url": {
-          "raw": "{{baseUrl}}/api/bookings/9223372036854775807",
-          "host": [
-            "{{baseUrl}}"
-          ],
-          "path": [
-            "api",
-            "bookings",
-            "9223372036854775807"
+      "name": "27–30 Optional natural expiry — about five minutes",
+      "item": [
+        {
+          "name": "27 Create new selection using the released seats",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{selectionCreateKey}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/selections",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "selections"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"showtimeId\": \"{{showtimeId}}\",\n  \"quantities\": { \"adult\": {{adult}}, \"discounted\": {{discounted}} },\n  \"seatIds\": {{seatIds}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const showtime = pm.environment.get('showtimeId');",
+                  "const seats = JSON.parse(pm.environment.get('seatIds') || '[]');",
+                  "if (!/^[1-9][0-9]*$/.test(showtime || '') || seats.length === 0 || seats.some(id => !/^[1-9][0-9]*$/.test(id))) {",
+                  "  throw new Error('Set showtimeId and seatIds (a JSON array of decimal strings) from your LOCAL database first.');",
+                  "}",
+                  "pm.environment.set('selectionCreateKey', pm.variables.replaceIn('{{$guid}}'));",
+                  "pm.environment.unset('expiryPollStartedAt');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Selection created or active selection reused', () => pm.expect(pm.response.code).to.be.oneOf([200, 201]));",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  "  const data = pm.response.json().data;",
+                  "  pm.environment.set('selectionId', data.selectionId);",
+                  "  pm.environment.set('selectionVersion', data.version);",
+                  "  pm.environment.set('selectionDeadline', data.selectionDeadline);",
+                  "}",
+                  "if (pm.response.code === 200 || pm.response.code === 201) {",
+                  " const data=pm.response.json().data;",
+                  " if (!data.quote) throw new Error('A complete valid quote is required.');",
+                  " pm.environment.set('quoteId',data.quote.quoteId); pm.environment.set('quoteVersion',data.quote.version); pm.environment.set('acceptedTotal',JSON.stringify(data.quote.total));",
+                  "}"
+                ]
+              }
+            }
           ]
         },
-        "description": "Uses an intentionally nonexistent bigint test value, not a seeded resource ID. Foreign ownership is covered with two separate Guest credentials in the C# integration suite."
-      },
-      "event": [
         {
-          "listen": "prerequest",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first; bookingId must be captured in the selected environment.');"
-            ]
-          }
+          "name": "28 Reserve again for natural expiry",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Origin",
+                "value": "{{origin}}"
+              },
+              {
+                "key": "X-CSRF-Token",
+                "value": "{{csrfToken}}"
+              },
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Idempotency-Key",
+                "value": "{{bookingRequestKey}}"
+              }
+            ],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n \"selectionId\": \"{{selectionId}}\",\n \"selectionVersion\": \"{{selectionVersion}}\",\n \"showtimeId\": \"{{showtimeId}}\",\n \"seatIds\": {{seatIds}},\n \"quantities\": {\"adult\": {{adult}}, \"discounted\": {{discounted}}},\n \"contact\": {\"fullName\": \"{{contactFullName}}\", \"phone\": \"{{contactPhone}}\", \"email\": \"{{contactEmail}}\"},\n \"declarations\": {\"termsAccepted\": true, \"ageRequirementsAcknowledged\": true},\n \"priceAcceptance\": {\"quoteId\": \"{{quoteId}}\", \"version\": \"{{quoteVersion}}\", \"acceptedTotal\": {{acceptedTotal}}}\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            },
+            "description": "Creates a second booking with the released seats. Leave this pending so the background worker can expire it. No timer is shortened by this collection."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "const email = pm.variables.replaceIn('{{contactEmail}}'); if (!/^[^\\s@]+@[^\\s@]+$/.test(email)) throw new Error('Set contactEmail to a valid email, for example guest@example.invalid, in Cinema BE2 Local.');",
+                  "const seats = JSON.parse(pm.environment.get('seatIds') || '[]');",
+                  "const total = Number(pm.environment.get('adult')) + Number(pm.environment.get('discounted'));",
+                  "if (seats.length !== total || !pm.environment.get('quoteId')) throw new Error('Run request 10 first with exactly as many seatIds as tickets.');",
+                  "if (!pm.environment.get('quoteVersion') || !pm.environment.get('acceptedTotal')) throw new Error('Run request 10 successfully to capture the accepted quote.');",
+                  "pm.environment.set('bookingRequestKey', pm.variables.replaceIn('{{$guid}}'));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Pending booking created', () => pm.response.to.have.status(201));",
+                  "if (pm.response.code === 201) {",
+                  " const booking = pm.response.json().data;",
+                  " pm.environment.set('bookingId', booking.bookingId);",
+                  " pm.environment.set('bookingVersion', booking.version);",
+                  " pm.test('Booking remains pending', () => pm.expect(booking.status).to.eql('pending'));",
+                  " pm.test('Original deadline retained', () => pm.expect(booking.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
+                  " pm.test('Accepted amount committed', () => pm.expect(booking.financialSnapshot.total).to.deep.eql(JSON.parse(pm.environment.get('acceptedTotal'))));",
+                  " pm.test('No payment started', () => pm.expect(booking.activePaymentId).to.eql(null));",
+                  " pm.test('Selected physical seats committed', () => pm.expect(booking.seats.map(seat => seat.seatId).sort()).to.deep.eql(JSON.parse(pm.environment.get('seatIds')).sort()));",
+                  " pm.test('Ticket quantities committed', () => pm.expect(booking.quantities).to.deep.eql({adult: Number(pm.environment.get('adult')), discounted: Number(pm.environment.get('discounted'))}));",
+                  " pm.test('No payment deadline started', () => pm.expect(booking.paymentDeadline).to.eql(null));",
+                  "}"
+                ]
+              }
+            }
+          ]
         },
         {
-          "listen": "test",
-          "script": {
-            "type": "text/javascript",
-            "exec": [
-              "pm.test('Missing booking rejected', () => pm.response.to.have.status(404));",
-              "pm.test('Not-found error', () => pm.expect(pm.response.json().error.code).to.eql('NOT_FOUND'));",
-              "pm.test('No private booking returned', () => pm.expect(pm.response.json()).not.to.have.property('data'));"
-            ]
-          }
+          "name": "29 Wait and poll until worker persists expiry",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}/checkout",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}",
+                "checkout"
+              ]
+            },
+            "description": "In Collection Runner/Newman this polls once per second until expired, bounded by expiryWaitSeconds (default 420). With Send, send it again after the original five-minute deadline plus worker interval. No public worker trigger or clock mutation is used."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first with this Guest cookie and selected environment.');",
+                  "if (!pm.environment.get('expiryPollStartedAt')) pm.environment.set('expiryPollStartedAt', String(Date.now()));"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Expiry recovery remains readable', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  " const data=pm.response.json().data;",
+                  " pm.test('Booking identity retained', () => pm.expect(data.booking.bookingId).to.eql(pm.environment.get('bookingId')));",
+                  " pm.test('Original deadline not renewed', () => pm.expect(data.booking.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
+                  " if (data.booking.status === 'pending') {",
+                  "  const wait=Number(pm.environment.get('expiryWaitSeconds') || '420');",
+                  "  if ((Date.now()-Number(pm.environment.get('expiryPollStartedAt')))/1000 >= wait) {",
+                  "   pm.test('Worker expired booking within configured wait', () => pm.expect(data.booking.status).to.eql('expired')); pm.execution.setNextRequest(null);",
+                  "  } else { pm.execution.setNextRequest(pm.info.requestId); setTimeout(() => {}, 1000); }",
+                  " } else {",
+                  "  pm.test('Expiry persisted by backend', () => pm.expect(data.booking.status).to.eql('expired'));",
+                  "  pm.test('Expired checkout selects again', () => pm.expect(data.nextAction).to.eql('selectAgain'));",
+                  "  pm.test('No payment created', () => pm.expect(data.payment).to.eql(null));",
+                  " }",
+                  "} else { pm.execution.setNextRequest(null); }"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "30 Read expired booking without reactivating it",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/bookings/{{bookingId}}",
+              "host": [
+                "{{baseUrl}}"
+              ],
+              "path": [
+                "api",
+                "bookings",
+                "{{bookingId}}"
+              ]
+            },
+            "description": "Uses the Guest cookie; no CSRF or idempotency header is needed for GET."
+          },
+          "event": [
+            {
+              "listen": "prerequest",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "if (!pm.environment.get('bookingId')) throw new Error('Run request 11 successfully first with this Guest cookie and selected environment.');"
+                ]
+              }
+            },
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test('Expired history readable', () => pm.response.to.have.status(200));",
+                  "if (pm.response.code === 200) {",
+                  " const booking=pm.response.json().data;",
+                  " pm.test('Status remains expired', () => pm.expect(booking.status).to.eql('expired'));",
+                  " pm.test('Version advanced once', () => pm.expect(BigInt(booking.version)).to.eql(BigInt(pm.environment.get('bookingVersion')) + 1n));",
+                  " pm.test('Financial snapshot retained', () => pm.expect(booking.financialSnapshot.total).to.deep.eql(JSON.parse(pm.environment.get('acceptedTotal'))));",
+                  " pm.test('Deadline retained', () => pm.expect(booking.selectionDeadline).to.eql(pm.environment.get('selectionDeadline')));",
+                  "}"
+                ]
+              }
+            }
+          ]
         }
-      ]
+      ],
+      "description": "Run after the main folder with the same Guest cookie/environment. Reuses the released seats, creates another booking and waits for the API worker to expire it. Requires BookingExpiry enabled. Default wait limit 420 seconds; no SQL time manipulation."
     }
   ]
 }
