@@ -14,7 +14,8 @@ public sealed class ReserveRequest
 public sealed record BookingContact([Required, StringLength(150)] string FullName,
     [Required, StringLength(30)] string Phone, [Required, StringLength(256), EmailAddress] string Email);
 public sealed record CheckoutDeclarations([Required] bool? TermsAccepted, [Required] bool? AgeRequirementsAcknowledged);
-public sealed record PriceAcceptance([Required] Guid? QuoteId, [Required] string Version, [Required] Money AcceptedTotal);
+public sealed record AcceptedMoney([Required] decimal? Amount, [Required] string Currency);
+public sealed record PriceAcceptance([Required] Guid? QuoteId, [Required] string Version, [Required] AcceptedMoney AcceptedTotal);
 public sealed record BookingShowtime(string ShowtimeId, string MovieId, string MovieTitle, string CinemaId,
     string CinemaName, string RoomId, string RoomName, DateTime OfficialStartsAt, DateTime OfficialEndsAt,
     string Timezone, string Status, bool BookingAvailable, DateTime ServerTime, string Version);

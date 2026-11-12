@@ -101,7 +101,7 @@ public sealed class BookingReservationService(DbContextOptions<ApplicationDbCont
                 if (projection.State != "active") throw Expired(selection);
                 var quote = projection.Quote!;
                 var acceptance = request.PriceAcceptance;
-                if (acceptance.QuoteId != quote.QuoteId || acceptance.Version != quote.Version || acceptance.AcceptedTotal != quote.Total)
+                if (acceptance.QuoteId != quote.QuoteId || acceptance.Version != quote.Version || (acceptance.AcceptedTotal.Amount != quote.Total.Amount || acceptance.AcceptedTotal.Currency != quote.Total.Currency))
                     throw new CheckoutException(422, "PRICE_CHANGED", "Giá hoặc thông tin suất đã thay đổi; vui lòng xác nhận lại.",
                         new { quote, selectionVersion = projection.Version });
                 var conflicts = await ConflictingSeats(db, showtimeId, seats, ct);
@@ -230,7 +230,7 @@ public sealed class BookingReservationService(DbContextOptions<ApplicationDbCont
         if (request.Declarations.TermsAccepted != true || request.Declarations.AgeRequirementsAcknowledged != true)
             throw CheckoutException.Validation("declarations", "must_be_true", "Phải xác nhận điều khoản và yêu cầu độ tuổi.");
         var total = request.PriceAcceptance.AcceptedTotal;
-        if (total.Amount < 0 || decimal.Truncate(total.Amount) != total.Amount || total.Currency != "VND")
+        if (total.Amount is null || total.Amount < 0 || decimal.Truncate(total.Amount.Value) != total.Amount || total.Currency != "VND")
             throw CheckoutException.Validation("priceAcceptance.acceptedTotal", "invalid_money", "Số tiền phải là VND nguyên không âm.");
     }
     private static async Task<Dictionary<string, string>> CategoryNames(ApplicationDbContext db, CancellationToken ct)
