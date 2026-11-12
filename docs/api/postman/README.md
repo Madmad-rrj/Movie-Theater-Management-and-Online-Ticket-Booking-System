@@ -10,6 +10,13 @@ Select **Cinema BE2 Local** in the environment selector. Keep the default
 Arch Docker profile. Restart the API after source changes using the instructions
 in [selection-quote.md](../../development/selection-quote.md).
 
+If you imported an earlier version, import the collection again and replace the
+old copy when prompted. The current collection is named **Cinema BE2 — Task 3 —
+Guest, Selection and Reservation**, revision **1.3.1**, with 14 requests. Postman
+does not automatically reload repository changes. Keep your existing local
+environment to preserve your configured IDs, or import the environment template
+for a fresh setup. Run from request 01 after replacing the collection.
+
 Set these environment values before running:
 
 | Variable | Value |
@@ -67,8 +74,8 @@ Collection Runner:
 8. Expect **409 VERSION_CONFLICT** for the stale version.
 9. Expect **403 CSRF_REJECTED** when the CSRF header is omitted.
 10. Restore the complete physical-seat set from `seatIds` and capture the latest quote/version.
-11. Reserve one pending booking using that quote and synthetic contact; keep the original deadline.
-12. Replay the reservation key/payload and expect the same booking, with no duplicate holds.
+11. Reserve one pending booking using that quote and synthetic contact; verify seats, quantities, accepted total and the original deadline, with no payment started.
+12. Replay the reservation key/payload and expect the same booking, seats, total and deadline, with no duplicate holds.
 13. Expect **409 IDEMPOTENCY_KEY_CONFLICT** for an altered accepted amount with that same key.
 14. Expect **409 STATE_CONFLICT** when trying to reserve the consumed selection with a new key.
 
