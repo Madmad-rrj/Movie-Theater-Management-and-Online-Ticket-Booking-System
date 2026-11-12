@@ -155,9 +155,13 @@ public sealed class SelectionService(DbContextOptions<ApplicationDbContext> opti
         => db.Database.SqlQuery<DateTime>($"SELECT clock_timestamp() AS \"Value\"").SingleAsync(ct);
     internal static async Task Lock(ApplicationDbContext db, Guid owner, CancellationToken ct)
     {
-        var key = BinaryPrimitives.ReadInt64BigEndian(SHA256.HashData(Encoding.UTF8.GetBytes("selection:" + owner)));
+        var key = OwnerLockKey(owner);
         await db.Database.ExecuteSqlInterpolatedAsync($"SELECT pg_advisory_xact_lock({key})", ct);
     }
+    private static long OwnerLockKey(Guid owner) => BinaryPrimitives.ReadInt64BigEndian(
+        SHA256.HashData(Encoding.UTF8.GetBytes("selection:" + owner)));
+    internal static Task<bool> TryLock(ApplicationDbContext db, Guid owner, CancellationToken ct)
+        => db.Database.SqlQuery<bool>($"SELECT pg_try_advisory_xact_lock({OwnerLockKey(owner)}) AS \"Value\"").SingleAsync(ct);
     internal static async Task Authority(ApplicationDbContext db, Guid owner, CancellationToken ct)
     {
         var rows = await db.CheckoutIdentities.FromSqlInterpolated($"SELECT * FROM cinema.checkout_identity WHERE id={owner} FOR SHARE").AsNoTracking().ToListAsync(ct);
@@ -247,7 +251,7 @@ public sealed class SelectionService(DbContextOptions<ApplicationDbContext> opti
     }
     internal static NpgsqlCommand Command(ApplicationDbContext db, string sql) => new(sql,
         (NpgsqlConnection)db.Database.GetDbConnection(), (NpgsqlTransaction)db.Database.CurrentTransaction!.GetDbTransaction());
-    internal static async Task<ShowtimeContext> Context(ApplicationDbContext db, long id, CancellationToken ct, bool reserve = false)
+    internal static async Task<ShowtimeContext> Context(ApplicationDbContext db, long id, CancellationToken ct, bool reserve = false, bool noWait = false)
     {
         // Ancestors are locked before showtime. All selection/reservation paths use
         // the same actor lock first, then Guest -> Cinema -> Room -> Showtime.
@@ -259,16 +263,16 @@ public sealed class SelectionService(DbContextOptions<ApplicationDbContext> opti
             if (!await reader.ReadAsync(ct)) throw new CheckoutException(422, "SHOWTIME_NOT_BOOKABLE", "Suất không khả dụng.", new { reason = "not_found" });
             cinema = reader.GetInt64(0); room = reader.GetInt64(1);
         }
-        await using (var ancestor = Command(db, "SELECT id FROM cinema.cinema WHERE id=@id FOR SHARE"))
+        await using (var ancestor = Command(db, "SELECT id FROM cinema.cinema WHERE id=@id FOR SHARE" + (noWait ? " NOWAIT" : "")))
         {
             ancestor.Parameters.AddWithValue("id", cinema); await ancestor.ExecuteScalarAsync(ct);
         }
-        await using (var ancestor = Command(db, "SELECT cinema_id FROM cinema.cinema_room WHERE id=@id FOR SHARE"))
+        await using (var ancestor = Command(db, "SELECT cinema_id FROM cinema.cinema_room WHERE id=@id FOR SHARE" + (noWait ? " NOWAIT" : "")))
         {
             ancestor.Parameters.AddWithValue("id", room);
             if (!Equals(await ancestor.ExecuteScalarAsync(ct), cinema)) throw StateConflict();
         }
-        await using (var showtime = Command(db, "SELECT cinema_room_id FROM cinema.showtime WHERE id=@id FOR " + (reserve ? "UPDATE" : "SHARE")))
+        await using (var showtime = Command(db, "SELECT cinema_room_id FROM cinema.showtime WHERE id=@id FOR " + (reserve ? "UPDATE" : "SHARE") + (noWait ? " NOWAIT" : "")))
         {
             showtime.Parameters.AddWithValue("id", id);
             if (!Equals(await showtime.ExecuteScalarAsync(ct), room)) throw StateConflict();
@@ -280,7 +284,7 @@ public sealed class SelectionService(DbContextOptions<ApplicationDbContext> opti
             FROM cinema.showtime s JOIN cinema.cinema_room r ON r.id=s.cinema_room_id
             JOIN cinema.cinema c ON c.id=r.cinema_id JOIN cinema.movie m ON m.id=s.movie_id
             WHERE s.id=@id FOR SHARE OF m
-            """);
+            """ + (noWait ? " NOWAIT" : ""));
         command.Parameters.AddWithValue("id", id);
         await using var data = await command.ExecuteReaderAsync(ct);
         if (!await data.ReadAsync(ct)) throw StateConflict();

@@ -26,6 +26,11 @@ builder.Services.AddScoped<SelectionService>();
 builder.Services.AddScoped<BookingReservationService>();
 builder.Services.AddScoped<BookingReadService>();
 builder.Services.AddScoped<BookingCancellationService>();
+builder.Services.AddScoped<BookingExpiryService>();
+builder.Services.AddHostedService<BookingExpiryWorker>();
+builder.Services.AddOptions<BookingExpiryOptions>().BindConfiguration("BookingExpiry")
+    .Validate(options => options.PollIntervalSeconds is >= 1 and <= 3600 && options.BatchSize is >= 1 and <= 500,
+        "BookingExpiry requires PollIntervalSeconds 1..3600 and BatchSize 1..500.").ValidateOnStart();
 builder.Services.AddOptions<SelectionOptions>().BindConfiguration("Selection")
     .Validate(options => options.MaximumTickets > 0, "Selection:MaximumTickets must be positive.").ValidateOnStart();
 builder.Services.AddSingleton<GuestRequestSecurity>();

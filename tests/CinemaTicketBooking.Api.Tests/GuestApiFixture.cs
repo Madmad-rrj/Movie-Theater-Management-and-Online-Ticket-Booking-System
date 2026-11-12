@@ -94,6 +94,7 @@ public sealed class GuestApiFactory(
             {
                 ["ConnectionStrings:DefaultConnection"] = connectionString,
                 ["GuestCheckout:LifetimeHours"] = "24",
+                ["BookingExpiry:Enabled"] = "false",
                 ["GuestCheckout:AllowedOrigins:0"] = environment == "Development" ? "http://127.0.0.1:5173" : "https://cinema.example.test",
                 ["GuestCheckout:AllowInsecureLoopbackCookies"] = (environment == "Development").ToString(),
                 ["GuestCheckout:CrossSiteCookies"] = "false",
