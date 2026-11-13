@@ -72,7 +72,7 @@ public sealed record MockPayCreateRequest(
     [property: JsonPropertyName("amount")] long Amount,
     [property: JsonPropertyName("currency")] string Currency,
     [property: JsonPropertyName("description")] string Description,
-    [property: JsonPropertyName("expiresAt")] DateTime ExpiresAt,
+    [property: JsonPropertyName("expiresAt")] string ExpiresAt,
     [property: JsonPropertyName("metadata")] object Metadata);
 
 public sealed record MockPayCreateResponse(

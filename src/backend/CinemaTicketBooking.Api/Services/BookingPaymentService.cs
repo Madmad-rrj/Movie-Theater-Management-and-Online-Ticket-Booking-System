@@ -24,11 +24,13 @@ public sealed class BookingPaymentService(
         if (!string.Equals(request.Provider, settings.Provider, StringComparison.Ordinal))
             throw CheckoutException.Validation("provider", "unsupported", "Chỉ hỗ trợ provider MockPay.");
 
-        long paymentId;
-        bool replayed;
-        await using (var db = new ApplicationDbContext(options))
-        await using (var tx = await db.Database.BeginTransactionAsync(ct))
+        long paymentId = 0;
+        bool replayed = false;
+        await using var strategyContext = new ApplicationDbContext(options);
+        await strategyContext.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
+            await using var db = new ApplicationDbContext(options);
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
             await SelectionService.Lock(db, owner, ct);
             await SelectionService.Authority(db, owner, ct);
             var showtime = await db.Set<Booking>().Where(x => x.Id == bookingId && x.CheckoutIdentityId == owner)
@@ -90,7 +92,7 @@ public sealed class BookingPaymentService(
             }
 
             await tx.CommitAsync(ct);
-        }
+        });
 
         var resolved = await ResolveProviderAsync(owner, paymentId, traceId, ct);
         return (resolved.Result, resolved.StatusCode, replayed);
@@ -158,7 +160,7 @@ public sealed class BookingPaymentService(
                 checked((long)booking.Amount),
                 booking.Currency,
                 "Cinema ticket booking",
-                deadline,
+                deadline.ToUniversalTime().ToString("yyyy-MM-dd'T'HH:mm:ss.fff'Z'", CultureInfo.InvariantCulture),
                 metadata), local.MerchantRequestId, ct);
         }
         catch (MockPayTransportException)
@@ -181,60 +183,64 @@ public sealed class BookingPaymentService(
 
     private async Task ApplyStatusAsync(Guid owner, long paymentId, MockPayStatusResponse status, CancellationToken ct)
     {
-        await using var db = new ApplicationDbContext(options);
-        await using var tx = await db.Database.BeginTransactionAsync(ct);
-        await SelectionService.Lock(db, owner, ct);
-        await SelectionService.Authority(db, owner, ct);
-        var local = await ReadPaymentAsync(db, owner, paymentId, ct)
-            ?? throw new CheckoutException(404, "NOT_FOUND", "Không tìm thấy payment.");
-        var now = await SelectionService.Now(db, ct);
-        if (status.Status == "PENDING")
+        await using var strategyContext = new ApplicationDbContext(options);
+        await strategyContext.Database.CreateExecutionStrategy().ExecuteAsync(async () =>
         {
-            await using var pending = SelectionService.Command(db, """
-                UPDATE cinema.payment SET status='pending',version=version+1
-                WHERE id=@id AND booking_id=@booking AND applied_at IS NULL
-                """);
-            pending.Parameters.AddWithValue("id", paymentId);
-            pending.Parameters.AddWithValue("booking", local.BookingId);
-            await pending.ExecuteNonQueryAsync(ct);
-        }
-        else if (status.Status == "PAID")
-        {
-            if (status.PaidAt is null) throw new CheckoutException(502, "PAYMENT_PROVIDER_INVALID", "MockPay thiếu paidAt.");
-            var late = local.PaymentDeadline is not null && status.PaidAt.Value.ToUniversalTime() > local.PaymentDeadline.Value.ToUniversalTime();
-            await using var paid = SelectionService.Command(db, """
-                UPDATE cinema.payment
-                SET status='succeeded',verified_at=@now,paid_at=@paid,received_amount=@amount,
-                    received_currency=@currency,reconciliation_status=CASE WHEN @late THEN 'needs_review' ELSE 'none' END,
-                    version=version+1
-                WHERE id=@id AND booking_id=@booking
-                """);
-            paid.Parameters.AddWithValue("now", now);
-            paid.Parameters.AddWithValue("paid", status.PaidAt.Value.ToUniversalTime());
-            paid.Parameters.AddWithValue("amount", status.Amount);
-            paid.Parameters.AddWithValue("currency", status.Currency);
-            paid.Parameters.AddWithValue("late", late);
-            paid.Parameters.AddWithValue("id", paymentId);
-            paid.Parameters.AddWithValue("booking", local.BookingId);
-            await paid.ExecuteNonQueryAsync(ct);
-            if (!late && local.Status != "succeeded")
-                await ApplyBookingAsync(db, local.BookingId, paymentId, now, ct);
-        }
-        else
-        {
-            var mapped = status.Status == "CANCELLED" ? "cancelled" : "failed";
-            await using var terminal = SelectionService.Command(db, """
-                UPDATE cinema.payment
-                SET status=@status,verified_at=@now,reconciliation_status='resolved',version=version+1
-                WHERE id=@id AND booking_id=@booking AND applied_at IS NULL
-                """);
-            terminal.Parameters.AddWithValue("status", mapped);
-            terminal.Parameters.AddWithValue("now", now);
-            terminal.Parameters.AddWithValue("id", paymentId);
-            terminal.Parameters.AddWithValue("booking", local.BookingId);
-            await terminal.ExecuteNonQueryAsync(ct);
-        }
-        await tx.CommitAsync(ct);
+            await using var db = new ApplicationDbContext(options);
+            await using var tx = await db.Database.BeginTransactionAsync(ct);
+            await SelectionService.Lock(db, owner, ct);
+            await SelectionService.Authority(db, owner, ct);
+            var local = await ReadPaymentAsync(db, owner, paymentId, ct)
+                ?? throw new CheckoutException(404, "NOT_FOUND", "Không tìm thấy payment.");
+            var now = await SelectionService.Now(db, ct);
+            if (status.Status == "PENDING")
+            {
+                await using var pending = SelectionService.Command(db, """
+                    UPDATE cinema.payment SET status='pending',version=version+1
+                    WHERE id=@id AND booking_id=@booking AND applied_at IS NULL
+                    """);
+                pending.Parameters.AddWithValue("id", paymentId);
+                pending.Parameters.AddWithValue("booking", local.BookingId);
+                await pending.ExecuteNonQueryAsync(ct);
+            }
+            else if (status.Status == "PAID")
+            {
+                if (status.PaidAt is null) throw new CheckoutException(502, "PAYMENT_PROVIDER_INVALID", "MockPay thiếu paidAt.");
+                var late = local.PaymentDeadline is not null && status.PaidAt.Value.ToUniversalTime() > local.PaymentDeadline.Value.ToUniversalTime();
+                await using var paid = SelectionService.Command(db, """
+                    UPDATE cinema.payment
+                    SET status='succeeded',verified_at=@now,paid_at=@paid,received_amount=@amount,
+                        received_currency=@currency,reconciliation_status=CASE WHEN @late THEN 'needs_review' ELSE 'none' END,
+                        version=version+1
+                    WHERE id=@id AND booking_id=@booking
+                    """);
+                paid.Parameters.AddWithValue("now", now);
+                paid.Parameters.AddWithValue("paid", status.PaidAt.Value.ToUniversalTime());
+                paid.Parameters.AddWithValue("amount", status.Amount);
+                paid.Parameters.AddWithValue("currency", status.Currency);
+                paid.Parameters.AddWithValue("late", late);
+                paid.Parameters.AddWithValue("id", paymentId);
+                paid.Parameters.AddWithValue("booking", local.BookingId);
+                await paid.ExecuteNonQueryAsync(ct);
+                if (!late && local.Status != "succeeded")
+                    await ApplyBookingAsync(db, local.BookingId, paymentId, now, ct);
+            }
+            else
+            {
+                var mapped = status.Status == "CANCELLED" ? "cancelled" : "failed";
+                await using var terminal = SelectionService.Command(db, """
+                    UPDATE cinema.payment
+                    SET status=@status,verified_at=@now,reconciliation_status='resolved',version=version+1
+                    WHERE id=@id AND booking_id=@booking AND applied_at IS NULL
+                    """);
+                terminal.Parameters.AddWithValue("status", mapped);
+                terminal.Parameters.AddWithValue("now", now);
+                terminal.Parameters.AddWithValue("id", paymentId);
+                terminal.Parameters.AddWithValue("booking", local.BookingId);
+                await terminal.ExecuteNonQueryAsync(ct);
+            }
+            await tx.CommitAsync(ct);
+        });
     }
 
     private static async Task ApplyBookingAsync(ApplicationDbContext db, long bookingId, long paymentId, DateTime now, CancellationToken ct)
@@ -268,6 +274,8 @@ public sealed class BookingPaymentService(
         await using var db = new ApplicationDbContext(options);
         await using var command = db.Database.GetDbConnection().CreateCommand();
         await db.Database.OpenConnectionAsync(ct);
+        var initiatedAt = created.CreatedAt.ToUniversalTime();
+        var paymentDeadline = initiatedAt.AddSeconds(settings.PaymentWindowSeconds);
         command.CommandText = """
             UPDATE cinema.payment
             SET provider_transaction_id=@transaction,status='pending',initiated_at=@initiated,
@@ -275,9 +283,9 @@ public sealed class BookingPaymentService(
             WHERE id=@id AND applied_at IS NULL
             """;
         Add(command, "transaction", created.PaymentId);
-        Add(command, "initiated", created.CreatedAt.ToUniversalTime());
-        Add(command, "deadline", created.ExpiresAt.ToUniversalTime());
-        Add(command, "grace", created.ExpiresAt.ToUniversalTime().AddSeconds(settings.GraceSeconds));
+        Add(command, "initiated", initiatedAt);
+        Add(command, "deadline", paymentDeadline);
+        Add(command, "grace", paymentDeadline.AddSeconds(settings.GraceSeconds));
         Add(command, "id", paymentId);
         await command.ExecuteNonQueryAsync(ct);
     }

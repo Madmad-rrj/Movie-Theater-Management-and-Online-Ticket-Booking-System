@@ -3,8 +3,11 @@ using CinemaTicketBooking.Api.DTOs.Checkout;
 
 namespace CinemaTicketBooking.Api.DTOs.Payments;
 
-public sealed record InitiatePaymentRequest(
-    [property: Required] string Provider);
+public sealed class InitiatePaymentRequest
+{
+    [Required]
+    public string Provider { get; init; } = "";
+}
 
 public sealed record PaymentDto(
     string PaymentId,
