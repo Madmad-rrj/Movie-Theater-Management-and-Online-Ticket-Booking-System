@@ -6,7 +6,7 @@ services:
       POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
     ports:
-      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-55433}:5432"
     volumes:
       - cinema_demo_postgres_data:/var/lib/postgresql/data
       - ./database/database-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
