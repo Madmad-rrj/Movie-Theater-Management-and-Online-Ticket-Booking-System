@@ -66,13 +66,14 @@ Ghi chú (BE1): `movieDetail` cho phép `ended`; `archived`/không tồn tại �
 
 | Operation ID | Method | Path | UC | Policy | Request | Response | Success |
 |---|---|---|---|---|---|---|---|
-| `initiatePayment` | POST | `/api/bookings/{bookingId}/payments` | UC-09 | OWNER | `InitiatePaymentRequest` | `PaymentInitiation` | 201/200/202 |
-| `readPayment` | GET | `/api/payments/{paymentId}` | UC-09, UC-10 | OWNER | `—` | `Payment` | 200 |
+| `initiatePayment` | POST | `/api/bookings/{bookingId}/payments` | UC-09 | OWNER | `InitiatePaymentRequest` | `PaymentInitiation` | 201/200/202 — **MockPay implemented on `feat/integrate-mockpay`** |
+| `readPayment` | GET | `/api/payments/{paymentId}` | UC-09, UC-10 | OWNER | `—` | `Payment` | 200 — **MockPay implemented on `feat/integrate-mockpay`** |
 | `paymentWebhook` | POST | `/api/integrations/momo/webhook` | UC-02 | PROVIDER | `Provider payload` | `Provider ACK` | Provider |
 
-422 PAYMENT_NOT_ELIGIBLE; 503 DEPENDENCY_UNAVAILABLE. Durable unknown initiation trả 202 cùng paymentId; không suy failed. Webhook status/ACK provider-specific.
+422 PAYMENT_NOT_ELIGIBLE; 503 DEPENDENCY_UNAVAILABLE. Durable unknown initiation trả 202 cùng paymentId; không suy failed. MockPay không dùng webhook: backend tạo payment bằng `orderId = bookingCode`, trả `redirectUrl`, rồi frontend polling endpoint PHOS `GET /api/payments/{paymentId}`.
 
 - **initiatePayment:** Key bắt buộc; reuse open attempt, không tạo attempt mới.
+- **MockPay:** `provider_transaction_id` là MockPay `paymentId`; backend đối chiếu order, amount, currency và chỉ chuyển booking/ghế sang confirmed/sold sau khi trạng thái `PAID` được xác minh. `EXPIRED`/`CANCELLED` không xác nhận booking.
 - **paymentWebhook:** Raw verified provider request; không application DTO.
 
 ## Ticket

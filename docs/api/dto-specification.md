@@ -484,7 +484,7 @@ Backend so khớp showtimeId, seatIds và quantities với selectionVersion; mis
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `paymentId` | `UUID` | R | Identity |
+| `paymentId` | `decimal string` | R | Identity `bigint` của payment nội bộ; MockPay transaction được lưu riêng trong provider reference |
 | `bookingId` | `UUID` | R | Protected booking |
 | `provider` | `literal:MoMo` | R | Intended gateway |
 | `status` | `enum:created,pending,unknown,succeeded,failed,cancelled` | R | Financial state |
