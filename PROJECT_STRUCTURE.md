@@ -96,19 +96,50 @@ Movie Theater Management and Online Ticket Booking System/
     │       ├── Program.cs                    # Entry point, DI và middleware
     │       ├── appsettings.Development.json  # Cấu hình môi trường development
     │       ├── Controllers/
-    │       │   └── MoviesController.cs        # GET /api/movies
+    │       │   ├── CinemasController.cs       # GET /api/cinemas
+    │       │   ├── MoviesController.cs        # GET /api/movies, GET /api/movies/{movieId}
+    │       │   ├── PricingController.cs       # GET /api/ticket-categories, GET /api/cinemas/{cinemaId}/ticket-pricing
+    │       │   ├── SeatMapController.cs       # GET /api/showtimes/{showtimeId}/seats
+    │       │   └── ShowtimesController.cs     # GET /api/movies/{movieId}/showtimes, GET /api/showtimes/{showtimeId}
     │       ├── Data/
-    │       │   └── ApplicationDbContext.cs   # Mapping cinema.movie/genre
-    │       ├── DTOs/Movies/
-    │       │   ├── MovieDtos.cs               # Movie, Genre, pagination và error DTO
-    │       │   └── MovieQuery.cs              # Query/filter/pagination input
+    │       │   └── ApplicationDbContext.cs   # EF Core DbContext và mapping schema cinema
+    │       ├── DTOs/
+    │       │   ├── CommonDtos.cs              # ApiResponse, ApiError, PaginationDto, MoneyDto
+    │       │   ├── Cinemas/
+    │       │   │   └── CinemaDtos.cs          # Cinema DTO
+    │       │   ├── Movies/
+    │       │   │   ├── MovieDtos.cs           # Movie, Genre DTO
+    │       │   │   └── MovieQuery.cs          # Query/filter/pagination input phim
+    │       │   ├── Pricing/
+    │       │   │   └── PricingDtos.cs         # TicketCategory, CinemaPricing DTO
+    │       │   ├── Seats/
+    │       │   │   └── SeatDtos.cs            # SeatType, Seat, SeatMap DTO
+    │       │   └── Showtimes/
+    │       │       └── ShowtimeDtos.cs        # Showtime DTO và query lịch chiếu
     │       ├── Models/
-    │       │   ├── Movie.cs                   # Entity cinema.movie
+    │       │   ├── BookingSeat.cs             # Entity cinema.booking_seat (đọc allocation)
+    │       │   ├── Cinema.cs                  # Entity cinema.cinema
+    │       │   ├── CinemaRoom.cs              # Entity cinema.cinema_room
+    │       │   ├── CinemaTicketPrice.cs       # Entity cinema.cinema_ticket_price
     │       │   ├── Genre.cs                   # Entity cinema.genre
-    │       │   └── MovieGenre.cs              # Entity cinema.movie_genre
+    │       │   ├── Movie.cs                   # Entity cinema.movie
+    │       │   ├── MovieGenre.cs              # Entity cinema.movie_genre
+    │       │   ├── Seat.cs                    # Entity cinema.seat
+    │       │   ├── SeatType.cs                # Entity cinema.seat_type
+    │       │   ├── Showtime.cs                # Entity cinema.showtime
+    │       │   └── TicketCategory.cs          # Entity cinema.ticket_category
     │       └── Services/
-    │           ├── IMovieService.cs           # Service contract
-    │           └── MovieService.cs            # Read-only movie query
+    │           ├── ApiExceptions.cs            # Exception nghiệp vụ/API dùng chung
+    │           ├── CinemaService.cs           # Truy vấn rạp công khai
+    │           ├── ICinemaService.cs          # Contract service rạp
+    │           ├── IMovieService.cs           # Contract service phim
+    │           ├── IPricingService.cs         # Contract service loại vé/giá
+    │           ├── ISeatMapService.cs         # Contract service sơ đồ ghế
+    │           ├── IShowtimeService.cs        # Contract service suất chiếu
+    │           ├── MovieService.cs            # Truy vấn phim (browse/detail)
+    │           ├── PricingService.cs          # Truy vấn loại vé và giá rạp
+    │           ├── SeatMapService.cs          # Truy vấn sơ đồ ghế theo suất
+    │           └── ShowtimeService.cs         # Truy vấn suất chiếu
     │
     └── frontend/
         └── cinema-ticket-booking-ui/
@@ -139,8 +170,8 @@ Movie Theater Management and Online Ticket Booking System/
 
 Các thành phần sau chưa tồn tại trong repository hiện tại và chỉ nên được bổ sung khi có yêu cầu triển khai:
 
-- Backend: `Controllers/`, `DTOs/`, `Entities/`, `Middleware/`, `Migrations/`, `Services/`, `Validators/` và các thư mục liên quan.
-- Frontend: `assets/`, `components/`, `contexts/`, `hooks/`, `layouts/`, `pages/`, `routes/`, `services/`, `types/`, `utils/` và `public/`.
+- Backend: `Entities/`, `Middleware/`, `Migrations/`, `Validators/` và các thư mục mở rộng khác khi cần. (`Controllers/`, `DTOs/`, `Models/`, `Services/` đã có và đang được sử dụng.)
+- Frontend: `assets/`, `contexts/`, `hooks/`, `layouts/`, `routes/`, `utils/` và `public/`. (Một số thư mục như `components/`, `pages/`, `services/`, `types/` đã có trong `cinema-ticket-booking-ui`.)
 - Tài liệu: `docs/test/` và `docs/management/weekly-reports/`.
 
 Không ghi các file chứa secret thật vào repository. Sử dụng `.env.example` làm mẫu và cấu hình giá trị thật trong môi trường local.
