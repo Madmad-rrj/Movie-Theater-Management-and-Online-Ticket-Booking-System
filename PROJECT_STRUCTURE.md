@@ -12,7 +12,6 @@ Movie Theater Management and Online Ticket Booking System/
 ├── .env.example                               # Mẫu biến môi trường ở root, không chứa secret
 ├── .gitignore                                 # Danh sách file/thư mục bị Git bỏ qua
 ├── docker-compose.yml                         # PostgreSQL local, named volume và init scripts
-├── docker-compose.be2.yml                     # Arch/Linux: DB trên Linux home và API trong SDK container
 │
 ├── .vscode/
 │   └── settings.json                          # Cấu hình VS Code dùng chung
@@ -41,8 +40,7 @@ Movie Theater Management and Online Ticket Booking System/
 │   │   └── dto-specification.md               # Đặc tả request/response DTO
 │   │
 │   ├── development/
-│   │   ├── local-development-setup.md         # Hướng dẫn cài đặt và chạy local
-│   │   └── guest-checkout.md                 # Guest bootstrap, cookie/CSRF và kiểm thử BE2
+│   │   └── local-development-setup.md         # Hướng dẫn cài đặt và chạy local
 │   │
 │   ├── management/
 │   │   ├── git-workflow.md                    # Quy trình branch, commit và pull request
@@ -68,14 +66,7 @@ Movie Theater Management and Online Ticket Booking System/
 │       └── customer-web-layout.md             # Bố cục website
 │
 ├── scripts/
-│   ├── demo-local-db.ps1                      # Khởi động PostgreSQL và chạy truy vấn demo
-│   └── test-guest-context.py                 # .NET/PostgreSQL tests trong Docker biệt lập
-│
-├── tests/
-│   └── CinemaTicketBooking.Api.Tests/
-│       ├── CinemaTicketBooking.Api.Tests.csproj
-│       ├── GuestApiFixture.cs                # Fresh local PostgreSQL và HTTP test host
-│       └── GuestContextTests.cs              # Lifecycle, idempotency, CSRF và cookie tests
+│   └── demo-local-db.ps1                      # Khởi động PostgreSQL và chạy truy vấn demo
 │
 ├── pa/
 │   ├── PA0/
@@ -105,36 +96,50 @@ Movie Theater Management and Online Ticket Booking System/
     │       ├── Program.cs                    # Entry point, DI và middleware
     │       ├── appsettings.Development.json  # Cấu hình môi trường development
     │       ├── Controllers/
-    │       │   ├── MoviesController.cs        # GET /api/movies
-    │       │   ├── GuestContextController.cs  # POST /api/guest-context
-    │       │   ├── GuestCheckoutAttribute.cs  # Guest identity và CSRF filter
-    │       │   └── CheckoutExceptionFilter.cs # Checkout error envelope
+    │       │   ├── CinemasController.cs       # GET /api/cinemas
+    │       │   ├── MoviesController.cs        # GET /api/movies, GET /api/movies/{movieId}
+    │       │   ├── PricingController.cs       # GET /api/ticket-categories, GET /api/cinemas/{cinemaId}/ticket-pricing
+    │       │   ├── SeatMapController.cs       # GET /api/showtimes/{showtimeId}/seats
+    │       │   └── ShowtimesController.cs     # GET /api/movies/{movieId}/showtimes, GET /api/showtimes/{showtimeId}
     │       ├── Data/
-    │       │   ├── ApplicationDbContext.cs    # Movie/genre và Guest checkout mappings
-    │       │   └── GuestCheckoutMapping.cs    # checkout_identity và operation_receipt
+    │       │   └── ApplicationDbContext.cs   # EF Core DbContext và mapping schema cinema
     │       ├── DTOs/
+    │       │   ├── CommonDtos.cs              # ApiResponse, ApiError, PaginationDto, MoneyDto
+    │       │   ├── Cinemas/
+    │       │   │   └── CinemaDtos.cs          # Cinema DTO
     │       │   ├── Movies/
-    │       │   │   ├── MovieDtos.cs           # Movie, Genre, pagination và error DTO
-    │       │   │   └── MovieQuery.cs          # Query/filter/pagination input
-    │       │   ├── Checkout/
-    │       │   │   └── GuestContextDto.cs     # Public context ID và expiry
-    │       │   └── Common/
-    │       │       └── ApiErrorResponse.cs    # code/message/details/traceId
+    │       │   │   ├── MovieDtos.cs           # Movie, Genre DTO
+    │       │   │   └── MovieQuery.cs          # Query/filter/pagination input phim
+    │       │   ├── Pricing/
+    │       │   │   └── PricingDtos.cs         # TicketCategory, CinemaPricing DTO
+    │       │   ├── Seats/
+    │       │   │   └── SeatDtos.cs            # SeatType, Seat, SeatMap DTO
+    │       │   └── Showtimes/
+    │       │       └── ShowtimeDtos.cs        # Showtime DTO và query lịch chiếu
     │       ├── Models/
-    │       │   ├── Movie.cs                   # Entity cinema.movie
+    │       │   ├── BookingSeat.cs             # Entity cinema.booking_seat (đọc allocation)
+    │       │   ├── Cinema.cs                  # Entity cinema.cinema
+    │       │   ├── CinemaRoom.cs              # Entity cinema.cinema_room
+    │       │   ├── CinemaTicketPrice.cs       # Entity cinema.cinema_ticket_price
     │       │   ├── Genre.cs                   # Entity cinema.genre
+    │       │   ├── Movie.cs                   # Entity cinema.movie
     │       │   ├── MovieGenre.cs              # Entity cinema.movie_genre
-    │       │   ├── CheckoutIdentity.cs        # Guest/User checkout identity
-    │       │   └── OperationReceipt.cs        # Durable idempotency metadata
+    │       │   ├── Seat.cs                    # Entity cinema.seat
+    │       │   ├── SeatType.cs                # Entity cinema.seat_type
+    │       │   ├── Showtime.cs                # Entity cinema.showtime
+    │       │   └── TicketCategory.cs          # Entity cinema.ticket_category
     │       └── Services/
-    │           ├── IMovieService.cs           # Service contract
-    │           ├── MovieService.cs            # Read-only movie query
-    │           ├── IGuestContextService.cs    # Bootstrap và current Guest contract
-    │           ├── GuestContextService.cs     # DB time, reuse và bootstrap idempotency
-    │           ├── GuestCredential.cs         # Random credential, hash và CSRF binding
-    │           ├── GuestRequestSecurity.cs    # Origin, CSRF và cookie transport
-    │           ├── GuestCheckoutOptions.cs    # Demo lifetime và security configuration
-    │           └── CheckoutException.cs       # Checkout application errors
+    │           ├── ApiExceptions.cs            # Exception nghiệp vụ/API dùng chung
+    │           ├── CinemaService.cs           # Truy vấn rạp công khai
+    │           ├── ICinemaService.cs          # Contract service rạp
+    │           ├── IMovieService.cs           # Contract service phim
+    │           ├── IPricingService.cs         # Contract service loại vé/giá
+    │           ├── ISeatMapService.cs         # Contract service sơ đồ ghế
+    │           ├── IShowtimeService.cs        # Contract service suất chiếu
+    │           ├── MovieService.cs            # Truy vấn phim (browse/detail)
+    │           ├── PricingService.cs          # Truy vấn loại vé và giá rạp
+    │           ├── SeatMapService.cs          # Truy vấn sơ đồ ghế theo suất
+    │           └── ShowtimeService.cs         # Truy vấn suất chiếu
     │
     └── frontend/
         └── cinema-ticket-booking-ui/
@@ -165,8 +170,8 @@ Movie Theater Management and Online Ticket Booking System/
 
 Các thành phần sau chưa tồn tại trong repository hiện tại và chỉ nên được bổ sung khi có yêu cầu triển khai:
 
-- Backend: `Entities/`, `Middleware/`, `Migrations/`, `Validators/` và các thư mục liên quan chưa có trong cây trên.
-- Frontend: `assets/`, `contexts/`, `hooks/`, `layouts/`, `routes/`, `utils/` và `public/`.
+- Backend: `Entities/`, `Middleware/`, `Migrations/`, `Validators/` và các thư mục mở rộng khác khi cần. (`Controllers/`, `DTOs/`, `Models/`, `Services/` đã có và đang được sử dụng.)
+- Frontend: `assets/`, `contexts/`, `hooks/`, `layouts/`, `routes/`, `utils/` và `public/`. (Một số thư mục như `components/`, `pages/`, `services/`, `types/` đã có trong `cinema-ticket-booking-ui`.)
 - Tài liệu: `docs/test/` và `docs/management/weekly-reports/`.
 
 Không ghi các file chứa secret thật vào repository. Sử dụng `.env.example` làm mẫu và cấu hình giá trị thật trong môi trường local.
@@ -198,48 +203,3 @@ Requirements
 ```
 
 Đây là quan hệ tham chiếu giữa các nhóm tài liệu, không phải thứ tự bắt buộc tuyệt đối. Khi một quyết định nghiệp vụ hoặc kỹ thuật chưa được thống nhất, tài liệu liên quan cần ghi rõ trạng thái `Open` hoặc `Proposed`.
-
-## BE2 task 2 additions — feat/be-selection-quote
-
-- `src/backend/CinemaTicketBooking.Api/Models/SelectionSession.cs`: selection session and seat entities.
-- `src/backend/CinemaTicketBooking.Api/Data/SelectionMapping.cs`: existing SQL tables/composite relationship.
-- `src/backend/CinemaTicketBooking.Api/DTOs/Checkout/SelectionDtos.cs`: selection requests, quotes and responses.
-- `src/backend/CinemaTicketBooking.Api/Controllers/SelectionsController.cs`: POST/GET/PUT selections.
-- `src/backend/CinemaTicketBooking.Api/Services/SelectionService.cs`: ownership, transactions, deadline, idempotency and database quotation reads.
-- `src/backend/CinemaTicketBooking.Api/Services/SelectionOptions.cs`: configured maximum ticket quantity.
-- `tests/CinemaTicketBooking.Api.Tests/SelectionTests.cs`: PostgreSQL selection integration tests.
-- `docs/development/selection-quote.md`: contract correction, integration boundary and Postman instructions.
-
-`BE1.md` and `BE2.md` are local ignored briefs, removed from the Git index on this branch.
-
-Postman: `docs/api/postman/Cinema-BE2.postman_collection.json`, `Cinema-BE2-Local.postman_environment.json` and `README.md` provide the importable Guest/Selection flow and blank local environment.
-
-## BE2 task 3 additions — feat/be-booking-reservation
-
-- `src/backend/CinemaTicketBooking.Api/Models/Booking.cs`: Booking, BookingCategory and the shared BookingSeat entity (reuse for BE1 allocation reads).
-- `src/backend/CinemaTicketBooking.Api/Data/BookingMapping.cs`: existing SQL tables, composite allocation FK and active-seat unique-index mapping.
-- `src/backend/CinemaTicketBooking.Api/DTOs/Checkout/BookingDtos.cs`: reservation request, explicit accepted money and booking snapshot/current-showtime responses.
-- `src/backend/CinemaTicketBooking.Api/Controllers/BookingsController.cs`: protected POST `/api/bookings` only.
-- `src/backend/CinemaTicketBooking.Api/Services/BookingReservationService.cs`: transaction, snapshots, audit, durable outcomes and rollback safety.
-- `tests/CinemaTicketBooking.Api.Tests/BookingReservationTests.cs`: PostgreSQL transaction, idempotency, price, expiry and race cases.
-- `docs/development/booking-reservation.md`: task-3 behavior, integration boundary and Postman flow.
-
-The current Postman collection/environment includes tasks 1–5 (30 requests: 01–26 main flow and 27–30 optional natural expiry). SQL schema/seed files remain unchanged.
-
-## BE2 task 4 additions — feat/be-checkout-recovery
-
-- `src/backend/CinemaTicketBooking.Api/Services/BookingReadService.cs`: coherent owner-protected booking reads and recovery decisions; shared snapshot projection for reservation responses/replay.
-- `src/backend/CinemaTicketBooking.Api/DTOs/Checkout/CheckoutRecoveryDto.cs`: recovery, protected payment and cancellation summaries.
-- `src/backend/CinemaTicketBooking.Api/Controllers/BookingsController.cs`: additionally implements GET booking and GET booking/checkout.
-- `tests/CinemaTicketBooking.Api.Tests/BookingRecoveryTests.cs`: partial reservation test class sharing its real PostgreSQL fixture/cleanup; ownership, reload, recovery-state and concurrent-read cases.
-- `docs/development/checkout-recovery.md`: endpoint behavior, recovery-state mapping, integration limits and Arch/Postman instructions.
-
-## BE2 task 5 additions — feat/be-booking-cancel-expiry
-
-- `src/backend/CinemaTicketBooking.Api/Services/BookingCancellationService.cs`: protected cancellation, durable outcomes and shared atomic release/audit helpers.
-- `src/backend/CinemaTicketBooking.Api/Services/BookingExpiryService.cs`: bounded cursor scans, nonblocking transaction claims, all-attempt payment safety and per-booking rollback/retry.
-- `src/backend/CinemaTicketBooking.Api/Services/BookingExpiryWorker.cs`: internal hosted polling and shutdown cancellation; no public worker endpoint.
-- `src/backend/CinemaTicketBooking.Api/Services/BookingExpiryOptions.cs`: enabled flag, poll interval and batch size.
-- Existing BookingsController/BookingDtos/Program/Development config: POST cancel, required confirmation, DI and local worker setup.
-- `tests/CinemaTicketBooking.Api.Tests/BookingExpiryTests.cs`: partial shared PostgreSQL harness for cancellation, expiry, payment guards, failure injection, hosted polling and races.
-- `docs/development/booking-cancel-expiry.md`: API/worker behavior, setup, FE2 handoff and Postman instructions. `.env.example`/`docker-compose.be2.yml` expose optional local worker overrides.

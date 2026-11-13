@@ -98,7 +98,7 @@ Cả Guest và Customer nhập đủ ba trường. Không thay đổi primary em
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `cinemaId` | `UUID` | R | Cinema được giao |
+| `cinemaId` | `decimal string` | R | Cinema được giao (ID `bigint`, chuỗi số) |
 | `role` | `enum:STAFF,MANAGER` | R | Không trộn assignment của hai role |
 
 ## Session
@@ -187,7 +187,7 @@ Public resend trả shape/message tương đương dù email không tồn tại.
 
 ## GuestContext
 
-Credential chỉ trong cookie HttpOnly; không nằm trong JSON. Demo lifetime đã thống nhất 24 giờ từ database creation time, không gia hạn khi bootstrap/reuse. `POST /api/guest-context` trả `X-CSRF-Token` qua header. Branch Guest-only triển khai context này; production recovery sau mất cookie vẫn cần review. Xem [Guest checkout](../development/guest-checkout.md).
+Credential chỉ trong cookie HttpOnly; không nằm trong JSON. Lifetime chưa chốt: implementation phải bảo đảm truy cập booking hợp lệ và có recovery policy được review.
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
@@ -216,7 +216,7 @@ Credential chỉ trong cookie HttpOnly; không nằm trong JSON. Demo lifetime �
 
 ## Movie
 
-Public detail cho phép ended; archived trả 404. Management có thể đọc archived. Response không tự chứng minh phim có suất còn bán.
+Public detail cho phép `ended`; `archived` hoặc không tồn tại → `404 NOT_FOUND` (không lộ nội dung nội bộ). Phim tồn tại nhưng không có suất → browse showtimes trả `200 { "data": [], "pagination": ... }` (không ảnh hưởng detail). Management có thể đọc archived. Response không tự chứng minh phim có suất còn bán.
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
@@ -237,7 +237,7 @@ Public detail cho phép ended; archived trả 404. Management có thể đọc a
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `cinemaId` | `UUID` | R | Identity |
+| `cinemaId` | `decimal string` | R | Identity `bigint`, serialize thành chuỗi số |
 | `name` | `string` | R | Tên |
 | `address` | `string` | R | Địa chỉ |
 | `timezone` | `string` | R | IANA timezone |
@@ -249,8 +249,8 @@ Public detail cho phép ended; archived trả 404. Management có thể đọc a
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `roomId` | `UUID` | R | Identity |
-| `cinemaId` | `UUID` | R | Parent |
+| `roomId` | `decimal string` | R | Identity `bigint`, serialize thành chuỗi số |
+| `cinemaId` | `decimal string` | R | Parent (ID `bigint`, chuỗi số) |
 | `code` | `string` | R | Unique trong cinema |
 | `name` | `string` | R | Tên |
 | `isActive` | `boolean` | R | API projection; không tự bỏ nghĩa vụ lịch chiếu |
@@ -260,8 +260,8 @@ Public detail cho phép ended; archived trả 404. Management có thể đọc a
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `date` | `Date` | R | Ngày địa phương tại cinema |
-| `cinemaId` | `UUID` | O | Filter |
+| `date` | `Date` | R | Bắt buộc. `YYYY-MM-DD` theo timezone rạp; thiếu/sai format → `400 VALIDATION_ERROR` với `details.violations` (`[{field,reason,message}]`, `reason`: `required` hoặc `invalid_format`). |
+| `cinemaId` | `decimal string` | O | Filter (ID `bigint`, chuỗi số) |
 | `page` | `integer` | O | Mặc định 1 |
 | `pageSize` | `integer` | O | Mặc định 20, tối đa 100 |
 
@@ -269,17 +269,17 @@ Public detail cho phép ended; archived trả 404. Management có thể đọc a
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `showtimeId` | `decimal string` | R | Identity |
-| `movieId` | `decimal string` | R | Phim |
+| `showtimeId` | `decimal string` | R | Identity `bigint`, serialize thành chuỗi số |
+| `movieId` | `decimal string` | R | Phim (ID `bigint`, chuỗi số) |
 | `movieTitle` | `string` | R | Tên |
-| `cinemaId` | `decimal string` | R | Cinema |
+| `cinemaId` | `decimal string` | R | Cinema (ID `bigint`, chuỗi số) |
 | `cinemaName` | `string` | R | Tên cinema |
-| `roomId` | `decimal string` | R | Room |
+| `roomId` | `decimal string` | R | Room (ID `bigint`, chuỗi số) |
 | `roomName` | `string` | R | Tên room |
 | `officialStartsAt` | `Instant` | R | Giờ bắt đầu hiện hành |
 | `officialEndsAt` | `Instant` | R | Server tính từ duration snapshot |
 | `timezone` | `string` | R | IANA |
-| `status` | `enum:draft,scheduled,in_progress,completed,cancelled` | R | API projection; mapping implementation cần kiểm tra |
+| `status` | `enum:draft,scheduled,in_progress,completed,cancelled` | R | API projection. **Public showtime (BE1 read endpoints)** chỉ gồm `scheduled` — cách diễn giải UC-07 bước 2 và R-21 (“suất đang bán”) vì tài liệu không liệt kê status; `draft/in_progress/completed/cancelled` ngoài tập public → `404 NOT_FOUND` ở detail. |
 | `bookingAvailable` | `boolean` | R | Derived tại serverTime; phải kiểm tra lại khi reserve |
 | `serverTime` | `Instant` | R | Thời điểm đọc |
 | `version` | `string` | R | Concurrency token |
@@ -288,7 +288,7 @@ Public detail cho phép ended; archived trả 404. Management có thể đọc a
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `seatTypeId` | `UUID` | R | Identity |
+| `seatTypeId` | `decimal string` | R | Identity `bigint`, serialize thành chuỗi số |
 | `code` | `string` | R | Stable code |
 | `name` | `string` | R | Tên |
 | `surcharge` | `Money` | R | Phụ thu mỗi physical seat |
@@ -308,11 +308,11 @@ Hai category luôn được duy trì; không có API tạo category thứ ba ho�
 
 ## CinemaPricing
 
-Giá áp dụng hiện tại; không tự thêm effectiveFrom/future pricing workflow.
+Giá áp dụng hiện tại; không tự thêm effectiveFrom/future pricing workflow. Thiếu cấu hình giá (thiếu dòng giá hoặc thiếu category bắt buộc) → `409 STATE_CONFLICT`; `amount` = 0 là cấu hình hợp lệ.
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `cinemaId` | `UUID` | R | Cinema |
+| `cinemaId` | `decimal string` | R | Cinema (ID `bigint`, chuỗi số) |
 | `adultBasePrice` | `Money` | R | Không âm |
 | `discountedBasePrice` | `Money` | R | Không âm |
 | `version` | `string` | R | Version |
@@ -322,7 +322,7 @@ Giá áp dụng hiện tại; không tự thêm effectiveFrom/future pricing wor
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `seatId` | `UUID` | R | Identity |
+| `seatId` | `decimal string` | R | Identity `bigint`, serialize thành chuỗi số |
 | `rowLabel` | `string` | R | Hàng |
 | `seatNumber` | `integer` | R | >0 |
 | `label` | `string` | R | Unique trong room |
@@ -345,8 +345,8 @@ Không có capacityUnits, Couple hoặc ticket category từng ghế.
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `showtimeId` | `UUID` | R | Showtime context |
-| `roomId` | `UUID` | R | Room |
+| `showtimeId` | `decimal string` | R | Showtime context (ID `bigint`, chuỗi số) |
+| `roomId` | `decimal string` | R | Room (ID `bigint`, chuỗi số) |
 | `seats` | `SeatAvailability[]` | R | Kể cả ghế unavailable |
 | `serverTime` | `Instant` | R | Snapshot timestamp |
 
@@ -354,7 +354,7 @@ Không có capacityUnits, Couple hoặc ticket category từng ghế.
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `roomId` | `UUID` | R | Không cần showtime |
+| `roomId` | `decimal string` | R | Không cần showtime (ID `bigint`, chuỗi số) |
 | `seats` | `Seat[]` | R | Physical layout |
 | `version` | `string` | R | Whole-layout concurrency |
 
@@ -362,7 +362,7 @@ Không có capacityUnits, Couple hoặc ticket category từng ghế.
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `seatId` | `decimal string` | R | Physical identity |
+| `seatId` | `decimal string` | R | Physical identity (ID `bigint`, chuỗi số) |
 | `label` | `string` | R | Purchase snapshot |
 | `seatTypeName` | `string` | R | Snapshot |
 | `surcharge` | `Money` | R | Snapshot |
@@ -398,9 +398,9 @@ Tạo tại lần chọn physical seat đầu tiên; chưa cần contact hoặc 
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `showtimeId` | `decimal string` | R | Suất eligible |
+| `showtimeId` | `decimal string` | R | Suất eligible (ID `bigint`, chuỗi số) |
 | `quantities` | `Quantities` | R | 1..configuredMaximum |
-| `seatIds` | `decimal string[]` | R | Ít nhất một ghế distinct, không vượt tổng quantity |
+| `seatIds` | `decimal string[]` | R | Ít nhất một ghế distinct, không vượt tổng quantity (ID `bigint`, chuỗi số) |
 
 ## UpdateSelectionRequest
 
@@ -410,21 +410,21 @@ Full selection edit; seat count không vượt quantity. Không đổi showtime/
 |---|---|---|---|
 | `version` | `string` | R | Selection version |
 | `quantities` | `Quantities` | R | 1..configuredMaximum |
-| `seatIds` | `decimal string[]` | R | Distinct; cho phép tạm thời ít hơn tổng quantity khi đang chọn |
+| `seatIds` | `decimal string[]` | R | Distinct; cho phép tạm thời ít hơn tổng quantity khi đang chọn (ID `bigint`, chuỗi số) |
 
 ## Selection
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
 | `selectionId` | `UUID` | R | Identity |
-| `showtimeId` | `decimal string` | R | Suất |
+| `showtimeId` | `decimal string` | R | Suất (ID `bigint`, chuỗi số) |
 | `quantities` | `Quantities` | R | Đang chọn |
-| `seatIds` | `decimal string[]` | R | Đang chọn |
+| `seatIds` | `decimal string[]` | R | Đang chọn (ID `bigint`, chuỗi số) |
 | `quote` | `Quote` | N | null khi chưa đủ thông tin tính giá |
 | `selectionDeadline` | `Instant` | R | 5 phút từ lần bắt đầu; không reset |
 | `serverTime` | `Instant` | R | Server time |
 | `state` | `enum:active,expired,reserved` | R | API projection |
-| `bookingId` | `decimal string` | N | Nếu đã reserve |
+| `bookingId` | `UUID` | N | Nếu đã reserve |
 | `version` | `string` | R | Concurrency token |
 
 ## ReserveRequest
@@ -435,8 +435,8 @@ Backend so khớp showtimeId, seatIds và quantities với selectionVersion; mis
 |---|---|---|---|
 | `selectionId` | `UUID` | R | Selection của caller |
 | `selectionVersion` | `string` | R | Phải hiện hành |
-| `showtimeId` | `decimal string` | R | Phải khớp selection |
-| `seatIds` | `decimal string[]` | R | Distinct, đủ tổng quantity, khớp selection version |
+| `showtimeId` | `decimal string` | R | Phải khớp selection (ID `bigint`, chuỗi số) |
+| `seatIds` | `decimal string[]` | R | Distinct, đủ tổng quantity, khớp selection version (ID `bigint`, chuỗi số) |
 | `quantities` | `Quantities` | R | Khớp selection version |
 | `contact` | `Contact` | R | Checkout Step 1 |
 | `declarations` | `CheckoutDeclarations` | R | Các xác nhận |
@@ -446,7 +446,7 @@ Backend so khớp showtimeId, seatIds và quantities với selectionVersion; mis
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `bookingId` | `decimal string` | R | Identity |
+| `bookingId` | `UUID` | R | Identity |
 | `bookingCode` | `string` | R | Public reference; không đủ authority |
 | `status` | `enum:pending,confirmed,expired,cancelled` | R | API state projection |
 | `showtime` | `Showtime` | R | Current official information |
@@ -459,7 +459,7 @@ Backend so khớp showtimeId, seatIds và quantities với selectionVersion; mis
 | `contact` | `Contact` | R | Protected booking contact |
 | `selectionDeadline` | `Instant` | R | Original deadline |
 | `paymentDeadline` | `Instant` | N | Khi initiated, supersedes selection deadline |
-| `activePaymentId` | `decimal string` | N | Relevant current attempt; may be terminal. Review/unapplied-success/open attempts take priority over an ordinary terminal failure. |
+| `activePaymentId` | `UUID` | N | Attempt hiện hành |
 | `cancellation` | `CancellationSummary` | N | Request hiện hành nếu có |
 | `createdAt` | `Instant` | R | Server |
 | `confirmedAt` | `Instant` | N | Server |
@@ -467,25 +467,11 @@ Backend so khớp showtimeId, seatIds và quantities với selectionVersion; mis
 
 ## CancelPendingRequest
 
-Implemented on `feat/be-booking-cancel-expiry`: explicit `true` is required after
-the seat-release warning; missing/null/false or unknown write fields return 400.
-No arbitrary cancellation reason, user identity or booking state is accepted.
-The protected POST also requires UUID Idempotency-Key, trusted Origin and CSRF.
-The response is the existing Booking DTO with status cancelled; timestamps/reason
-are persisted internally. Original deadlines and snapshots are preserved. See
-[cancellation and expiry](../development/booking-cancel-expiry.md).
-
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
 | `confirmed` | `boolean` | R | true sau warning; không tự dùng tab close làm trigger |
 
 ## CheckoutRecovery
-
-Implemented by BE2 task 4 for the owning Guest. Both read endpoints share the
-stored Booking snapshot projection. `booking.status` remains the persisted state;
-`nextAction=selectAgain` prevents offering payment after an unpaid deadline even
-if task 5 has not yet changed a pending row to expired. Reads never change that
-state, extend time or release allocations. See [the ordered recovery rules](../development/checkout-recovery.md).
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
@@ -498,8 +484,8 @@ state, extend time or release allocations. See [the ordered recovery rules](../d
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `paymentId` | `decimal string` | R | Payment bigint identity; implemented read projection in task 4 |
-| `bookingId` | `decimal string` | R | Protected booking bigint identity |
+| `paymentId` | `UUID` | R | Identity |
+| `bookingId` | `UUID` | R | Protected booking |
 | `provider` | `literal:MoMo` | R | Intended gateway |
 | `status` | `enum:created,pending,unknown,succeeded,failed,cancelled` | R | Financial state |
 | `appliedAt` | `Instant` | N | null không đồng nghĩa failed |
@@ -558,7 +544,7 @@ Resend dùng email đã lưu ở booking; không nhận tùy ý recipient mới.
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
 | `qrCredential` | `string` | R | Không log |
-| `showtimeId` | `UUID` | O | Nếu Staff đã chọn context; backend đối chiếu |
+| `showtimeId` | `decimal string` | O | Nếu Staff đã chọn context; backend đối chiếu (ID `bigint`, chuỗi số) |
 
 ## Restriction
 
@@ -591,7 +577,7 @@ Idempotency-Key là admissionOperationId (UUID). Staff user/cinema scope lấy t
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
 | `qrCredential` | `string` | R | Booking QR |
-| `showtimeId` | `UUID` | R | Context |
+| `showtimeId` | `decimal string` | R | Context (ID `bigint`, chuỗi số) |
 | `quantities` | `Quantities` | R | Tổng >0, từng category <= remaining |
 | `ageVerified` | `boolean` | R | true sau Staff kiểm thực tế |
 | `discountedEligibilityVerified` | `boolean` | R | true nếu có Discounted vào đợt này |
@@ -613,9 +599,9 @@ Replay trả cùng outcome; không đổi result sang một trạng thái khác.
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `requestId` | `decimal string` | R | Existing cancellation-request bigint identity |
+| `requestId` | `UUID` | R | Identity |
 | `status` | `enum:pending,approved,rejected` | R | Request state; refund lifecycle riêng |
-| `refundId` | `decimal string` | N | Existing refund bigint identity |
+| `refundId` | `UUID` | N | Financial obligation |
 | `blocksAdmission` | `boolean` | R | Derived |
 
 ## CancellationRequest
@@ -788,12 +774,12 @@ Không cascade xóa lịch sử; archived restore phải kiểm tra eligibility.
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `seatId` | `UUID` | N | null cho new seat |
+| `seatId` | `decimal string` | N | null cho new seat (ID `bigint`, chuỗi số) |
 | `rowLabel` | `string` | R | Hàng |
 | `seatNumber` | `integer` | R | >0 |
 | `x` | `integer` | R | >=0 |
 | `y` | `integer` | R | >=0 |
-| `seatTypeId` | `UUID` | R | Eligible existing type |
+| `seatTypeId` | `decimal string` | R | Eligible existing type (ID `bigint`, chuỗi số) |
 
 ## ConfigureLayoutRequest
 
@@ -854,8 +840,8 @@ Server snapshot duration phim, tính endsAt và occupied interval với turnarou
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `movieId` | `UUID` | R | Eligible movie |
-| `roomId` | `UUID` | R | Eligible room; cinema suy ra |
+| `movieId` | `decimal string` | R | Eligible movie (ID `bigint`, chuỗi số) |
+| `roomId` | `decimal string` | R | Eligible room; cinema suy ra (ID `bigint`, chuỗi số) |
 | `startsAt` | `Instant` | R | Official start |
 
 ## UpdateShowtimeRequest
@@ -864,8 +850,8 @@ General edit chỉ khi UC-17 cho phép. Existing bookings áp dụng restricted 
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `movieId` | `UUID` | R | Eligible target |
-| `roomId` | `UUID` | R | Eligible target |
+| `movieId` | `decimal string` | R | Eligible target (ID `bigint`, chuỗi số) |
+| `roomId` | `decimal string` | R | Eligible target (ID `bigint`, chuỗi số) |
 | `startsAt` | `Instant` | R | Start |
 | `version` | `string` | R | Concurrency |
 
@@ -895,7 +881,7 @@ Manager chỉ được thay đổi STAFF assignments ở cinema mình được g
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `cinemaId` | `UUID` | R | Cinema |
+| `cinemaId` | `decimal string` | R | Cinema (ID `bigint`, chuỗi số) |
 | `role` | `enum:STAFF,MANAGER` | R | Assignment kind |
 | `version` | `string` | R | User access version |
 | `reason` | `string` | R | Audit |
@@ -920,7 +906,7 @@ Manager chỉ được thay đổi STAFF assignments ở cinema mình được g
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `cinemaId` | `UUID` | O | Filter không mở rộng scope |
+| `cinemaId` | `decimal string` | O | Filter không mở rộng scope (ID `bigint`, chuỗi số) |
 | `query` | `string` | O | Search code/contact trong scope cho phép |
 | `page` | `integer` | O | >=1 |
 | `pageSize` | `integer` | O | 1..100 |
@@ -929,8 +915,8 @@ Manager chỉ được thay đổi STAFF assignments ở cinema mình được g
 
 | Field | Type | R/O/N | Validation / ý nghĩa |
 |---|---|---|---|
-| `movieId` | `UUID` | N | Public movie context |
-| `showtimeId` | `UUID` | N | Public showtime context |
+| `movieId` | `decimal string` | N | Public movie context (ID `bigint`, chuỗi số) |
+| `showtimeId` | `decimal string` | N | Public showtime context (ID `bigint`, chuỗi số) |
 
 ## CreateChatRequest
 
@@ -1089,7 +1075,3 @@ POST /api/management/refunds/{refundId}/completion, Manager assigned cinema ho�
 ## Cần chốt trước khi triển khai
 
 Transport Guest/CSRF, limits/lifetime, quote/idempotency storage, provider payload mapping và enum-to-domain mapping là các quyết định kỹ thuật Proposed. Data validation chi tiết theo DOCX phải được mang vào implementation/tests; các bảng này không thay thế toàn bộ alternative flows của 28 UC. Không có kiểm thử runtime của backend trong lần soạn tài liệu này.
-
-Selection task 2 implementation/configuration and decimal-string ID clarification: [selection-quote.md](../development/selection-quote.md).
-
-BE2 task 3 implements ReserveRequest/Booking as documented in [booking-reservation.md](../development/booking-reservation.md). PriceAcceptance requires explicit amount and currency; booking/showtime nested bigint IDs are decimal strings, and financial snapshots are persisted separately from current showtime information.

@@ -38,16 +38,3 @@ public sealed class BookingCategory
     public string CategoryNameSnapshot { get; set; } = "";
     public int AdmittedQuantity { get; set; }
 }
-public sealed class BookingSeat
-{
-    public long Id { get; set; }
-    public long BookingId { get; set; }
-    public long ShowtimeId { get; set; }
-    public long CinemaRoomId { get; set; }
-    public long SeatId { get; set; }
-    public string SeatLabelSnapshot { get; set; } = "";
-    public string SeatTypeNameSnapshot { get; set; } = "";
-    public decimal SurchargeSnapshot { get; set; }
-    public string AllocationStatus { get; set; } = "held";
-    public DateTime? ReleasedAt { get; set; }
-}

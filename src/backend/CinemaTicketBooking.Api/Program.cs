@@ -1,6 +1,7 @@
 using System.Globalization;
 using System.Threading.RateLimiting;
 using CinemaTicketBooking.Api.Controllers;
+using CinemaTicketBooking.Api;
 using CinemaTicketBooking.Api.Data;
 using CinemaTicketBooking.Api.DTOs.Common;
 using CinemaTicketBooking.Api.Services;
@@ -83,24 +84,16 @@ builder.Services.AddControllers(options => options.Filters.Add<CheckoutException
                     .Select(entry => new { field = entry.Key, reason = "invalid", message = "Giá trị không hợp lệ." })
             })));
 
+builder.Services.AddScoped<ICinemaService, CinemaService>();
+builder.Services.AddScoped<IShowtimeService, ShowtimeService>();
+builder.Services.AddScoped<IPricingService, PricingService>();
+builder.Services.AddScoped<ISeatMapService, SeatMapService>();
+builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
 
 var app = builder.Build();
 
-app.UseExceptionHandler(exceptionApp =>
-{
-    exceptionApp.Run(async context =>
-    {
-        var exception = context.Features.Get<IExceptionHandlerFeature>()?.Error;
-        var dependencyUnavailable = IsDependencyUnavailable(exception);
-        context.Response.StatusCode = dependencyUnavailable ? StatusCodes.Status503ServiceUnavailable : StatusCodes.Status500InternalServerError;
-        context.Response.ContentType = "application/json";
-        context.Response.Headers.CacheControl = "no-store";
-        await context.Response.WriteAsJsonAsync(ApiErrorResponse.Create(context,
-            dependencyUnavailable ? "DEPENDENCY_UNAVAILABLE" : "INTERNAL_ERROR",
-            "Đã xảy ra lỗi khi xử lý yêu cầu."));
-    });
-});
+app.UseExceptionHandler();
 
 app.UseCors("GuestCheckout");
 app.UseRateLimiter();
