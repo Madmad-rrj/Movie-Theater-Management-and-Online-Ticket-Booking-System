@@ -204,7 +204,21 @@ $response.data | Select-Object movieId,title,durationMinutes,status,genres
 
 Response mặc định hiện có 6 phim seed, `pageSize` mặc định 12, public status chỉ gồm `coming_soon` và `now_showing`. Các filter đã triển khai: `query`, `genreId` dạng chuỗi số `bigint`, `status`; pagination `page`/`pageSize` với `pageSize` tối đa 100. `GET /api/movies/{movieId}` và các endpoint khác vẫn Proposed/chưa triển khai.
 
-Đọc dòng “Now listening on” để lấy URL thực tế nếu đổi `ASPNETCORE_URLS`. Build pass không thay thế kiểm tra DB; khi database dừng, API trả `INTERNAL_ERROR` mà không lộ SQL, stack trace hoặc password.
+Đọc dòng “Now listening on” để lấy URL thực tế nếu đổi `ASPNETCORE_URLS`. Build pass không thay thế kiểm tra DB; khi database dừng, API trả `INTERNAL_ERROR` mà không lộ SQL, stack trace hoặc password. Lưu ý: phạm vi triển khai backend đã mở rộng hơn chỉ `GET /api/movies` (xem [API Endpoints](../api/api-endpoints.md)); mục này minh họa cách chạy/cấu hình và kiểm tra cơ bản.
+
+### 5.3 Integration tests backend (BE1, Testcontainers)
+
+Các endpoint đọc công khai BE1 (movies, cinemas, showtimes, pricing, ticket-categories, seat map) có bộ integration test chạy thật trên PostgreSQL Docker riêng.
+
+- **Yêu cầu:** Docker Desktop/Engine đang chạy (Linux containers). Nếu Docker daemon không chạy, test sẽ thất bại/không khởi động được container — cần khởi động Docker rồi chạy lại (không chuyển sang DB khác).
+- **Cách chạy:** Testcontainers tự kéo/chạy container `postgres:16.4` riêng (port host ngẫu nhiên, không trùng DB demo/Supabase), nạp `database/database-schema.sql` một lần mỗi lượt chạy, tự tạo/dọn dữ liệu fixture theo test. Không cần `docker-compose.yml` demo, không đụng DB demo/Supabase.
+- **Lệnh:**
+
+```powershell
+dotnet test .\src\backend\CinemaTicketBooking.Api.Tests\CinemaTicketBooking.Api.Tests.csproj
+```
+
+- **Phạm vi đã kiểm chứng (2026-11-11):** 68 test (Passed 68, Failed 0, Skipped 0) chạy 2 lần liên tiếp trên PostgreSQL Docker riêng (Testcontainers). Trạng thái chi tiết và giới hạn: xem [API Endpoints](../api/api-endpoints.md), [BE1 handoff](../api/be1-handoff.md) và log `docs/management/ai-usage/0255.md`.
 
 ## 6. Frontend React + Vite
 

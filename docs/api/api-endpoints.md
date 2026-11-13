@@ -2,7 +2,7 @@
 
 ## Phạm vi và cách đọc
 
-Catalogue đối chiếu Use-Case Specifications v2.4 và SAD v3.15. `browseMovies` **đã triển khai và đã kiểm chứng với PostgreSQL local** (theo log hiện có). Các endpoint public read thuộc BE1 được liệt kê trong tài liệu này: **đã triển khai, chưa kiểm chứng trên Docker PostgreSQL riêng** (trừ khi có bằng chứng test riêng được ghi bổ sung). Các operation khác chưa ghi rõ vẫn là **Proposed**. Mỗi dòng là một method/path duy nhất, operationId duy nhất. Policy, HTTP/error envelope, idempotency và enum mapping theo [API Contract](api-contract.md); payload theo [DTO Specification](dto-specification.md).
+Catalogue đối chiếu Use-Case Specifications v2.4 và SAD v3.15. Trạng thái được tách rõ: **đã triển khai** (có mã trong backend) và **đã kiểm chứng** (có bằng chứng chạy thật). `browseMovies` **đã triển khai; đã kiểm chứng với PostgreSQL local** (theo log hiện có) và nằm trong bộ integration test BE1. 7 endpoint public read BE1 còn lại liệt kê bên dưới **đã triển khai; đã kiểm chứng bằng integration test trên PostgreSQL Docker riêng (Testcontainers, 68 test, chạy 2026-11-11)**. Các operation khác chưa ghi rõ vẫn là **Proposed**. Mỗi dòng là một method/path duy nhất, operationId duy nhất. Policy, HTTP/error envelope, idempotency và enum mapping theo [API Contract](api-contract.md); payload theo [DTO Specification](dto-specification.md).
 
 Path/query ID của các entity BE1 đã triển khai/căn chỉnh (`movie`, `genre`, `cinema`, `showtime`, `room`, `seat`, `seatType`) dùng **chuỗi số thập phân (`bigint`)** trong JSON/path/query, khớp schema và code hiện tại. Các entity/operation chưa triển khai khác vẫn theo contract Proposed hiện hành cho đến khi được triển khai và đối chiếu. Request có `(query)` là query parameters; `—` là không body. Response là phần bên trong `data`; `Type[]` là collection, pagination chỉ khi request có page/pageSize. Không sử dụng request DTO cho GET body.
 
@@ -30,17 +30,19 @@ Error envelope: `{ "error": { "code", "message", "details", "traceId" } }`; `det
 
 | Operation ID | Method | Path | UC | Policy | Request | Response | Success |
 |---|---|---|---|---|---|---|---|
-| `browseMovies` | GET | `/api/movies` | UC-06A | PUBLIC | `MovieQuery (query)` | `Movie[]` + pagination | 200 — **Đã triển khai; đã kiểm chứng với PostgreSQL local** |
-| `movieDetail` | GET | `/api/movies/{movieId}` | UC-06B | PUBLIC | `—` | `Movie` | 200 — **Đã triển khai, chưa kiểm chứng Docker PG riêng** |
+| `browseMovies` | GET | `/api/movies` | UC-06A | PUBLIC | `MovieQuery (query)` | `Movie[]` + pagination | 200 — **Đã triển khai; đã kiểm chứng với PostgreSQL local** (và trong bộ integration test BE1, Testcontainers, 68 test, 2026-11-11) |
+| `movieDetail` | GET | `/api/movies/{movieId}` | UC-06B | PUBLIC | `—` | `Movie` | 200 — **Đã triển khai; đã kiểm chứng bằng integration test trên PostgreSQL Docker riêng (Testcontainers, 68 test, 2026-11-11)** |
 | `publicGenres` | GET | `/api/genres` | UC-06A | PUBLIC | `—` | `Genre[]` | 200 |
-| `publicCinemas` | GET | `/api/cinemas` | UC-07 | PUBLIC | `—` | `Cinema[]` | 200 — **Đã triển khai, chưa kiểm chứng Docker PG riêng** |
-| `browseShowtimes` | GET | `/api/movies/{movieId}/showtimes` | UC-07 | PUBLIC | `ShowtimeQuery (query)` | `Showtime[]` | 200 — **Đã triển khai, chưa kiểm chứng Docker PG riêng** |
-| `showtimeDetail` | GET | `/api/showtimes/{showtimeId}` | UC-07 | PUBLIC | `—` | `Showtime` | 200 — **Đã triển khai, chưa kiểm chứng Docker PG riêng** |
-| `seatMap` | GET | `/api/showtimes/{showtimeId}/seats` | UC-01 | PUBLIC | `—` | `SeatMap` | 200 — **Đã triển khai, chưa kiểm chứng Docker PG riêng** |
-| `publicPricing` | GET | `/api/cinemas/{cinemaId}/ticket-pricing` | UC-07, UC-16B | PUBLIC | `—` | `CinemaPricing` | 200 — **Đã triển khai, chưa kiểm chứng Docker PG riêng** |
-| `ticketCategories` | GET | `/api/ticket-categories` | UC-01, UC-16A | PUBLIC | `—` | `TicketCategory[]` | 200 — **Đã triển khai, chưa kiểm chứng Docker PG riêng** |
+| `publicCinemas` | GET | `/api/cinemas` | UC-07 | PUBLIC | `—` | `Cinema[]` | 200 — **Đã triển khai; đã kiểm chứng bằng integration test trên PostgreSQL Docker riêng (Testcontainers, 68 test, 2026-11-11)** |
+| `browseShowtimes` | GET | `/api/movies/{movieId}/showtimes` | UC-07 | PUBLIC | `ShowtimeQuery (query)` | `Showtime[]` | 200 — **Đã triển khai; đã kiểm chứng bằng integration test trên PostgreSQL Docker riêng (Testcontainers, 68 test, 2026-11-11)** |
+| `showtimeDetail` | GET | `/api/showtimes/{showtimeId}` | UC-07 | PUBLIC | `—` | `Showtime` | 200 — **Đã triển khai; đã kiểm chứng bằng integration test trên PostgreSQL Docker riêng (Testcontainers, 68 test, 2026-11-11)** |
+| `seatMap` | GET | `/api/showtimes/{showtimeId}/seats` | UC-01 | PUBLIC | `—` | `SeatMap` | 200 — **Đã triển khai; đã kiểm chứng bằng integration test trên PostgreSQL Docker riêng (Testcontainers, 68 test, 2026-11-11)** |
+| `publicPricing` | GET | `/api/cinemas/{cinemaId}/ticket-pricing` | UC-07, UC-16B | PUBLIC | `—` | `CinemaPricing` | 200 — **Đã triển khai; đã kiểm chứng bằng integration test trên PostgreSQL Docker riêng (Testcontainers, 68 test, 2026-11-11)** |
+| `ticketCategories` | GET | `/api/ticket-categories` | UC-01, UC-16A | PUBLIC | `—` | `TicketCategory[]` | 200 — **Đã triển khai; đã kiểm chứng bằng integration test trên PostgreSQL Docker riêng (Testcontainers, 68 test, 2026-11-11)** |
 
 Ghi chú (BE1): `movieDetail` cho phép `ended`; `archived`/không tồn tại → `404 NOT_FOUND`. `browseShowtimes` yêu cầu `date` bắt buộc (`YYYY-MM-DD` theo timezone rạp); thiếu/sai format → `400 VALIDATION_ERROR` với `details.violations`. Public showtime chỉ gồm status `scheduled` (cách diễn giải UC-07 bước 2 và R-21 “suất đang bán”, tài liệu không liệt kê status); showtime ngoài tập public → `404 NOT_FOUND` ở `showtimeDetail`/`seatMap`. Phim tồn tại nhưng không có suất (theo filter) → `200 { "data": [], "pagination": ... }`; phim không tồn tại hoặc archived → `404 NOT_FOUND`. `publicPricing`: thiếu cấu hình giá (thiếu dòng giá hoặc thiếu category bắt buộc) → `409 STATE_CONFLICT`; `amount = 0` là cấu hình hợp lệ.
+
+Giới hạn kiểm chứng (BE1): hành vi khi `date` có khoảng trắng đầu/cuối (browse showtimes) **chưa được contract quy định và chưa có test**. Trường hợp hai allocation active “sold + held” cùng một ghế/suất **không có test** vì bị ràng buộc DB `ux_active_seat` (partial unique trên `cinema.booking_seat` cho `held/sold`) chặn insert; đã kiểm chứng trường hợp `released` + `held` cùng ghế → `held`.
 
 ## Checkout
 

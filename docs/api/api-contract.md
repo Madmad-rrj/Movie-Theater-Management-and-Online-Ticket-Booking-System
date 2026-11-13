@@ -2,7 +2,7 @@
 
 ## Mục đích, nguồn và trạng thái
 
-Bản soạn ngày 09/11/2026 cho C01 Web Application ↔ C02 Backend API của hệ thống quản lý rạp và đặt vé. Phần lớn catalogue vẫn là **thiết kế Proposed**; riêng `GET /api/movies` đã có implementation tối thiểu và được kiểm chứng với PostgreSQL local theo log công việc.
+Bản soạn ngày 09/11/2026 cho C01 Web Application ↔ C02 Backend API của hệ thống quản lý rạp và đặt vé. Phần lớn catalogue vẫn là **thiết kế Proposed**. Các endpoint đọc công khai BE1 đã có implementation; `GET /api/movies` đã được kiểm chứng với PostgreSQL local, và bộ endpoint BE1 đã được kiểm chứng bằng integration test trên PostgreSQL Docker riêng (Testcontainers, 68 test, 2026-11-11) theo log và [API Endpoints](api-endpoints.md). Trạng thái chi tiết (đã triển khai / đã kiểm chứng) xem tại [API Endpoints](api-endpoints.md).
 
 Nguồn đối chiếu: **Use-Case Specifications v2.4** (`rup_ucspec-v2.4_final(5).docx`, bản đính kèm) và **SAD v3.15** (`rup_sad(1).docx`). Trong repository, đối chiếu bản tương ứng ở `pa/PA3-Group15/` theo version/nội dung, không chỉ theo tên. Use-case quyết định hành vi; SAD quyết định component và ranh giới giao tiếp. Không dùng schema/Markdown cũ để khôi phục nghiệp vụ đã bị thay thế. Chưa kiểm tra repository hiện tại trong lần soạn này, nên không khẳng định source/schema vẫn là skeleton hoặc tất cả endpoint chưa tồn tại.
 
@@ -12,7 +12,7 @@ Tên endpoint, DTO, enum API, transport và mã lỗi dưới đây là các l�
 
 - Base path `/api`; HTTPS ở môi trường online. JSON UTF-8, field camelCase. Không đưa credential/PII vào query string.
 - Request có JSON body dùng `Content-Type: application/json`. GET/DELETE không có body trong catalogue. 204 không có body hoặc JSON content type bắt buộc.
-- ID của entity có PK `bigint` trong schema (`movie`, `genre` và các quan hệ liên quan trong endpoint đọc phim) là chuỗi số thập phân trong JSON, ví dụ `"6"`, để không mất chính xác khi client JavaScript xử lý. Các ID UUID của những entity khác vẫn là UUID; `categoryCode` (`Adult`/`Discounted`) và mã public là các mã riêng, không phải UUID hay quyền truy cập.
+- ID của entity có PK `bigint` trong schema (`movie`, `genre`, `cinema`, `room`/`cinema_room`, `showtime`, `seat`, `seatType` và các quan hệ liên quan trong endpoint đọc công khai BE1 đã triển khai/kiểm chứng) là **chuỗi số thập phân** trong JSON/path/query, ví dụ `"6"`, để không mất chính xác khi client JavaScript xử lý. Trường `version` kiểu `bigint` (khi có trong response) cũng trả dưới dạng chuỗi số. Các ID UUID của những entity khác vẫn là UUID; `categoryCode` (`Adult`/`Discounted`) và mã public là các mã riêng, không phải UUID hay quyền truy cập.
 - `Instant`: UTC ISO 8601 có `Z`. `Date`: YYYY-MM-DD theo timezone cinema, mặc định Asia/Ho_Chi_Minh. Khi không lọc cinema, backend diễn giải ngày riêng theo mỗi cinema, không lấy timezone trình duyệt.
 - `Money`: `{ "amount": 120000, "currency": "VND" }`; amount nguyên không âm. Không trộn Money object và integer cùng một field giữa các API. Positive-total/payment eligibility vẫn do UC kiểm tra.
 - Category cố định Adult/Discounted; role code CUSTOMER/STAFF/MANAGER/ADMIN. Mỗi physical seat là một chỗ; không Couple/capacity expansion.
@@ -50,7 +50,9 @@ Lỗi:
 }
 ```
 
-`details` là object theo mã lỗi, `{}` khi không có bổ sung. Không trả stack trace/SQL/raw provider response. 400 cho parse/type/required/format; 422 cho eligibility/nghiệp vụ; 409 cho state/concurrency conflict. Missing/invalid authenticated hoặc Guest credential =>401; credential hợp lệ nhưng thiếu quyền=>403, hoặc 404 để không tiết lộ resource. Provider ACK không dùng envelope này; mã ACK/signature/status mapping chốt khi tích hợp MoMo, không tự coi HTTP 200 là payment success.
+`details` là object theo mã lỗi, `{}` khi không có bổ sung. Validation dùng `VALIDATION_ERROR` với `details.violations = [{ "field", "reason", "message" }]`. Envelope lỗi luôn có `traceId` (chuỗi tương quan). Không trả stack trace/SQL/raw provider response. 400 cho parse/type/required/format; 422 cho eligibility/nghiệp vụ; 409 cho state/concurrency conflict. Missing/invalid authenticated hoặc Guest credential =>401; credential hợp lệ nhưng thiếu quyền=>403, hoặc 404 để không tiết lộ resource. Provider ACK không dùng envelope này; mã ACK/signature/status mapping chốt khi tích hợp MoMo, không tự coi HTTP 200 là payment success.
+
+Đối với endpoint đọc public showtime đã triển khai/kiểm chứng (BE1), tập public chỉ gồm suất có status `scheduled` (rạp `active`, phim thuộc tập public); suất ngoài tập trả `404 NOT_FOUND` ở detail/seat map.
 
 ## Authentication, Guest access và authorization
 
