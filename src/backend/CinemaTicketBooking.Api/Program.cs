@@ -27,6 +27,15 @@ builder.Services.AddScoped<SelectionService>();
 builder.Services.AddScoped<BookingReservationService>();
 builder.Services.AddScoped<BookingReadService>();
 builder.Services.AddScoped<BookingCancellationService>();
+builder.Services.AddOptions<MockPayOptions>().BindConfiguration(MockPayOptions.SectionName)
+    .Validate(options => options.IsValid(), "MockPay configuration is invalid.").ValidateOnStart();
+builder.Services.AddHttpClient<MockPayClient>((serviceProvider, client) =>
+{
+    var options = serviceProvider.GetRequiredService<Microsoft.Extensions.Options.IOptions<MockPayOptions>>().Value;
+    client.BaseAddress = new Uri(options.BaseUrl);
+    client.Timeout = TimeSpan.FromSeconds(15);
+});
+builder.Services.AddScoped<BookingPaymentService>();
 builder.Services.AddScoped<BookingExpiryService>();
 builder.Services.AddHostedService<BookingExpiryWorker>();
 builder.Services.AddOptions<BookingExpiryOptions>().BindConfiguration("BookingExpiry")
