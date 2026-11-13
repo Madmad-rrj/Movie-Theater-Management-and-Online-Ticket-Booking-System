@@ -58,7 +58,9 @@ Lỗi:
 
 Guest dùng opaque server-issued HttpOnly Secure cookie `cinema_guest`; JSON chỉ chứa contextId không phải secret. `POST /api/guest-context` bootstrap/reuse Guest context; không reset selection. Browser gọi Guest API với credentials. Khi Vercel/Render khác site, cấu hình SameSite=None; exact CORS allowlist, Allow-Credentials và chống CSRF là bắt buộc. Đề xuất bootstrap trả `X-CSRF-Token`, Guest mutation gửi lại header này; backend kiểm tra token gắn context và Origin. Bearer credentials lấy precedence; request có Bearer không hợp lệ phải bị từ chối, không fallback Guest. Việc chuyển booking từ Guest sang account không được tự suy từ email trùng.
 
-Guest lifetime và recovery sau mất cookie chưa có baseline kỹ thuật đủ rõ: cần chốt trước production. Không bổ sung public lookup theo email/phone/bookingCode; khi chưa có cơ chế recovery đã duyệt, trả hướng dẫn hỗ trợ, không nới quyền. QR admission không thay thế Guest proof.
+Guest demo lifetime đã thống nhất là **24 giờ tuyệt đối**, cấu hình qua `GuestCheckout:LifetimeHours`; bootstrap/reuse không gia hạn. Branch `feat/be-guest-context` triển khai cookie, hash-only storage, database-time validation, Origin và CSRF theo [Guest checkout](../development/guest-checkout.md). Bootstrap không nhận body, yêu cầu `Idempotency-Key` UUID và trusted Origin, trả CSRF header mà không đòi token có sẵn. Mutation Guest khác phải gửi cookie + CSRF token gắn context. HTTP cookie chỉ được phép trong Development, với opt-in rõ ràng, host và peer đều loopback; online bắt buộc HTTPS/Secure.
+
+Replay bootstrap vẫn cần cookie tương ứng; idempotency key không cấp quyền khôi phục credential. Cookie sai/hết hạn/bị thu hồi trả 401 và bị xóa, không tự tạo danh tính thay thế. Authorization không được hỗ trợ trong branch Guest-only trả 401 và không fallback Guest. Recovery sau mất cookie cho checkout có dữ liệu và lifecycle production vẫn cần review. Không bổ sung public lookup theo email/phone/bookingCode; khi chưa có cơ chế recovery đã duyệt, trả hướng dẫn hỗ trợ, không nới quyền. QR admission không thay thế Guest proof.
 
 | Policy | Quyền cụ thể |
 |---|---|
@@ -154,7 +156,7 @@ Credentials CORS chỉ exact trusted origins, không wildcard. Cookie requests c
 
 ## Những điểm cần xác nhận trước implementation
 
-- Guest cookie lifecycle và recovery sau mất browser state; CSRF deployment/CORS cho Vercel–Render.
+- Guest lifetime demo đã chốt 24 giờ; production lifecycle/recovery sau mất browser state và CSRF/CORS cho Vercel–Render vẫn cần review. Local Guest configuration tại [Guest checkout](../development/guest-checkout.md).
 - Quote storage/versioning, idempotency ledger retention, limits cho input và pagination ở từng màn hình.
 - MoMo raw payload, signature, ACK, provider reference/status mapping, idempotent initiation và query capabilities; không bịa từ DTO nội bộ. Đọc tài liệu chính thức tại lúc tích hợp.
 - API enum mapping với schema mới; không coi schema cũ đã migrate. Trạng thái implementation và contract tests phải kiểm chứng trong repository.
@@ -167,3 +169,11 @@ Credentials CORS chỉ exact trusted origins, không wildcard. Cookie requests c
 - [DTO Specification](dto-specification.md): field types, nullability, validation và examples.
 - UC DOCX: UC-01/09 reservation; UC-02/03/04 payment safety; UC-04A/10/19 cancellation/refund; UC-05 admission; UC-08A–D/18 identity; UC-12–17 catalogue/configuration.
 - SAD: C02/C03 API/identity, C08–C11 booking/payment/refund/admission, C12 temporary chat, C13 transactions, C14–C16 workers/notification/audit.
+
+BE2 task 2 uses decimal-string bigint showtime/seat IDs, UUID selection/quote IDs, and a configurable maximum (default 8) snapshotted on selection creation. See [selection/quotation implementation](../development/selection-quote.md). Selection quotation is implemented without changing the SQL schema or adding BE1 entity mappings.
+
+BE2 task 3: POST `/api/bookings` atomically commits pending booking, category/seat snapshots, held allocations, selection consumption, audit and receipt. Rejected 409/422 outcomes are also durable and replay-marked. Original selection deadline is retained; no payment window begins. [Reservation implementation](../development/booking-reservation.md).
+
+BE2 task 4: GET `/api/bookings/{bookingId}` and GET `/api/bookings/{bookingId}/checkout` are implemented with Guest ownership and no-store. Both reuse committed snapshots and current official showtime information, with no repricing, booking creation, deadline extension or seat release. Recovery returns persisted booking state and a derived `nextAction`: an elapsed unpaid pending booking returns `selectAgain` while it awaits task-5 processing; unresolved payments return `awaitOutcome`, never an inferred failure. Existing review/refund obligations return `contactSupport`. The `pay` hint only opens the intended demo MoMo-selection step and does not initiate payment. [Recovery mapping and verification](../development/checkout-recovery.md).
+
+BE2 task 5: POST `/api/bookings/{bookingId}/cancel` requires explicit confirmation and Guest/Origin/CSRF/idempotency protections. It cancels eligible pending bookings and releases all held seats atomically before any payment-initiation commit. Success and sanitized eligibility rejections are durable/replay-marked. The internal expiry worker rechecks state, all attempts, authoritative deadlines/evidence and held allocations before atomic expired/released/audit. It never releases confirmed/sold or unresolved-payment allocations, queries a gateway, or exposes a worker HTTP trigger. Development/local Compose enables 15-second polling with bounded batches; other environments require explicit enablement. [Configuration, guards and tests](../development/booking-cancel-expiry.md).

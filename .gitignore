@@ -62,3 +62,6 @@ Desktop.ini
 # Personal identity — do not commit
 # ==============================
 **/identity.md
+# Local task briefs (keep local copies, do not track).
+/BE1.md
+/BE2.md

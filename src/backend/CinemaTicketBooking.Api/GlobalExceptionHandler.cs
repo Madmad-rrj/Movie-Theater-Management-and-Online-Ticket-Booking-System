@@ -1,5 +1,6 @@
 using CinemaTicketBooking.Api.Services;
 using Microsoft.AspNetCore.Diagnostics;
+using Npgsql;
 using System.Diagnostics;
 
 namespace CinemaTicketBooking.Api;
@@ -38,6 +39,14 @@ public sealed class GlobalExceptionHandler(ILogger<GlobalExceptionHandler> logge
                 code = "VALIDATION_ERROR";
                 message = "Yêu cầu không hợp lệ.";
                 details = new { };
+                break;
+            case TimeoutException:
+            case NpgsqlException { IsTransient: true }:
+                statusCode = StatusCodes.Status503ServiceUnavailable;
+                code = "DEPENDENCY_UNAVAILABLE";
+                message = "Đã xảy ra lỗi khi xử lý yêu cầu.";
+                details = new { };
+                logger.LogWarning(exception, "Transient dependency failure. TraceId: {TraceId}", traceId);
                 break;
             default:
                 statusCode = StatusCodes.Status500InternalServerError;

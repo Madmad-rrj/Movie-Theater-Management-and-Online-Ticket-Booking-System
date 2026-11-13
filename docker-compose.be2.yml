@@ -1,0 +1,67 @@
+# Local Linux/Arch backend runner. Read .env for PostgreSQL settings.
+# Keep CINEMA_BE2_DATA_DIR on a filesystem supporting Unix permissions (e.g. ext4).
+# This is a separate stack; existing demo volumes are not reset or reused.
+services:
+  postgres:
+    image: postgres:16.4
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    ports:
+      - "127.0.0.1:${POSTGRES_HOST_PORT:-5433}:5432"
+    volumes:
+      - type: bind
+        source: ${CINEMA_BE2_DATA_DIR:?Set CINEMA_BE2_DATA_DIR to a directory on your Linux filesystem}
+        target: /var/lib/postgresql/data
+      - ./database/database-schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+      - ./database/seed-data.sql:/docker-entrypoint-initdb.d/02-seed.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+
+  api:
+    image: mcr.microsoft.com/dotnet/sdk:8.0
+    user: app
+    network_mode: host
+    working_dir: /tmp
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ASPNETCORE_ENVIRONMENT: Development
+      ASPNETCORE_URLS: http://127.0.0.1:${CINEMA_API_PORT:-5080}
+      DOTNET_CLI_HOME: /tmp/dotnet
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+      NUGET_PACKAGES: /tmp/nuget
+      BookingExpiry__Enabled: ${CINEMA_BE2_EXPIRY_ENABLED:-true}
+      BookingExpiry__PollIntervalSeconds: ${CINEMA_BE2_EXPIRY_POLL_SECONDS:-15}
+      BookingExpiry__BatchSize: ${CINEMA_BE2_EXPIRY_BATCH_SIZE:-50}
+      # PG settings come from .env, matching the postgres service above.
+      # Quotes around values preserve spaces/semicolons in ordinary credentials.
+      ConnectionStrings__DefaultConnection: >-
+        Host=127.0.0.1;Port=${POSTGRES_HOST_PORT:-5433};Database="${POSTGRES_DB}";Username="${POSTGRES_USER}";Password="${POSTGRES_PASSWORD}"
+    volumes:
+      - ./src/backend/CinemaTicketBooking.Api:/source:ro
+    tmpfs:
+      - /tmp:rw,exec,mode=1777
+    command:
+      - sh
+      - -c
+      - |
+        set -eu
+        mkdir -p /tmp/api
+        cp -R /source/. /tmp/api/
+        rm -rf /tmp/api/bin /tmp/api/obj
+        cd /tmp/api
+        exec dotnet run --no-launch-profile
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--output", "/dev/null", "--max-time", "3", "http://127.0.0.1:${CINEMA_API_PORT:-5080}/api/movies"]
+      interval: 5s
+      timeout: 5s
+      retries: 24
+      start_period: 60s

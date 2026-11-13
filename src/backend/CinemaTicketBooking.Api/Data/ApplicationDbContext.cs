@@ -9,6 +9,8 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     public DbSet<Movie> Movies => Set<Movie>();
     public DbSet<Genre> Genres => Set<Genre>();
     public DbSet<MovieGenre> MovieGenres => Set<MovieGenre>();
+    public DbSet<CheckoutIdentity> CheckoutIdentities => Set<CheckoutIdentity>();
+    public DbSet<OperationReceipt> OperationReceipts => Set<OperationReceipt>();
     public DbSet<Cinema> Cinemas => Set<Cinema>();
     public DbSet<CinemaRoom> CinemaRooms => Set<CinemaRoom>();
     public DbSet<Showtime> Showtimes => Set<Showtime>();
@@ -21,6 +23,9 @@ public sealed class ApplicationDbContext(DbContextOptions<ApplicationDbContext> 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.HasDefaultSchema("cinema");
+        modelBuilder.ConfigureGuestCheckout();
+        modelBuilder.ConfigureSelections();
+        modelBuilder.ConfigureBookings();
 
         modelBuilder.Entity<Movie>(entity =>
         {

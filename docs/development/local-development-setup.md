@@ -263,6 +263,10 @@ Frontend render được không chứng minh backend integration. Mở Browser N
 
 ## 8. Giao tiếp frontend/backend và authentication
 
+BE2 Guest context trên branch `feat/be-guest-context`: xem [guest-checkout.md](guest-checkout.md)
+cho lifetime demo 24 giờ, cấu hình cookie/CSRF với Vite proxy, bootstrap/reuse và
+runner PostgreSQL biệt lập. Backend không tự chạy schema/seed khi khởi động.
+
 | Hạng mục | Thiết lập cần kiểm |
 |---|---|
 | API URL | Browser truy cập được host/port; không dùng Docker service DNS trong VITE_API_BASE_URL |

@@ -1,7 +1,14 @@
+using System.Globalization;
+using System.Threading.RateLimiting;
+using CinemaTicketBooking.Api.Controllers;
 using CinemaTicketBooking.Api;
 using CinemaTicketBooking.Api.Data;
+using CinemaTicketBooking.Api.DTOs.Common;
 using CinemaTicketBooking.Api.Services;
+using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -13,20 +20,88 @@ if (string.IsNullOrWhiteSpace(connectionString))
 }
 
 builder.Services.AddDbContext<ApplicationDbContext>(options =>
-    options.UseNpgsql(connectionString, npgsql => npgsql.EnableRetryOnFailure(3)));
+    options.UseNpgsql(connectionString, npgsql => npgsql.EnableRetryOnFailure(3, TimeSpan.FromSeconds(1), new[] { "40P01", "40001" })));
 builder.Services.AddScoped<IMovieService, MovieService>();
+builder.Services.AddScoped<IGuestContextService, GuestContextService>();
+builder.Services.AddScoped<SelectionService>();
+builder.Services.AddScoped<BookingReservationService>();
+builder.Services.AddScoped<BookingReadService>();
+builder.Services.AddScoped<BookingCancellationService>();
+builder.Services.AddScoped<BookingExpiryService>();
+builder.Services.AddHostedService<BookingExpiryWorker>();
+builder.Services.AddOptions<BookingExpiryOptions>().BindConfiguration("BookingExpiry")
+    .Validate(options => options.PollIntervalSeconds is >= 1 and <= 3600 && options.BatchSize is >= 1 and <= 500,
+        "BookingExpiry requires PollIntervalSeconds 1..3600 and BatchSize 1..500.").ValidateOnStart();
+builder.Services.AddOptions<SelectionOptions>().BindConfiguration("Selection")
+    .Validate(options => options.MaximumTickets > 0, "Selection:MaximumTickets must be positive.").ValidateOnStart();
+builder.Services.AddSingleton<GuestRequestSecurity>();
+builder.Services.AddOptions<GuestCheckoutOptions>()
+    .Bind(builder.Configuration.GetSection(GuestCheckoutOptions.SectionName))
+    .Validate(options => options.IsValid(builder.Environment),
+        "GuestCheckout requires a positive lifetime/rate limit and exact trusted origins. HTTP cookies are allowed only for explicit Development loopback use.")
+    .ValidateOnStart();
+
+var guestOptions = builder.Configuration.GetSection(GuestCheckoutOptions.SectionName).Get<GuestCheckoutOptions>()
+    ?? new GuestCheckoutOptions();
+builder.Services.AddCors(options => options.AddPolicy("GuestCheckout", policy => policy
+    .WithOrigins(guestOptions.AllowedOrigins)
+    .WithMethods("GET", "POST", "PUT", "DELETE", "OPTIONS")
+    .WithHeaders("Content-Type", "Idempotency-Key", GuestCheckoutOptions.CsrfHeaderName, "Authorization")
+    .WithExposedHeaders(GuestCheckoutOptions.CsrfHeaderName, "Idempotency-Replayed", "Retry-After")
+    .AllowCredentials()));
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.AddPolicy(GuestCheckoutOptions.BootstrapRateLimitPolicy, context =>
+        RateLimitPartition.GetFixedWindowLimiter(context.Connection.RemoteIpAddress?.ToString() ?? "unknown", _ =>
+            new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = guestOptions.BootstrapPermitLimit,
+                Window = TimeSpan.FromSeconds(guestOptions.BootstrapWindowSeconds), QueueLimit = 0
+            }));
+    options.OnRejected = async (context, cancellationToken) =>
+    {
+        context.HttpContext.Response.StatusCode = StatusCodes.Status429TooManyRequests;
+        context.HttpContext.Response.Headers.CacheControl = "no-store";
+        if (context.Lease.TryGetMetadata(MetadataName.RetryAfter, out var retryAfter))
+        {
+            context.HttpContext.Response.Headers.RetryAfter =
+                Math.Ceiling(retryAfter.TotalSeconds).ToString(CultureInfo.InvariantCulture);
+        }
+        await context.HttpContext.Response.WriteAsJsonAsync(ApiErrorResponse.Create(
+            context.HttpContext, "RATE_LIMITED", "Quá nhiều yêu cầu. Vui lòng thử lại sau."), cancellationToken);
+    };
+});
+
+builder.Services.AddControllers(options => options.Filters.Add<CheckoutExceptionFilter>())
+    .AddJsonOptions(options => options.JsonSerializerOptions.UnmappedMemberHandling =
+        System.Text.Json.Serialization.JsonUnmappedMemberHandling.Disallow)
+    .ConfigureApiBehaviorOptions(options => options.InvalidModelStateResponseFactory = context =>
+        new Microsoft.AspNetCore.Mvc.BadRequestObjectResult(ApiErrorResponse.Create(
+            context.HttpContext, "VALIDATION_ERROR", "Dữ liệu yêu cầu không hợp lệ.", new
+            {
+                violations = context.ModelState.Where(entry => entry.Value?.Errors.Count > 0)
+                    .Select(entry => new { field = entry.Key, reason = "invalid", message = "Giá trị không hợp lệ." })
+            })));
+
 builder.Services.AddScoped<ICinemaService, CinemaService>();
 builder.Services.AddScoped<IShowtimeService, ShowtimeService>();
 builder.Services.AddScoped<IPricingService, PricingService>();
 builder.Services.AddScoped<ISeatMapService, SeatMapService>();
 builder.Services.AddExceptionHandler<GlobalExceptionHandler>();
 builder.Services.AddProblemDetails();
-builder.Services.AddControllers();
 
 var app = builder.Build();
 
 app.UseExceptionHandler();
 
+app.UseCors("GuestCheckout");
+app.UseRateLimiter();
 app.MapControllers();
 
 app.Run();
+
+static bool IsDependencyUnavailable(Exception? exception) => exception is not null &&
+    (exception is TimeoutException or NpgsqlException { IsTransient: true } || IsDependencyUnavailable(exception.InnerException));
+
+public partial class Program;
